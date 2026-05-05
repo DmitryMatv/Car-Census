@@ -1,0 +1,45 @@
+project:
+  output_root: outputs
+  device: auto
+  camera_profiles_dir: configs/cameras
+
+analysis:
+  fps: 0.0
+  imgsz: 960
+  min_track_frames: 3
+  min_box_height_px: 80
+  crop_limit_per_track: 3
+  crop_min_spacing_seconds: 0.5
+  crop_jpeg_quality: 95
+
+detector:
+  provider: ultralytics_local
+  weights: weights/yolo11n.pt
+  confidence: 0.25
+  iou: 0.45
+  allowed_class_names:
+    - car
+
+tracker:
+  track_activation_threshold: 0.25
+  lost_track_buffer: 30
+  minimum_matching_threshold: 0.8
+  minimum_consecutive_frames: 3
+  frame_rate: 0
+
+mmr:
+  api_url: https://trafficeye.ai/recognition
+  api_key_env: TRAFFICEYE_API_KEY
+  timeout_seconds: 45.0
+  max_attempts_per_track: 3
+  accept_model_confidence: 0.60
+
+render:
+  codec: mp4v
+  label_font_scale: 0.7
+  label_thickness: 2
+  line_thickness: 2
+  ellipse_thickness: 2
+  trace_length: 25
+  output_fps: 0.0
+  unknown_label: unknown
