@@ -25,7 +25,7 @@ class AnalysisConfig(BaseModel):
 
 class DetectorConfig(BaseModel):
     provider: str = "ultralytics_local"
-    weights: str = "weights/yolo11n.pt"
+    weights: str = "weights/yolo11s.pt"
     confidence: float = 0.25
     iou: float = 0.45
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
