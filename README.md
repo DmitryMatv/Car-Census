@@ -18,41 +18,37 @@ If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as th
 
 ## Environment
 
-This project targets a local NVIDIA GTX 970 workflow. Install PyTorch with the pinned CUDA 12.6 wheels first:
-
-```bash
-pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126
-```
-
-Then install project dependencies:
+This project targets local CPU inference with ONNX Runtime by default. Install project dependencies:
 
 ```bash
 pip install -e .
 ```
 
-## Model Setup
+The legacy Ultralytics/PyTorch detector remains available as an optional extra:
 
-The default configuration expects a local Roboflow-exported detector at:
-
-```text
-weights/yolo11n.pt
+```bash
+pip install -e ".[pytorch]"
 ```
 
-This should be a locally runnable model artifact supported by Ultralytics, such as a `.pt` or `.onnx` export.
+## Model Setup
 
-For quick smoke testing, you can temporarily change `detector.weights` in `configs/default.yaml` to `yolo11n.pt`.
+The default configuration expects a local YOLO26 ONNX detector at:
+
+```text
+weights/yolo26n.onnx
+```
+
+Use a YOLO26 detection model exported to ONNX. The default path is intentionally a local artifact so the pipeline can run offline after setup.
+
+For quick smoke testing with the optional PyTorch path, set `detector.provider` to `ultralytics_local` and `detector.weights` to a local `.pt` model or an Ultralytics model name.
 
 Device selection is explicit:
 
 ```bash
-car-census run test_vid.MP4 --camera-id home-road --device cuda
-car-census run test_vid.MP4 --camera-id home-road --device auto
-car-census run test_vid.MP4 --camera-id home-road --device cpu
+car-census run input_data/test_vid.MP4 --camera-id home-road --device cpu
 ```
 
-`auto` uses GPU only when the installed PyTorch wheel supports your card. `cuda` tries to force GPU and will fail with a clear error if the current torch build does not support your GTX 970. That is what you want if you later install a legacy-compatible wheel.
-
-On startup the detector logs whether it resolved to GPU or CPU, along with the GPU capability and the architectures shipped in the installed torch wheel.
+The ONNX Runtime detector always uses `CPUExecutionProvider`; `project.device` only affects the optional Ultralytics/PyTorch provider.
 
 ## TrafficEye Setup
 
@@ -67,19 +63,19 @@ export TRAFFICEYE_API_KEY=your_key_here
 Create an ROI profile:
 
 ```bash
-car-census roi edit test_vid.MP4 --camera-id home-road --device cuda
+car-census roi edit input_data/test_vid.MP4 --camera-id home-road --device cuda
 ```
 
 Run the full pipeline:
 
 ```bash
-car-census run test_vid.MP4 --camera-id home-road --device cuda
+car-census run input_data/test_vid.MP4 --camera-id home-road --device cuda
 ```
 
 Run without make/model API calls:
 
 ```bash
-car-census run test_vid.MP4 --skip-classify
+car-census run input_data/test_vid.MP4 --skip-classify
 ```
 
 Artifacts are written to `outputs/<run-id>/`.

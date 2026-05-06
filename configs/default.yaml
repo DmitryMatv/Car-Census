@@ -5,7 +5,7 @@ project:
 
 analysis:
   fps: 0.0
-  imgsz: 960
+  imgsz: 640
   min_track_frames: 3
   min_box_height_px: 80
   crop_limit_per_track: 3
@@ -13,12 +13,17 @@ analysis:
   crop_jpeg_quality: 95
 
 detector:
-  provider: ultralytics_local
-  weights: weights/yolo11n.pt
-  confidence: 0.25
-  iou: 0.45
+  provider: onnxruntime_local
+  weights: weights/yolo26s.onnx
+  confidence: 0.4
+  iou: 0.4
   allowed_class_names:
     - car
+    - truck
+    - bus
+    - motorcycle
+    - bicycle
+  onnx_threads: 6
 
 tracker:
   track_activation_threshold: 0.25
@@ -26,6 +31,8 @@ tracker:
   minimum_matching_threshold: 0.8
   minimum_consecutive_frames: 3
   frame_rate: 0
+  smoothing_alpha: 0.6
+  smoothing_history: 10
 
 mmr:
   api_url: https://trafficeye.ai/recognition
@@ -36,10 +43,11 @@ mmr:
 
 render:
   codec: mp4v
-  label_font_scale: 0.7
-  label_thickness: 2
+  font: cv2.FONT_HERSHEY_SIMPLEX
+  label_font_scale: 1
+  label_thickness: 4
   line_thickness: 2
   ellipse_thickness: 2
-  trace_length: 25
+  trace_length: 30
   output_fps: 0.0
   unknown_label: unknown

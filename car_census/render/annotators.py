@@ -26,7 +26,7 @@ class VideoAnnotator:
         )
         self.trace = sv.TraceAnnotator(
             trace_length=config.render.trace_length,
-            position=sv.Position.BOTTOM_CENTER,
+            position=sv.Position.CENTER,
             thickness=config.render.line_thickness,
             color_lookup=sv.ColorLookup.TRACK,
         )
@@ -71,5 +71,7 @@ class VideoAnnotator:
         ]
         annotated = self.trace.annotate(scene=annotated, detections=detections)
         annotated = self.corner.annotate(scene=annotated, detections=detections)
-        annotated = self.label.annotate(scene=annotated, detections=detections, labels=label_text)
+        annotated = self.label.annotate(
+            scene=annotated, detections=detections, labels=label_text
+        )
         return annotated

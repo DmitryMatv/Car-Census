@@ -16,8 +16,12 @@ class Detector(ABC):
 
 
 def create_detector(config: AppConfig, project_root: Path) -> Detector:
-    if config.detector.provider != "ultralytics_local":
-        raise ValueError(f"Unsupported detector provider: {config.detector.provider}")
-    from car_census.detectors.ultralytics_local import UltralyticsLocalDetector
+    if config.detector.provider == "onnxruntime_local":
+        from car_census.detectors.onnxruntime_local import OnnxRuntimeLocalDetector
 
-    return UltralyticsLocalDetector(config=config, project_root=project_root)
+        return OnnxRuntimeLocalDetector(config=config, project_root=project_root)
+    if config.detector.provider == "ultralytics_local":
+        from car_census.detectors.ultralytics_local import UltralyticsLocalDetector
+
+        return UltralyticsLocalDetector(config=config, project_root=project_root)
+    raise ValueError(f"Unsupported detector provider: {config.detector.provider}")
