@@ -14,7 +14,7 @@ analysis:
 
 detector:
   provider: onnxruntime_local
-  weights: weights/yolo26s.onnx
+  weights: weights/yolo26n.onnx
   confidence: 0.4
   iou: 0.4
   allowed_class_names:
@@ -45,9 +45,15 @@ render:
   codec: mp4v
   font: cv2.FONT_HERSHEY_SIMPLEX
   label_font_scale: 1
-  label_thickness: 4
+  label_thickness: 2
   line_thickness: 2
-  ellipse_thickness: 2
+  line_length: 30
+  ellipse_thickness: 1
   trace_length: 30
+  stale_track_frames: 3
+  stale_track_min_active_frames: 3
+  stale_track_velocity_history: 6
+  stale_track_velocity_scale: 0.4
+  stale_track_max_velocity_ratio: 0.25
   output_fps: 0.0
   unknown_label: unknown

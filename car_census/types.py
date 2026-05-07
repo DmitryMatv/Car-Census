@@ -49,6 +49,8 @@ class TrackedObject(BaseModel):
     inside_roi: bool
     counted: bool = False
     crossed_line: bool = False
+    predicted: bool = False
+    stale_frames: int = 0
 
 
 class CropCandidate(BaseModel):

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from car_census.config import AppConfig, CameraProfile
 from car_census.detectors.base import create_detector
@@ -17,7 +18,15 @@ from car_census.roi.geometry import (
 )
 from car_census.storage.run_store import RunStore
 from car_census.trackers.bytetrack import ByteTrackAdapter
-from car_census.types import BBox, CountEvent, CropCandidate, FrameRecord, RunManifest, TrackSummary, TrackedObject
+from car_census.types import (
+    BBox,
+    CountEvent,
+    CropCandidate,
+    FrameRecord,
+    RunManifest,
+    TrackSummary,
+    TrackedObject,
+)
 from car_census.utils.image_quality import laplacian_sharpness
 from car_census.utils.video import iter_sampled_frames, read_video_metadata
 
@@ -36,9 +45,20 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
+    previous_bbox: BBox | None = None
+    bbox_history: list[BBox] = field(default_factory=list)
+    last_bbox: BBox | None = None
+    last_confidence: float = 0.0
+    last_class_id: int | None = None
+    last_class_name: str | None = None
+    last_centroid: tuple[float, float] | None = None
+    last_bottom_center: tuple[float, float] | None = None
+    last_inside_roi: bool = False
 
 
-def _score_candidate(crop: cv2.typing.MatLike, bbox: BBox, frame_shape: tuple[int, int, int]) -> tuple[float, float, float, float]:
+def _score_candidate(
+    crop: cv2.typing.MatLike, bbox: BBox, frame_shape: tuple[int, int, int]
+) -> tuple[float, float, float, float]:
     sharpness = laplacian_sharpness(crop)
     area_score = bbox.area
     height, width = frame_shape[:2]
@@ -65,13 +85,16 @@ def _save_candidate(
         return
     if (
         track_state.last_candidate_time is not None
-        and timestamp_seconds - track_state.last_candidate_time < config.analysis.crop_min_spacing_seconds
+        and timestamp_seconds - track_state.last_candidate_time
+        < config.analysis.crop_min_spacing_seconds
     ):
         return
     crop = frame[int(clipped.y1) : int(clipped.y2), int(clipped.x1) : int(clipped.x2)]
     if crop.size == 0:
         return
-    sharpness, edge_margin_score, area_score, total_score = _score_candidate(crop, clipped, frame.shape)
+    sharpness, edge_margin_score, area_score, total_score = _score_candidate(
+        crop, clipped, frame.shape
+    )
     track_dir = store.crops_dir / f"track_{track_state.track_id:06d}"
     track_dir.mkdir(parents=True, exist_ok=True)
     image_path = track_dir / f"frame_{frame_index:08d}.jpg"
@@ -100,6 +123,90 @@ def _save_candidate(
     track_state.last_candidate_time = timestamp_seconds
 
 
+def _predict_stale_bbox(
+    state: MutableTrackState,
+    stale_frames: int,
+    config: AppConfig,
+) -> BBox:
+    if state.last_bbox is None:
+        raise ValueError("Cannot predict stale bbox without a last bbox")
+    history = state.bbox_history[-max(2, config.render.stale_track_velocity_history) :]
+    if len(history) < 2:
+        if state.previous_bbox is None:
+            return state.last_bbox
+        history = [state.previous_bbox, state.last_bbox]
+
+    deltas = np.array(
+        [
+            [
+                current.x1 - previous.x1,
+                current.y1 - previous.y1,
+                current.x2 - previous.x2,
+                current.y2 - previous.y2,
+            ]
+            for previous, current in zip(history, history[1:])
+        ],
+        dtype=np.float32,
+    )
+    if deltas.size == 0:
+        return state.last_bbox
+
+    last = state.last_bbox
+    scale = config.render.stale_track_velocity_scale
+    max_shift = (
+        max(last.width, last.height) * config.render.stale_track_max_velocity_ratio
+    )
+
+    def _scaled_delta(delta: float) -> float:
+        delta *= stale_frames * scale
+        if max_shift <= 0:
+            return 0.0
+        return max(-max_shift, min(max_shift, delta))
+
+    median_delta = np.median(deltas, axis=0)
+    predicted = BBox(
+        x1=last.x1 + _scaled_delta(float(median_delta[0])),
+        y1=last.y1 + _scaled_delta(float(median_delta[1])),
+        x2=last.x2 + _scaled_delta(float(median_delta[2])),
+        y2=last.y2 + _scaled_delta(float(median_delta[3])),
+    )
+    if predicted.x2 <= predicted.x1 or predicted.y2 <= predicted.y1:
+        return last
+    return predicted
+
+
+def _stale_track_for_frame(
+    state: MutableTrackState,
+    frame_index: int,
+    timestamp_seconds: float,
+    config: AppConfig,
+) -> TrackedObject | None:
+    if state.last_bbox is None:
+        return None
+    if state.frames_seen < config.render.stale_track_min_active_frames:
+        return None
+    stale_frames = frame_index - state.last_frame_index
+    if stale_frames < 1 or stale_frames > config.render.stale_track_frames:
+        return None
+    bbox = _predict_stale_bbox(state, stale_frames, config)
+    return TrackedObject(
+        track_id=state.track_id,
+        frame_index=frame_index,
+        timestamp_seconds=timestamp_seconds,
+        bbox=bbox,
+        confidence=state.last_confidence,
+        class_id=state.last_class_id,
+        class_name=state.last_class_name,
+        centroid=bbox.center,
+        bottom_center=((bbox.x1 + bbox.x2) / 2.0, bbox.y2),
+        inside_roi=state.last_inside_roi,
+        counted=state.counted,
+        crossed_line=False,
+        predicted=True,
+        stale_frames=stale_frames,
+    )
+
+
 def analyze_video(
     project_root: Path,
     config: AppConfig,
@@ -108,7 +215,11 @@ def analyze_video(
     run_store: RunStore,
 ) -> RunStore:
     metadata = read_video_metadata(video_path)
-    analysis_fps = metadata.fps if config.analysis.fps <= 0 else min(config.analysis.fps, metadata.fps)
+    analysis_fps = (
+        metadata.fps
+        if config.analysis.fps <= 0
+        else min(config.analysis.fps, metadata.fps)
+    )
     manifest = RunManifest(
         run_id=run_store.root.name,
         video_path=video_path,
@@ -124,32 +235,49 @@ def analyze_video(
     detector = create_detector(config, project_root=project_root)
     tracker = ByteTrackAdapter(config, frame_rate=analysis_fps)
     track_states: dict[int, MutableTrackState] = {}
-    line_start = tuple(profile.count_line.start)
-    line_end = tuple(profile.count_line.end)
+    count_line = profile.count_line
+    if count_line is not None:
+        line_start = tuple(count_line.start)
+        line_end = tuple(count_line.end)
 
-    for frame_index, timestamp_seconds, frame in iter_sampled_frames(video_path, analysis_fps):
+    for frame_index, timestamp_seconds, frame in iter_sampled_frames(
+        video_path, analysis_fps
+    ):
         roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
         detections = detector.detect(roi_frame)
         global_detections = []
         for detection in detections:
             global_bbox = map_bbox_to_global(detection.bbox, offset)
-            global_detections.append(
-                detection.model_copy(update={"bbox": global_bbox})
-            )
+            global_detections.append(detection.model_copy(update={"bbox": global_bbox}))
 
         tracked = tracker.update(global_detections)
         frame_tracks: list[TrackedObject] = []
-        tracker_ids = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
-        class_ids = tracked.class_id.tolist() if tracked.class_id is not None else [-1] * len(tracked.xyxy)
+        tracker_ids = (
+            tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
+        )
+        class_ids = (
+            tracked.class_id.tolist()
+            if tracked.class_id is not None
+            else [-1] * len(tracked.xyxy)
+        )
         class_names = tracked.data.get("class_name", []) if tracked.data else []
-        confidences = tracked.confidence.tolist() if tracked.confidence is not None else [0.0] * len(tracked.xyxy)
+        confidences = (
+            tracked.confidence.tolist()
+            if tracked.confidence is not None
+            else [0.0] * len(tracked.xyxy)
+        )
+        active_track_ids: set[int] = set()
 
         for index, xyxy in enumerate(tracked.xyxy.tolist()):
             track_id = int(tracker_ids[index])
+            active_track_ids.add(track_id)
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
             centroid = bbox.center
             bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)
+            confidence = float(confidences[index])
+            class_id = int(class_ids[index]) if index < len(class_ids) else None
+            class_name = str(class_names[index]) if index < len(class_names) else None
 
             state = track_states.get(track_id)
             if state is None:
@@ -161,7 +289,10 @@ def analyze_video(
                 track_states[track_id] = state
 
             crossed_direction = None
-            if state.previous_bottom_center is not None:
+            if count_line is None:
+                if inside_roi and not state.counted:
+                    state.counted = True
+            elif state.previous_bottom_center is not None:
                 crossed_direction = line_crossing_direction(
                     previous_point=state.previous_bottom_center,
                     current_point=bottom_center,
@@ -173,8 +304,8 @@ def analyze_video(
             if (
                 crossed_direction is not None
                 and (
-                    profile.count_line.direction == "BOTH"
-                    or crossed_direction == profile.count_line.direction
+                    count_line.direction == "BOTH"
+                    or crossed_direction == count_line.direction
                 )
                 and not state.counted
                 and inside_roi
@@ -196,6 +327,18 @@ def analyze_video(
             state.last_frame_index = frame_index
             state.max_box_height_px = max(state.max_box_height_px, bbox.height)
             state.previous_bottom_center = bottom_center
+            state.previous_bbox = state.last_bbox
+            state.last_bbox = bbox
+            state.bbox_history.append(bbox)
+            max_history = max(2, config.render.stale_track_velocity_history)
+            if len(state.bbox_history) > max_history:
+                state.bbox_history = state.bbox_history[-max_history:]
+            state.last_confidence = confidence
+            state.last_class_id = class_id
+            state.last_class_name = class_name
+            state.last_centroid = centroid
+            state.last_bottom_center = bottom_center
+            state.last_inside_roi = inside_roi
 
             if bbox.height >= config.analysis.min_box_height_px:
                 _save_candidate(
@@ -213,9 +356,9 @@ def analyze_video(
                 frame_index=frame_index,
                 timestamp_seconds=timestamp_seconds,
                 bbox=bbox,
-                confidence=float(confidences[index]),
-                class_id=int(class_ids[index]) if index < len(class_ids) else None,
-                class_name=str(class_names[index]) if index < len(class_names) else None,
+                confidence=confidence,
+                class_id=class_id,
+                class_name=class_name,
                 centroid=centroid,
                 bottom_center=bottom_center,
                 inside_roi=inside_roi,
@@ -223,6 +366,18 @@ def analyze_video(
                 crossed_line=crossed_line,
             )
             frame_tracks.append(tracked_object)
+
+        for state in track_states.values():
+            if state.track_id in active_track_ids:
+                continue
+            stale_track = _stale_track_for_frame(
+                state=state,
+                frame_index=frame_index,
+                timestamp_seconds=timestamp_seconds,
+                config=config,
+            )
+            if stale_track is not None:
+                frame_tracks.append(stale_track)
 
         run_store.write_jsonl(
             run_store.frames_path,

@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-import cv2
 import numpy as np
 import supervision as sv
 
-from car_census.config import AppConfig, CameraProfile, FULL_FRAME_CAMERA_ID
-from car_census.render.styles import COUNT_LINE_COLOR
+from car_census.config import AppConfig, CameraProfile
 from car_census.types import TrackedObject
 
 
@@ -39,21 +37,7 @@ class VideoAnnotator:
         labels_by_track: dict[int, str],
     ) -> np.ndarray:
         annotated = frame.copy()
-        cv2.polylines(
-            annotated,
-            [np.array(profile.polygon.points, dtype=np.int32)],
-            True,
-            (80, 80, 80),
-            self.config.render.line_thickness,
-        )
-        if profile.camera_id != FULL_FRAME_CAMERA_ID:
-            cv2.line(
-                annotated,
-                tuple(profile.count_line.start),
-                tuple(profile.count_line.end),
-                COUNT_LINE_COLOR,
-                self.config.render.line_thickness * 2,
-            )
+        _ = profile
         if not tracks:
             return annotated
 

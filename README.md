@@ -8,13 +8,13 @@ Offline vehicle tracking and make/model census for roadside video.
 
 The pipeline is staged:
 
-1. `roi edit` to define polygon ROI and count line
-2. `analyze` to detect, track, count, and save crop candidates
+1. `roi edit` to define the polygon ROI
+2. `analyze` to detect, track, count polygon-zone tracks, and save crop candidates
 3. `classify` to run TrafficEye make/model recognition
 4. `render` to create the annotated output video
 5. `report` to export counts
 
-If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as the ROI and a default horizontal count line is placed through the center of the image.
+If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as the ROI.
 
 ## Environment
 
@@ -104,5 +104,5 @@ outputs/<run-id>/
 
 - Analysis defaults to the source video FPS. Set `analysis.fps` to a positive value if you want downsampling.
 - Render output defaults to the source video FPS. Set `render.output_fps` to a positive value if you want a different export rate.
-- Counting is line-crossing based, not raw detection based.
+- Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
 - Rendering uses ellipse markers and compact make/model labels by default.

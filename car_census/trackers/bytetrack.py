@@ -33,6 +33,20 @@ class ByteTrackAdapter:
         self._track_history: defaultdict[int, deque[np.ndarray]] = defaultdict(
             lambda: deque(maxlen=self.smoothing_history)
         )
+        self._track_missing_frames: defaultdict[int, int] = defaultdict(int)
+        self.smoothing_missing_buffer = max(
+            1, getattr(config.render, "stale_track_frames", 2) + 1
+        )
+
+    def _age_missing_histories(self, active_track_ids: set[int]) -> None:
+        for track_id in list(self._track_history):
+            if track_id in active_track_ids:
+                self._track_missing_frames[track_id] = 0
+                continue
+            self._track_missing_frames[track_id] += 1
+            if self._track_missing_frames[track_id] > self.smoothing_missing_buffer:
+                self._track_history.pop(track_id, None)
+                self._track_missing_frames.pop(track_id, None)
 
     def _smooth_box(self, box: np.ndarray, track_id: int) -> np.ndarray:
         if self.smoothing_history <= 1 or self.smoothing_alpha <= 0:
@@ -54,8 +68,9 @@ class ByteTrackAdapter:
                 confidence=np.empty((0,), dtype=np.float32),
                 class_id=np.empty((0,), dtype=np.int32),
             )
-            self._track_history.clear()
-            return self.tracker.update_with_detections(empty)
+            tracked = self.tracker.update_with_detections(empty)
+            self._age_missing_histories(set())
+            return tracked
 
         xyxy = np.array(
             [[d.bbox.x1, d.bbox.y1, d.bbox.x2, d.bbox.y2] for d in detections],
@@ -87,10 +102,8 @@ class ByteTrackAdapter:
                 original_box = tracked.xyxy[i]
                 smoothed_box = self._smooth_box(original_box, track_id)
                 tracked.xyxy[i] = smoothed_box
-            stale_track_ids = set(self._track_history) - active_track_ids
-            for track_id in stale_track_ids:
-                self._track_history.pop(track_id, None)
+            self._age_missing_histories(active_track_ids)
         else:
-            self._track_history.clear()
+            self._age_missing_histories(set())
 
         return tracked

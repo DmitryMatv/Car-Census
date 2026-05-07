@@ -110,7 +110,7 @@ class AnalysisConfig(BaseModel):
 
 class DetectorConfig(BaseModel):
     provider: str = "onnxruntime_local"
-    weights: str = "weights/yolo26s.onnx"
+    weights: str = "weights/yolo26n.onnx"
     confidence: float = 0.4
     iou: float = 0.4
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
@@ -144,6 +144,11 @@ class RenderConfig(BaseModel):
     line_thickness: int = 8
     corner_thickness: int = 8
     trace_length: int = 25
+    stale_track_frames: int = 2
+    stale_track_min_active_frames: int = 2
+    stale_track_velocity_history: int = 6
+    stale_track_velocity_scale: float = 0.4
+    stale_track_max_velocity_ratio: float = 0.25
     output_fps: float = 0.0
     unknown_label: str = "unknown"
 
@@ -161,7 +166,7 @@ class CountLineConfig(BaseModel):
 class CameraProfile(BaseModel):
     camera_id: str
     polygon: PolygonZoneConfig
-    count_line: CountLineConfig
+    count_line: CountLineConfig | None = None
 
 
 FULL_FRAME_CAMERA_ID = "__full_frame__"
@@ -172,7 +177,6 @@ def build_full_frame_profile(
     height: int,
     camera_id: str = FULL_FRAME_CAMERA_ID,
 ) -> CameraProfile:
-    mid_y = max(0, height // 2)
     max_x = max(0, width - 1)
     max_y = max(0, height - 1)
     return CameraProfile(
@@ -184,11 +188,6 @@ def build_full_frame_profile(
                 [max_x, max_y],
                 [0, max_y],
             ]
-        ),
-        count_line=CountLineConfig(
-            start=[0, mid_y],
-            end=[max_x, mid_y],
-            direction="BOTH",
         ),
     )
 
