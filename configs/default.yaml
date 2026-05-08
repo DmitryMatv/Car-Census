@@ -6,7 +6,7 @@ project:
 analysis:
   fps: 10
   imgsz: 640
-  min_track_frames: 3
+  min_track_frames: 10
   min_box_height_px: 80
   crop_limit_per_track: 3
   crop_min_spacing_seconds: 0.5
@@ -28,17 +28,17 @@ tracker:
   new_track_thresh: 0.35
   track_buffer: 60
   match_thresh: 0.95
-  minimum_consecutive_frames: 3
+  minimum_consecutive_frames: 10
   frame_rate: 0
   fuse_first_associate: true
-  cmc_method: ecc
+  cmc_method: null
   with_reid: false
   reid_weights: osnet_x0_25_msmt17.pt
   reid_device: auto
   reid_half: false
   proximity_thresh: 0.50
   appearance_thresh: 0.80
-  ignore_edge_touches: false
+  ignore_edge_touches: true
   edge_margin_px: 0
 
 mmr:

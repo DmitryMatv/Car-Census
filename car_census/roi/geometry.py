@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Iterable
 
 import cv2
@@ -18,7 +19,9 @@ def polygon_bounding_rect(points: list[list[int]]) -> tuple[int, int, int, int]:
     return x, y, w, h
 
 
-def crop_to_polygon(frame: np.ndarray, polygon: list[list[int]]) -> tuple[np.ndarray, tuple[int, int]]:
+def crop_to_polygon(
+    frame: np.ndarray, polygon: list[list[int]]
+) -> tuple[np.ndarray, tuple[int, int]]:
     x, y, w, h = polygon_bounding_rect(polygon)
     roi = frame[y : y + h, x : x + w].copy()
     local_polygon = np.array([[px - x, py - y] for px, py in polygon], dtype=np.int32)
@@ -31,6 +34,39 @@ def crop_to_polygon(frame: np.ndarray, polygon: list[list[int]]) -> tuple[np.nda
 def map_bbox_to_global(bbox: BBox, offset: tuple[int, int]) -> BBox:
     ox, oy = offset
     return BBox(x1=bbox.x1 + ox, y1=bbox.y1 + oy, x2=bbox.x2 + ox, y2=bbox.y2 + oy)
+
+
+def bbox_touches_frame_edge(
+    bbox: BBox,
+    frame_shape: tuple[int, int] | tuple[int, int, int],
+    margin_px: int = 0,
+) -> bool:
+    height, width = frame_shape[:2]
+    return bbox_touches_rect_edge(
+        bbox=bbox,
+        left=0,
+        top=0,
+        right=width,
+        bottom=height,
+        margin_px=margin_px,
+    )
+
+
+def bbox_touches_rect_edge(
+    bbox: BBox,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    margin_px: int = 0,
+) -> bool:
+    margin = max(0, margin_px)
+    return (
+        math.floor(bbox.x1) <= left + margin
+        or math.floor(bbox.y1) <= top + margin
+        or math.ceil(bbox.x2) >= right - 1 - margin
+        or math.ceil(bbox.y2) >= bottom - 1 - margin
+    )
 
 
 def point_in_polygon(point: tuple[float, float], polygon: list[list[int]]) -> bool:

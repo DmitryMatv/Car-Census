@@ -28,19 +28,39 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
     client = TrafficEyeClient(config=config, cache_dir=run_store.mmr_cache_dir)
     labels_by_track: dict[int, MMRResult] = {}
     for summary in _load_track_summaries(run_store.tracks_path):
+        if (
+            config.analysis.min_track_frames > 0
+            and summary.frames_seen < config.analysis.min_track_frames
+        ):
+            labels_by_track[summary.track_id] = MMRResult(
+                make="unknown",
+                model="unknown",
+                accepted=False,
+                raw={
+                    "skipped_reason": "track_too_short",
+                    "frames_seen": summary.frames_seen,
+                    "min_track_frames": config.analysis.min_track_frames,
+                },
+            )
+            continue
+
         best_result: MMRResult | None = None
         attempts = 0
         for candidate in summary.candidates:
             attempts += 1
             result = client.recognize_vehicle_crop(candidate.image_path)
-            if best_result is None or (result.model_confidence or 0.0) > (best_result.model_confidence or 0.0):
+            if best_result is None or (result.model_confidence or 0.0) > (
+                best_result.model_confidence or 0.0
+            ):
                 best_result = result
             if result.accepted:
                 best_result = result
                 break
             if attempts >= config.mmr.max_attempts_per_track:
                 break
-        labels_by_track[summary.track_id] = best_result or MMRResult(make="unknown", model="unknown", accepted=False)
+        labels_by_track[summary.track_id] = best_result or MMRResult(
+            make="unknown", model="unknown", accepted=False
+        )
 
     serializable = {
         str(track_id): result.model_dump(mode="json")

@@ -1,4 +1,5 @@
 from car_census.config import (
+    AppConfig,
     CameraProfile,
     FULL_FRAME_CAMERA_ID,
     build_full_frame_profile,
@@ -20,3 +21,9 @@ def test_camera_profile_accepts_polygon_without_count_line() -> None:
         }
     )
     assert profile.count_line is None
+
+
+def test_edge_touch_filtering_is_enabled_by_default() -> None:
+    config = AppConfig()
+    assert config.tracker.ignore_edge_touches is True
+    assert config.tracker.edge_margin_px == 0

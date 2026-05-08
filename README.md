@@ -112,6 +112,7 @@ outputs/<run-id>/
 - Analysis defaults to the source video FPS. Set `analysis.fps` to a positive value if you want downsampling.
 - Render output defaults to the source video FPS. Set `render.output_fps` to a positive value if you want a different export rate.
 - Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
+- By default, `tracker.ignore_edge_touches: true` ignores detections and tracker outputs whose boxes touch the source-frame edge or selected camera crop edge. Increase `tracker.edge_margin_px` to ignore boxes that are near, but not exactly on, the edge.
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
 - `render.smoothing.interpolate` fills source-frame annotations between analyzed frames. `render.smoothing.smooth_keyframes` applies extra local smoothing to the analyzed boxes.
 - For static cameras, leave `tracker.cmc_method` as `null` to disable camera motion compensation. Supported BoxMOT CMC values are `ecc`, `orb`, `sift`, and `sof`.

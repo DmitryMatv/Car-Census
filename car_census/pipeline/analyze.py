@@ -9,6 +9,8 @@ import cv2
 from car_census.config import AppConfig, CameraProfile
 from car_census.detectors.base import create_detector
 from car_census.roi.geometry import (
+    bbox_touches_frame_edge,
+    bbox_touches_rect_edge,
     clip_bbox_to_frame,
     crop_to_polygon,
     line_crossing_direction,
@@ -44,6 +46,14 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
+
+
+def _discard_track_state(state: MutableTrackState | None) -> None:
+    if state is None:
+        return
+    for candidate in state.candidates:
+        if candidate.image_path.exists():
+            candidate.image_path.unlink()
 
 
 def _score_candidate(
@@ -141,6 +151,7 @@ def analyze_video(
     detector = create_detector(config, project_root=project_root)
     tracker = BotSortAdapter(config, frame_rate=analysis_fps)
     track_states: dict[int, MutableTrackState] = {}
+    suppressed_edge_track_ids: set[int] = set()
     count_line = profile.count_line
     if count_line is not None:
         line_start = tuple(count_line.start)
@@ -150,10 +161,22 @@ def analyze_video(
         video_path, analysis_fps
     ):
         roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
+        roi_left, roi_top = offset
+        roi_height, roi_width = roi_frame.shape[:2]
+        roi_right = roi_left + roi_width
+        roi_bottom = roi_top + roi_height
         detections = detector.detect(roi_frame)
         global_detections = []
         for detection in detections:
+            if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(
+                detection.bbox, roi_frame.shape, config.tracker.edge_margin_px
+            ):
+                continue
             global_bbox = map_bbox_to_global(detection.bbox, offset)
+            if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(
+                global_bbox, frame.shape, config.tracker.edge_margin_px
+            ):
+                continue
             global_detections.append(detection.model_copy(update={"bbox": global_bbox}))
 
         tracked = tracker.update(global_detections, frame)
@@ -175,7 +198,25 @@ def analyze_video(
 
         for index, xyxy in enumerate(tracked.xyxy.tolist()):
             track_id = int(tracker_ids[index])
+            if track_id in suppressed_edge_track_ids:
+                continue
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
+            if config.tracker.ignore_edge_touches:
+                touches_source_edge = bbox_touches_frame_edge(
+                    bbox, frame.shape, config.tracker.edge_margin_px
+                )
+                touches_roi_edge = bbox_touches_rect_edge(
+                    bbox=bbox,
+                    left=roi_left,
+                    top=roi_top,
+                    right=roi_right,
+                    bottom=roi_bottom,
+                    margin_px=config.tracker.edge_margin_px,
+                )
+                if touches_source_edge or touches_roi_edge:
+                    suppressed_edge_track_ids.add(track_id)
+                    _discard_track_state(track_states.pop(track_id, None))
+                    continue
             centroid = bbox.center
             bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)

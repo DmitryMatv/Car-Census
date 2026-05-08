@@ -136,6 +136,8 @@ class TrackerConfig(BaseModel):
     reid_half: bool = False
     proximity_thresh: float = 0.50
     appearance_thresh: float = 0.80
+    ignore_edge_touches: bool = True
+    edge_margin_px: int = 0
 
 
 class RenderSmoothingConfig(BaseModel):

@@ -1,4 +1,10 @@
-from car_census.roi.geometry import line_crossing_direction, point_in_polygon
+from car_census.roi.geometry import (
+    bbox_touches_frame_edge,
+    bbox_touches_rect_edge,
+    line_crossing_direction,
+    point_in_polygon,
+)
+from car_census.types import BBox
 
 
 def test_point_in_polygon_detects_inside_point() -> None:
@@ -15,3 +21,39 @@ def test_line_crossing_direction_detects_a_to_b() -> None:
         line_end=(100, 0),
     )
     assert direction == "B_TO_A"
+
+
+def test_bbox_touches_frame_edge_detects_exact_edge() -> None:
+    assert bbox_touches_frame_edge(BBox(x1=10, y1=5, x2=99, y2=50), (100, 100, 3))
+    assert not bbox_touches_frame_edge(BBox(x1=10, y1=5, x2=98, y2=50), (100, 100, 3))
+
+
+def test_bbox_touches_frame_edge_respects_margin() -> None:
+    assert bbox_touches_frame_edge(
+        BBox(x1=10, y1=10, x2=80, y2=80), (100, 100, 3), margin_px=10
+    )
+    assert not bbox_touches_frame_edge(
+        BBox(x1=11, y1=11, x2=88, y2=88), (100, 100, 3), margin_px=10
+    )
+
+
+def test_bbox_touches_rect_edge_detects_offset_crop_edge() -> None:
+    assert bbox_touches_rect_edge(
+        BBox(x1=50, y1=25, x2=100, y2=75),
+        left=50,
+        top=20,
+        right=150,
+        bottom=120,
+    )
+    assert not bbox_touches_rect_edge(
+        BBox(x1=51, y1=25, x2=100, y2=75),
+        left=50,
+        top=20,
+        right=150,
+        bottom=120,
+    )
+
+
+def test_bbox_touches_frame_edge_uses_rendered_pixel_coordinates() -> None:
+    assert bbox_touches_frame_edge(BBox(x1=0.6, y1=5, x2=40, y2=30), (100, 100, 3))
+    assert bbox_touches_frame_edge(BBox(x1=5, y1=5, x2=98.2, y2=30), (100, 100, 3))
