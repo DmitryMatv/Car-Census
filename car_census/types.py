@@ -38,6 +38,7 @@ class Detection(BaseModel):
 
 class TrackedObject(BaseModel):
     track_id: int
+    vehicle_index: int | None = None
     frame_index: int
     timestamp_seconds: float
     bbox: BBox
@@ -53,6 +54,7 @@ class TrackedObject(BaseModel):
 
 class CropCandidate(BaseModel):
     track_id: int
+    vehicle_index: int | None = None
     frame_index: int
     timestamp_seconds: float
     bbox: BBox
@@ -78,10 +80,13 @@ class MMRResult(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
     accepted: bool = False
     source_image: Path | None = None
+    vehicle_index: int | None = None
+    api_classification_index: int | None = None
 
 
 class TrackSummary(BaseModel):
     track_id: int
+    vehicle_index: int | None = None
     first_frame_index: int
     last_frame_index: int
     frames_seen: int

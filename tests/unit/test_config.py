@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from car_census.config import (
     AppConfig,
     CameraProfile,
     FULL_FRAME_CAMERA_ID,
     build_full_frame_profile,
+    load_app_config,
 )
 
 
@@ -27,3 +30,14 @@ def test_edge_touch_filtering_is_enabled_by_default() -> None:
     config = AppConfig()
     assert config.tracker.ignore_edge_touches is True
     assert config.tracker.edge_margin_px == 0
+
+
+def test_render_config_accepts_visual_defaults() -> None:
+    config = load_app_config(Path("configs/default.yaml"))
+
+    assert config.render.box_color == "#A855F7"
+    assert config.render.corner_thickness == 4
+    assert config.render.corner_length == 20
+    assert config.render.label_padding_px == 4
+    assert config.render.label_text_color == "#FFFFFF"
+    assert config.render.unknown_label == "Unknown"

@@ -36,6 +36,46 @@ def _iter_frame_records(path: Path):
                 yield FrameRecord.model_validate(orjson.loads(line))
 
 
+def format_label_text(result: MMRResult, unknown_label: str) -> str:
+    base_label = (
+        " ".join(
+            part for part in [result.make or None, result.model or None] if part
+        ).strip()
+        or unknown_label
+    )
+    label_index = result.vehicle_index or result.api_classification_index
+    if label_index is None:
+        return base_label
+    return f"{label_index} | {base_label}"
+
+
+def visible_track_label_text_by_track(
+    frames_path: Path, unknown_label: str
+) -> dict[int, str]:
+    records = list(_iter_frame_records(frames_path))
+    has_vehicle_indices = any(
+        track.vehicle_index is not None for record in records for track in record.tracks
+    )
+    labels: dict[int, str] = {}
+    fallback_index_by_track: dict[int, int] = {}
+    for record in records:
+        for track in record.tracks:
+            if track.track_id in labels:
+                continue
+            label_index = track.vehicle_index
+            if label_index is None:
+                if has_vehicle_indices:
+                    continue
+                label_index = fallback_index_by_track.setdefault(
+                    track.track_id, len(fallback_index_by_track) + 1
+                )
+            labels[track.track_id] = format_label_text(
+                MMRResult(vehicle_index=label_index),
+                unknown_label,
+            )
+    return labels
+
+
 def render_video(
     config: AppConfig,
     profile: CameraProfile,
@@ -54,13 +94,15 @@ def render_video(
         if config.render.smoothing.enabled
         else run_store.frames_path
     )
-    label_text = {
-        track_id: " ".join(
-            part for part in [result.make or None, result.model or None] if part
-        ).strip()
-        or config.render.unknown_label
-        for track_id, result in labels.items()
-    }
+    label_text = visible_track_label_text_by_track(
+        frames_path, config.render.unknown_label
+    )
+    label_text.update(
+        {
+            track_id: format_label_text(result, config.render.unknown_label)
+            for track_id, result in labels.items()
+        }
+    )
     annotator = VideoAnnotator(config)
     writer = build_video_writer(
         output_path=run_store.output_video_path,
@@ -82,10 +124,13 @@ def render_video(
             ):
                 latest_tracks = current_record.tracks
                 current_record = next(record_iter, None)
+            render_tracks = [
+                track for track in latest_tracks if track.track_id in label_text
+            ]
             annotated = annotator.annotate(
                 frame=frame,
                 profile=profile,
-                tracks=latest_tracks,
+                tracks=render_tracks,
                 labels_by_track=label_text,
             )
             writer.write(annotated)

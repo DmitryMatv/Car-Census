@@ -8,6 +8,13 @@ import cv2
 
 from car_census.config import AppConfig, CameraProfile
 from car_census.detectors.base import create_detector
+from car_census.pipeline.vehicles import (
+    discard_track_artifacts,
+    finalize_vehicle_identities,
+    rewrite_frame_vehicle_indices,
+    staged_track_crop_dir,
+    track_summary_from_state,
+)
 from car_census.roi.geometry import (
     bbox_touches_frame_edge,
     bbox_touches_rect_edge,
@@ -25,7 +32,6 @@ from car_census.types import (
     CropCandidate,
     FrameRecord,
     RunManifest,
-    TrackSummary,
     TrackedObject,
 )
 from car_census.utils.image_quality import laplacian_sharpness
@@ -39,6 +45,7 @@ class MutableTrackState:
     track_id: int
     first_frame_index: int
     last_frame_index: int
+    vehicle_index: int | None = None
     frames_seen: int = 0
     max_box_height_px: float = 0.0
     previous_bottom_center: tuple[float, float] | None = None
@@ -46,14 +53,6 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
-
-
-def _discard_track_state(state: MutableTrackState | None) -> None:
-    if state is None:
-        return
-    for candidate in state.candidates:
-        if candidate.image_path.exists():
-            candidate.image_path.unlink()
 
 
 def _score_candidate(
@@ -95,7 +94,7 @@ def _save_candidate(
     sharpness, edge_margin_score, area_score, total_score = _score_candidate(
         crop, clipped, frame.shape
     )
-    track_dir = store.crops_dir / f"track_{track_state.track_id:06d}"
+    track_dir = staged_track_crop_dir(store.crops_dir, track_state.track_id)
     track_dir.mkdir(parents=True, exist_ok=True)
     image_path = track_dir / f"frame_{frame_index:08d}.jpg"
     cv2.imwrite(
@@ -105,6 +104,7 @@ def _save_candidate(
     )
     candidate = CropCandidate(
         track_id=track_state.track_id,
+        vehicle_index=None,
         frame_index=frame_index,
         timestamp_seconds=timestamp_seconds,
         bbox=clipped,
@@ -151,6 +151,7 @@ def analyze_video(
     detector = create_detector(config, project_root=project_root)
     tracker = BotSortAdapter(config, frame_rate=analysis_fps)
     track_states: dict[int, MutableTrackState] = {}
+    finished_track_states: list[MutableTrackState] = []
     suppressed_edge_track_ids: set[int] = set()
     count_line = profile.count_line
     if count_line is not None:
@@ -201,6 +202,7 @@ def analyze_video(
             if track_id in suppressed_edge_track_ids:
                 continue
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
+            state = track_states.get(track_id)
             if config.tracker.ignore_edge_touches:
                 touches_source_edge = bbox_touches_frame_edge(
                     bbox, frame.shape, config.tracker.edge_margin_px
@@ -215,7 +217,11 @@ def analyze_video(
                 )
                 if touches_source_edge or touches_roi_edge:
                     suppressed_edge_track_ids.add(track_id)
-                    _discard_track_state(track_states.pop(track_id, None))
+                    state = track_states.pop(track_id, None)
+                    if state is None or state.frames_seen == 0:
+                        discard_track_artifacts(state, run_store.crops_dir)
+                    else:
+                        finished_track_states.append(state)
                     continue
             centroid = bbox.center
             bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
@@ -224,7 +230,6 @@ def analyze_video(
             class_id = int(class_ids[index]) if index < len(class_ids) else None
             class_name = str(class_names[index]) if index < len(class_names) else None
 
-            state = track_states.get(track_id)
             if state is None:
                 state = MutableTrackState(
                     track_id=track_id,
@@ -286,6 +291,7 @@ def analyze_video(
 
             tracked_object = TrackedObject(
                 track_id=track_id,
+                vehicle_index=None,
                 frame_index=frame_index,
                 timestamp_seconds=timestamp_seconds,
                 bbox=bbox,
@@ -309,17 +315,12 @@ def analyze_video(
             ).model_dump(mode="json"),
         )
 
-    for state in track_states.values():
-        summary = TrackSummary(
-            track_id=state.track_id,
-            first_frame_index=state.first_frame_index,
-            last_frame_index=state.last_frame_index,
-            frames_seen=state.frames_seen,
-            max_box_height_px=state.max_box_height_px,
-            counted=state.counted,
-            count_event=state.count_event,
-            candidates=state.candidates,
-        )
+    all_track_states = [*finished_track_states, *track_states.values()]
+    all_track_states.sort(key=lambda item: (item.first_frame_index, item.track_id))
+    vehicle_index_by_track = finalize_vehicle_identities(run_store, all_track_states)
+    rewrite_frame_vehicle_indices(run_store.frames_path, vehicle_index_by_track)
+    for state in all_track_states:
+        summary = track_summary_from_state(state)
         run_store.write_jsonl(run_store.tracks_path, summary.model_dump(mode="json"))
 
     logger.info("Analysis complete. Run directory: %s", run_store.root)

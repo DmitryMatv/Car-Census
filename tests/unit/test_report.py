@@ -17,13 +17,21 @@ def test_generate_reports_falls_back_to_counted_track_summaries(tmp_path) -> Non
     store = DummyRunStore(tmp_path)
     store.labels_path.write_bytes(
         orjson.dumps(
-            {"7": MMRResult(make="Toyota", model="Corolla").model_dump(mode="json")}
+            {
+                "7": MMRResult(
+                    make="Toyota",
+                    model="Corolla",
+                    vehicle_index=1,
+                    api_classification_index=1,
+                ).model_dump(mode="json")
+            }
         )
     )
     store.tracks_path.write_bytes(
         orjson.dumps(
             TrackSummary(
                 track_id=7,
+                vehicle_index=1,
                 first_frame_index=1,
                 last_frame_index=3,
                 frames_seen=3,

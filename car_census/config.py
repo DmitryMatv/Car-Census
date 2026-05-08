@@ -162,13 +162,18 @@ class MMRConfig(BaseModel):
 
 class RenderConfig(BaseModel):
     codec: str = "mp4v"
-    label_font_scale: float = 0.7
-    label_thickness: int = 2
+    box_color: str = "#A855F7"
+    label_font_scale: float = 1.0
+    label_thickness: int = 1
+    label_padding_px: int = 4
+    label_gap_px: int = 6
+    label_text_color: str = "#FFFFFF"
     line_thickness: int = 8
-    corner_thickness: int = 8
+    corner_thickness: int = 2
+    corner_length: int = 32
     trace_length: int = 25
     output_fps: float = 0.0
-    unknown_label: str = "unknown"
+    unknown_label: str = "UNKNOWN"
     smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
 
 
