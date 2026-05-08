@@ -18,6 +18,7 @@ from car_census.pipeline.classify import classify_tracks
 from car_census.pipeline.render import render_video
 from car_census.pipeline.report import generate_reports
 from car_census.pipeline.run import run_pipeline
+from car_census.pipeline.smooth import smooth_render_tracks
 from car_census.roi.editor import edit_camera_profile
 from car_census.storage.run_store import RunStore
 from car_census.utils.logging import configure_logging
@@ -38,7 +39,9 @@ def _load_config(config_path: Optional[Path]) -> tuple[Path, object]:
     return project_root, config
 
 
-def _load_config_with_device(config_path: Optional[Path], device: str) -> tuple[Path, object]:
+def _load_config_with_device(
+    config_path: Optional[Path], device: str
+) -> tuple[Path, object]:
     project_root = _project_root()
     config = build_effective_config(
         root=project_root,
@@ -67,7 +70,9 @@ def roi_edit(
     configure_logging(verbose)
     project_root, config = _load_config_with_device(config_path, device)
     output_path = camera_profile_path(config, camera_id, root=project_root)
-    profile = edit_camera_profile(video_path=video, camera_id=camera_id, output_path=output_path)
+    profile = edit_camera_profile(
+        video_path=video, camera_id=camera_id, output_path=output_path
+    )
     typer.echo(f"Saved camera profile to {output_path}")
     typer.echo(profile.model_dump_json(indent=2))
 
@@ -85,12 +90,22 @@ def analyze(
     configure_logging(verbose)
     project_root, config = _load_config_with_device(config_path, device)
     profile = _resolve_profile(project_root, config, video, camera_id)
-    store = run_dir and RunStore.from_existing(run_dir) or RunStore.create(
-        output_root=project_root / config.project.output_root,
-        camera_id=profile.camera_id,
-        video_stem=video.stem,
+    store = (
+        run_dir
+        and RunStore.from_existing(run_dir)
+        or RunStore.create(
+            output_root=project_root / config.project.output_root,
+            camera_id=profile.camera_id,
+            video_stem=video.stem,
+        )
     )
-    analyze_video(project_root=project_root, config=config, profile=profile, video_path=video, run_store=store)
+    analyze_video(
+        project_root=project_root,
+        config=config,
+        profile=profile,
+        video_path=video,
+        run_store=store,
+    )
     typer.echo(str(store.root))
 
 
@@ -126,8 +141,30 @@ def render(
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
     else:
         profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
-    render_video(config=config, profile=profile, video_path=manifest.video_path, run_store=store)
+    render_video(
+        config=config, profile=profile, video_path=manifest.video_path, run_store=store
+    )
     typer.echo(str(store.output_video_path))
+
+
+@app.command()
+def smooth(
+    run_dir: Path = typer.Option(..., "--run-dir"),
+    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    load_dotenv()
+    configure_logging(verbose)
+    project_root, config = _load_config_with_device(config_path, device)
+    store = RunStore.from_existing(run_dir)
+    manifest = store.read_manifest()
+    if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
+        profile = load_camera_profile(config, manifest.camera_id, root=project_root)
+    else:
+        profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
+    output_path = smooth_render_tracks(config=config, profile=profile, run_store=store)
+    typer.echo(str(output_path))
 
 
 @app.command()
@@ -150,7 +187,9 @@ def run(
     camera_id: Optional[str] = typer.Option(None, "--camera-id"),
     device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     config_path: Optional[Path] = typer.Option(None, "--config"),
-    skip_classify: bool = typer.Option(False, "--skip-classify", help="Skip make/model API calls."),
+    skip_classify: bool = typer.Option(
+        False, "--skip-classify", help="Skip make/model API calls."
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()

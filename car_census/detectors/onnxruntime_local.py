@@ -144,7 +144,7 @@ class OnnxRuntimeLocalDetector(Detector):
             raw = raw[0]
         if raw.ndim != 2:
             raise ValueError(f"Unsupported ONNX output shape: {raw.shape}")
-        if raw.shape[0] in {6, 84, 85} and raw.shape[1] > raw.shape[0]:
+        if raw.shape[0] in {6, 84, 85} and raw.shape[1] != raw.shape[0]:
             raw = raw.T
 
         rows = self._candidate_rows(raw)

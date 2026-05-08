@@ -4,7 +4,7 @@ Offline vehicle tracking and make/model census for roadside video.
 
 ## What It Does
 
-`car-census` takes a video, analyzes only a configured polygon zone, tracks vehicles with ByteTrack, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video and exports counts.
+`car-census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports counts.
 
 The pipeline is staged:
 
@@ -28,6 +28,12 @@ The legacy Ultralytics/PyTorch detector remains available as an optional extra:
 
 ```bash
 pip install -e ".[pytorch]"
+```
+
+BoT-SORT tracking uses BoxMOT. BoxMOT currently supports Python versions below 3.13, so use a Python 3.12 environment for tracking runs:
+
+```bash
+pip install -e ".[tracking]"
 ```
 
 ## Model Setup
@@ -87,6 +93,7 @@ outputs/<run-id>/
   run.json
   analysis/
     frames.jsonl
+    render_frames.jsonl
     tracks.jsonl
     count_events.jsonl
   crops/
@@ -105,4 +112,7 @@ outputs/<run-id>/
 - Analysis defaults to the source video FPS. Set `analysis.fps` to a positive value if you want downsampling.
 - Render output defaults to the source video FPS. Set `render.output_fps` to a positive value if you want a different export rate.
 - Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
+- `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
+- `render.smoothing.interpolate` fills source-frame annotations between analyzed frames. `render.smoothing.smooth_keyframes` applies extra local smoothing to the analyzed boxes.
+- For static cameras, leave `tracker.cmc_method` as `null` to disable camera motion compensation. Supported BoxMOT CMC values are `ecc`, `orb`, `sift`, and `sof`.
 - Rendering uses ellipse markers and compact make/model labels by default.

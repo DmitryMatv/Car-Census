@@ -59,6 +59,10 @@ class RunStore:
         return self.analysis_dir / "frames.jsonl"
 
     @property
+    def render_frames_path(self) -> Path:
+        return self.analysis_dir / "render_frames.jsonl"
+
+    @property
     def tracks_path(self) -> Path:
         return self.analysis_dir / "tracks.jsonl"
 

@@ -120,13 +120,34 @@ class DetectorConfig(BaseModel):
 
 
 class TrackerConfig(BaseModel):
-    track_activation_threshold: float = 0.25
-    lost_track_buffer: int = 30
-    minimum_matching_threshold: float = 0.8
+    provider: str = "botsort"
+    track_high_thresh: float = 0.25
+    track_low_thresh: float = 0.10
+    new_track_thresh: float = 0.25
+    track_buffer: int = 30
+    match_thresh: float = 0.80
     minimum_consecutive_frames: int = 3
     frame_rate: int = 0
-    smoothing_alpha: float = 0.6
-    smoothing_history: int = 10
+    fuse_first_associate: bool = True
+    cmc_method: str | None = None
+    with_reid: bool = False
+    reid_weights: Path = Path("osnet_x0_25_msmt17.pt")
+    reid_device: str = "auto"
+    reid_half: bool = False
+    proximity_thresh: float = 0.50
+    appearance_thresh: float = 0.80
+
+
+class RenderSmoothingConfig(BaseModel):
+    enabled: bool = True
+    interpolate: bool = True
+    smooth_keyframes: bool = True
+    window_seconds: float = 0.25
+    max_gap_seconds: float = 0.35
+    min_observations: int = 3
+    polynomial_order: int = 1
+    max_center_offset_ratio: float = 0.20
+    max_size_delta_ratio: float = 0.20
 
 
 class MMRConfig(BaseModel):
@@ -144,13 +165,9 @@ class RenderConfig(BaseModel):
     line_thickness: int = 8
     corner_thickness: int = 8
     trace_length: int = 25
-    stale_track_frames: int = 2
-    stale_track_min_active_frames: int = 2
-    stale_track_velocity_history: int = 6
-    stale_track_velocity_scale: float = 0.4
-    stale_track_max_velocity_ratio: float = 0.25
     output_fps: float = 0.0
     unknown_label: str = "unknown"
+    smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
 
 
 class PolygonZoneConfig(BaseModel):

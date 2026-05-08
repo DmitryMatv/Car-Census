@@ -4,7 +4,7 @@ project:
   camera_profiles_dir: configs/cameras
 
 analysis:
-  fps: 0.0
+  fps: 10
   imgsz: 640
   min_track_frames: 3
   min_box_height_px: 80
@@ -19,20 +19,27 @@ detector:
   iou: 0.4
   allowed_class_names:
     - car
-    - truck
-    - bus
-    - motorcycle
-    - bicycle
   onnx_threads: 6
 
 tracker:
-  track_activation_threshold: 0.25
-  lost_track_buffer: 30
-  minimum_matching_threshold: 0.8
+  provider: botsort
+  track_high_thresh: 0.25
+  track_low_thresh: 0.05
+  new_track_thresh: 0.35
+  track_buffer: 60
+  match_thresh: 0.95
   minimum_consecutive_frames: 3
   frame_rate: 0
-  smoothing_alpha: 0.6
-  smoothing_history: 10
+  fuse_first_associate: true
+  cmc_method: ecc
+  with_reid: false
+  reid_weights: osnet_x0_25_msmt17.pt
+  reid_device: auto
+  reid_half: false
+  proximity_thresh: 0.50
+  appearance_thresh: 0.80
+  ignore_edge_touches: false
+  edge_margin_px: 0
 
 mmr:
   api_url: https://trafficeye.ai/recognition
@@ -45,15 +52,20 @@ render:
   codec: mp4v
   font: cv2.FONT_HERSHEY_SIMPLEX
   label_font_scale: 1
-  label_thickness: 2
-  line_thickness: 2
+  label_thickness: 1
+  line_thickness: 1
   line_length: 30
   ellipse_thickness: 1
   trace_length: 30
-  stale_track_frames: 3
-  stale_track_min_active_frames: 3
-  stale_track_velocity_history: 6
-  stale_track_velocity_scale: 0.4
-  stale_track_max_velocity_ratio: 0.25
   output_fps: 0.0
   unknown_label: unknown
+  smoothing:
+    enabled: true
+    interpolate: true
+    smooth_keyframes: false
+    window_seconds: 0.25
+    max_gap_seconds: 0.35
+    min_observations: 3
+    polynomial_order: 1
+    max_center_offset_ratio: 0.20
+    max_size_delta_ratio: 0.20
