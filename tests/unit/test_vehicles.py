@@ -3,9 +3,9 @@ from pathlib import Path
 import numpy as np
 import orjson
 
-from car_census.config import AppConfig
-from car_census.pipeline.analyze import MutableTrackState, _save_candidate
-from car_census.pipeline.vehicles import (
+from config import AppConfig
+from pipeline.analyze import MutableTrackState, _save_candidate
+from pipeline.vehicles import (
     discard_track_artifacts,
     finalize_vehicle_identities,
     rewrite_frame_vehicle_indices,
@@ -13,7 +13,7 @@ from car_census.pipeline.vehicles import (
     track_summary_from_state,
     vehicle_crop_dir,
 )
-from car_census.types import BBox, FrameRecord, TrackedObject
+from models import BBox, FrameRecord, TrackedObject
 
 
 class DummyRunStore:

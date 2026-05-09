@@ -1,10 +1,10 @@
 import orjson
 import pytest
 
-from car_census.config import AppConfig, build_full_frame_profile
-from car_census.pipeline.smooth import smooth_render_tracks
-from car_census.storage.run_store import RunStore
-from car_census.types import BBox, FrameRecord, RunManifest, TrackedObject
+from config import AppConfig, build_full_frame_profile
+from pipeline.smooth import smooth_render_tracks
+from storage.run_store import RunStore
+from models import BBox, FrameRecord, RunManifest, TrackedObject
 
 
 def _track(

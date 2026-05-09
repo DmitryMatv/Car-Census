@@ -1,5 +1,5 @@
-from car_census.stats.counts import aggregate_counts
-from car_census.types import MMRResult
+from stats.counts import aggregate_counts
+from models import MMRResult
 
 
 def test_aggregate_counts_groups_by_make_and_model() -> None:

@@ -1,6 +1,6 @@
 import torch
 
-from car_census.utils.device import resolve_device
+from utils.device import resolve_device
 
 
 def test_resolve_device_prefers_cpu_when_cuda_unavailable(monkeypatch) -> None:

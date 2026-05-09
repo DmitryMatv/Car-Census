@@ -3,13 +3,13 @@ import builtins
 import numpy as np
 import pytest
 
-from car_census.config import AppConfig
-from car_census.trackers.botsort import (
+from config import AppConfig
+from trackers.botsort import (
     BotSortAdapter,
     _create_botsort_tracker,
     _resolve_cmc_method,
 )
-from car_census.types import BBox, Detection
+from models import BBox, Detection
 
 
 class FakeTracker:

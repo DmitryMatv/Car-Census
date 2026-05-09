@@ -2,13 +2,13 @@ from pathlib import Path
 
 import numpy as np
 
-from car_census.config import AppConfig
-from car_census.pipeline.analyze import (
+from config import AppConfig
+from pipeline.analyze import (
     MutableTrackState,
     _save_candidate,
 )
-from car_census.pipeline.vehicles import staged_track_crop_dir
-from car_census.types import BBox
+from pipeline.vehicles import staged_track_crop_dir
+from models import BBox
 
 
 class DummyRunStore:

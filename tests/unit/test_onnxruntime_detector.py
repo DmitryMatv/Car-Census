@@ -1,7 +1,7 @@
 import numpy as np
 
-from car_census.config import AppConfig
-from car_census.detectors.onnxruntime_local import (
+from config import AppConfig
+from detectors.onnxruntime_local import (
     OnnxRuntimeLocalDetector,
     _letterbox,
     _metadata_names,

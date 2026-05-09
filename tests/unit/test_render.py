@@ -3,22 +3,22 @@ from pathlib import Path
 import numpy as np
 import orjson
 
-from car_census.config import AppConfig, build_full_frame_profile
-from car_census.pipeline import render as render_module
-from car_census.pipeline.render import (
+from config import AppConfig, build_full_frame_profile
+from pipeline import render as render_module
+from pipeline.render import (
     format_label_text,
     render_video,
     visible_track_label_text_by_track,
 )
-from car_census.render.annotators import VideoAnnotator, label_box_bounds
-from car_census.types import (
+from render.annotators import VideoAnnotator, label_box_bounds
+from models import (
     BBox,
     FrameRecord,
     MMRResult,
     RunManifest,
     TrackedObject,
 )
-from car_census.utils.video import VideoMetadata
+from utils.video import VideoMetadata
 
 
 class DummyRunStore:

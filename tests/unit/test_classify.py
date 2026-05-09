@@ -2,9 +2,9 @@ from pathlib import Path
 
 import orjson
 
-from car_census.config import AppConfig
-from car_census.pipeline.classify import classify_tracks
-from car_census.types import BBox, CropCandidate, MMRResult, TrackSummary
+from config import AppConfig
+from pipeline.classify import classify_tracks
+from models import BBox, CropCandidate, MMRResult, TrackSummary
 
 
 class DummyRunStore:
@@ -69,7 +69,7 @@ def test_classify_tracks_skips_tracks_below_min_track_frames(
             )
 
     monkeypatch.setattr(
-        "car_census.pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
+        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
     )
 
     store = DummyRunStore(tmp_path)
@@ -141,7 +141,7 @@ def test_classify_tracks_assigns_api_classification_index(
             )
 
     monkeypatch.setattr(
-        "car_census.pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
+        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
     )
 
     store = DummyRunStore(tmp_path)
@@ -214,7 +214,7 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
             )
 
     monkeypatch.setattr(
-        "car_census.pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
+        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
     )
 
     store = DummyRunStore(tmp_path)
@@ -308,7 +308,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
             return MMRResult(make="Toyota", model="Corolla", accepted=True)
 
     monkeypatch.setattr(
-        "car_census.pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
+        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
     )
 
     store = DummyRunStore(tmp_path)

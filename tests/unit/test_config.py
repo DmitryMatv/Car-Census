@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from car_census.config import (
+from config import (
     AppConfig,
     CameraProfile,
     FULL_FRAME_CAMERA_ID,

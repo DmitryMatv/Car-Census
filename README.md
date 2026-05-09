@@ -1,4 +1,4 @@
-# car-census
+# Car-Census
 
 Offline vehicle tracking and make/model census for roadside video.
 

@@ -1,7 +1,7 @@
 import orjson
 
-from car_census.pipeline.report import generate_reports
-from car_census.types import MMRResult, TrackSummary
+from pipeline.report import generate_reports
+from models import MMRResult, TrackSummary
 
 
 class DummyRunStore:

@@ -1,10 +1,10 @@
-from car_census.roi.geometry import (
+from roi.geometry import (
     bbox_touches_frame_edge,
     bbox_touches_rect_edge,
     line_crossing_direction,
     point_in_polygon,
 )
-from car_census.types import BBox
+from models import BBox
 
 
 def test_point_in_polygon_detects_inside_point() -> None:

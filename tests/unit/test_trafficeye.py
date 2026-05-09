@@ -1,4 +1,4 @@
-from car_census.mmr.trafficeye import parse_mmr_response
+from mmr.trafficeye import parse_mmr_response
 
 
 def test_parse_mmr_response_reads_nested_value_shapes() -> None:
