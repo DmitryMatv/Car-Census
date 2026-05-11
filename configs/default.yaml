@@ -4,17 +4,19 @@ project:
   camera_profiles_dir: configs/cameras
 
 analysis:
-  fps: 10
+  fps: 5
   imgsz: 640
   min_track_frames: 10
   min_box_height_px: 80
+  crop_padding_ratio: 0.10
+  crop_padding_px: 0
   crop_limit_per_track: 3
   crop_min_spacing_seconds: 0.5
   crop_jpeg_quality: 95
 
 detector:
   provider: onnxruntime_local
-  weights: weights/yolo26n.onnx
+  weights: weights/yolo26s.onnx
   confidence: 0.4
   iou: 0.4
   allowed_class_names:
@@ -26,9 +28,9 @@ tracker:
   track_high_thresh: 0.25
   track_low_thresh: 0.05
   new_track_thresh: 0.35
-  track_buffer: 60
-  match_thresh: 0.95
-  minimum_consecutive_frames: 10
+  track_buffer: 15
+  match_thresh: 0.90
+  minimum_consecutive_frames: 3
   frame_rate: 0
   fuse_first_associate: true
   cmc_method: null
@@ -68,10 +70,11 @@ render:
   smoothing:
     enabled: true
     interpolate: true
-    smooth_keyframes: false
+    interpolation_method: hermite
+    smooth_keyframes: true
     window_seconds: 0.25
-    max_gap_seconds: 0.35
+    max_gap_seconds: 0.65
     min_observations: 3
-    polynomial_order: 1
-    max_center_offset_ratio: 0.20
-    max_size_delta_ratio: 0.20
+    polynomial_order: 2
+    max_center_offset_ratio: 0.50
+    max_size_delta_ratio: 0.50

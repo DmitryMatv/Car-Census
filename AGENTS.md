@@ -2,8 +2,6 @@
 
 The role of this file is to describe common mistakes and confusion points that agents might encounter as they work in this project. If you ever encounter something in this project that surprises you, please alert the developer working with you and indicate that this is the case in the AGENTS.md file to help prevent future agents from having the same issue.
 
-Never run `bun test` (runs Bun's built-in test runner). Always use `bun run test` (runs Vitest).
-
 Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
 
 Use Virtual Environment `source .venv/bin/activate` because `pytest` and everything else needed is installed there already probably.

@@ -70,6 +70,19 @@ def _score_candidate(
     return sharpness, edge_margin_score, area_score, total_score
 
 
+def _expand_crop_bbox(bbox: BBox, config: AppConfig) -> BBox:
+    padding_ratio = config.analysis.crop_padding_ratio
+    padding_px = config.analysis.crop_padding_px
+    pad_x = (bbox.width * padding_ratio) + padding_px
+    pad_y = (bbox.height * padding_ratio) + padding_px
+    return BBox(
+        x1=bbox.x1 - pad_x,
+        y1=bbox.y1 - pad_y,
+        x2=bbox.x2 + pad_x,
+        y2=bbox.y2 + pad_y,
+    )
+
+
 def _save_candidate(
     store: RunStore,
     track_state: MutableTrackState,
@@ -79,7 +92,7 @@ def _save_candidate(
     timestamp_seconds: float,
     config: AppConfig,
 ) -> None:
-    clipped = clip_bbox_to_frame(bbox, frame.shape)
+    clipped = clip_bbox_to_frame(_expand_crop_bbox(bbox, config), frame.shape)
     if clipped is None:
         return
     if (
@@ -121,6 +134,12 @@ def _save_candidate(
         if removed.image_path.exists():
             removed.image_path.unlink()
     track_state.last_candidate_time = timestamp_seconds
+
+
+def _render_bbox_for_track(
+    bbox: BBox, frame_shape: tuple[int, int, int], config: AppConfig
+) -> BBox:
+    return clip_bbox_to_frame(_expand_crop_bbox(bbox, config), frame_shape) or bbox
 
 
 def analyze_video(
@@ -223,7 +242,6 @@ def analyze_video(
                     else:
                         finished_track_states.append(state)
                     continue
-            centroid = bbox.center
             bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)
             confidence = float(confidences[index])
@@ -289,17 +307,24 @@ def analyze_video(
                     config=config,
                 )
 
+            render_bbox = _render_bbox_for_track(bbox, frame.shape, config)
+            render_centroid = render_bbox.center
+            render_bottom_center = (
+                (render_bbox.x1 + render_bbox.x2) / 2.0,
+                render_bbox.y2,
+            )
+
             tracked_object = TrackedObject(
                 track_id=track_id,
                 vehicle_index=None,
                 frame_index=frame_index,
                 timestamp_seconds=timestamp_seconds,
-                bbox=bbox,
+                bbox=render_bbox,
                 confidence=confidence,
                 class_id=class_id,
                 class_name=class_name,
-                centroid=centroid,
-                bottom_center=bottom_center,
+                centroid=render_centroid,
+                bottom_center=render_bottom_center,
                 inside_roi=inside_roi,
                 counted=state.counted,
                 crossed_line=crossed_line,

@@ -117,7 +117,7 @@ def render_video(
 
     try:
         for frame_index, _timestamp_seconds, frame in iter_sampled_frames(
-            video_path, metadata.fps
+            video_path, output_fps
         ):
             while (
                 current_record is not None and current_record.frame_index <= frame_index

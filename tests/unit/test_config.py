@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from config import (
     AppConfig,
     CameraProfile,
@@ -41,3 +44,20 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_padding_px == 4
     assert config.render.label_text_color == "#FFFFFF"
     assert config.render.unknown_label == "Unknown"
+    assert config.render.smoothing.interpolation_method == "hermite"
+    assert config.render.smoothing.polynomial_order == 2
+
+
+def test_render_smoothing_accepts_supported_interpolation_methods() -> None:
+    for interpolation_method in ["linear", "polynomial", "hermite"]:
+        config = AppConfig.model_validate(
+            {"render": {"smoothing": {"interpolation_method": interpolation_method}}}
+        )
+        assert config.render.smoothing.interpolation_method == interpolation_method
+
+
+def test_render_smoothing_rejects_unknown_interpolation_method() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {"render": {"smoothing": {"interpolation_method": "spline"}}}
+        )

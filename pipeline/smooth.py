@@ -115,7 +115,37 @@ def _interpolate_point(
     )
 
 
-def _fill_short_gaps(
+def _linear_interpolate_vector(
+    previous: _TrackPoint,
+    current: _TrackPoint,
+    timestamp_seconds: float,
+) -> np.ndarray:
+    total = current.timestamp_seconds - previous.timestamp_seconds
+    if total <= 0:
+        ratio = 0.5
+    else:
+        ratio = (timestamp_seconds - previous.timestamp_seconds) / total
+    ratio = max(0.0, min(1.0, ratio))
+    return previous.vector + ((current.vector - previous.vector) * ratio)
+
+
+def _interpolated_source(
+    previous: _TrackPoint,
+    current: _TrackPoint,
+    frame: FrameRecord,
+) -> TrackedObject:
+    return previous.source.model_copy(
+        update={
+            "frame_index": frame.frame_index,
+            "timestamp_seconds": frame.timestamp_seconds,
+            "confidence": min(previous.source.confidence, current.source.confidence),
+            "crossed_line": False,
+            "counted": previous.source.counted or current.source.counted,
+        }
+    )
+
+
+def _fill_linear_gaps(
     points: list[_TrackPoint],
     records: list[FrameRecord],
     max_gap_seconds: float,
@@ -145,6 +175,287 @@ def _fill_short_gaps(
         for frame_index in frame_order[previous_position + 1 : current_position]:
             frame = records_by_index[frame_index]
             filled.append(_interpolate_point(previous, current, frame))
+    filled.append(points[-1])
+    return filled
+
+
+def _select_polynomial_keyframes(
+    points: list[_TrackPoint],
+    previous_index: int,
+    target_timestamp: float,
+    requested_order: int,
+) -> list[_TrackPoint]:
+    required_count = requested_order + 1
+    selected_indices = {previous_index, previous_index + 1}
+    before_index = previous_index - 1
+    after_index = previous_index + 2
+
+    while len(selected_indices) < required_count and (
+        before_index >= 0 or after_index < len(points)
+    ):
+        before_distance = (
+            abs(points[before_index].timestamp_seconds - target_timestamp)
+            if before_index >= 0
+            else None
+        )
+        after_distance = (
+            abs(points[after_index].timestamp_seconds - target_timestamp)
+            if after_index < len(points)
+            else None
+        )
+
+        if before_distance is None:
+            selected_indices.add(after_index)
+            after_index += 1
+        elif after_distance is None:
+            selected_indices.add(before_index)
+            before_index -= 1
+        elif before_distance <= after_distance:
+            selected_indices.add(before_index)
+            before_index -= 1
+        else:
+            selected_indices.add(after_index)
+            after_index += 1
+
+    return [points[index] for index in sorted(selected_indices)]
+
+
+def _polynomial_interpolate_vector(
+    keyframes: list[_TrackPoint],
+    target_timestamp: float,
+    requested_order: int,
+) -> np.ndarray | None:
+    local_order = min(requested_order, len(keyframes) - 1)
+    if local_order < 1:
+        return None
+
+    timestamps = np.array(
+        [point.timestamp_seconds for point in keyframes], dtype=np.float64
+    )
+    local_timestamps = timestamps - target_timestamp
+    values = np.stack([point.vector for point in keyframes])
+    vector = np.empty(values.shape[1], dtype=np.float64)
+    for column in range(values.shape[1]):
+        coefficients = np.polyfit(local_timestamps, values[:, column], local_order)
+        vector[column] = np.polyval(coefficients, 0.0)
+    if not np.all(np.isfinite(vector)):
+        return None
+    return vector
+
+
+def _fill_polynomial_gaps(
+    points: list[_TrackPoint],
+    records: list[FrameRecord],
+    config: AppConfig,
+) -> list[_TrackPoint]:
+    if len(points) < 2:
+        return points
+
+    records_by_index = {record.frame_index: record for record in records}
+    frame_order = [record.frame_index for record in records]
+    frame_position = {
+        frame_index: index for index, frame_index in enumerate(frame_order)
+    }
+
+    filled: list[_TrackPoint] = []
+    requested_order = config.render.smoothing.polynomial_order
+    for point_index, (previous, current) in enumerate(zip(points, points[1:])):
+        filled.append(previous)
+        gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
+        previous_position = frame_position.get(previous.frame_index)
+        current_position = frame_position.get(current.frame_index)
+        if (
+            previous_position is None
+            or current_position is None
+            or current_position <= previous_position + 1
+            or gap_seconds > config.render.smoothing.max_gap_seconds
+        ):
+            continue
+
+        for frame_index in frame_order[previous_position + 1 : current_position]:
+            frame = records_by_index[frame_index]
+            linear_vector = _linear_interpolate_vector(
+                previous, current, frame.timestamp_seconds
+            )
+            keyframes = _select_polynomial_keyframes(
+                points, point_index, frame.timestamp_seconds, requested_order
+            )
+            candidate = _polynomial_interpolate_vector(
+                keyframes, frame.timestamp_seconds, requested_order
+            )
+            if candidate is None:
+                candidate = linear_vector
+            clamped = _clamp_vector(candidate, linear_vector, config)
+            if _vector_to_box(clamped) is None:
+                clamped = linear_vector
+            filled.append(
+                _TrackPoint(
+                    frame_index=frame.frame_index,
+                    timestamp_seconds=frame.timestamp_seconds,
+                    vector=clamped,
+                    source=_interpolated_source(previous, current, frame),
+                    interpolated=True,
+                )
+            )
+    filled.append(points[-1])
+    return filled
+
+
+def _endpoint_hermite_slope(
+    first_delta: float, second_delta: float, first_h: float, second_h: float
+) -> float:
+    slope = ((2 * first_h + second_h) * first_delta - first_h * second_delta) / (
+        first_h + second_h
+    )
+    if np.sign(slope) != np.sign(first_delta):
+        return 0.0
+    if np.sign(first_delta) != np.sign(second_delta) and abs(slope) > abs(
+        3.0 * first_delta
+    ):
+        return 3.0 * first_delta
+    return float(slope)
+
+
+def _monotone_hermite_slopes(
+    timestamps: np.ndarray,
+    values: np.ndarray,
+) -> np.ndarray | None:
+    if len(timestamps) != len(values) or len(timestamps) < 2:
+        return None
+
+    h = np.diff(timestamps)
+    if np.any(h <= 0):
+        return None
+
+    delta = np.diff(values, axis=0) / h[:, np.newaxis]
+    if not np.all(np.isfinite(delta)):
+        return None
+
+    slopes = np.empty_like(values, dtype=np.float64)
+    if len(timestamps) == 2:
+        slopes[0] = delta[0]
+        slopes[1] = delta[0]
+        return slopes
+
+    for column in range(values.shape[1]):
+        column_delta = delta[:, column]
+        slopes[0, column] = _endpoint_hermite_slope(
+            column_delta[0], column_delta[1], h[0], h[1]
+        )
+        for index in range(1, len(timestamps) - 1):
+            previous_delta = column_delta[index - 1]
+            current_delta = column_delta[index]
+            if previous_delta * current_delta <= 0:
+                slopes[index, column] = 0.0
+                continue
+            w1 = 2.0 * h[index] + h[index - 1]
+            w2 = h[index] + 2.0 * h[index - 1]
+            slopes[index, column] = (w1 + w2) / (
+                (w1 / previous_delta) + (w2 / current_delta)
+            )
+        slopes[-1, column] = _endpoint_hermite_slope(
+            column_delta[-1], column_delta[-2], h[-1], h[-2]
+        )
+
+    if not np.all(np.isfinite(slopes)):
+        return None
+    return slopes
+
+
+def _hermite_interpolate_vector(
+    previous: _TrackPoint,
+    current: _TrackPoint,
+    previous_slope: np.ndarray,
+    current_slope: np.ndarray,
+    timestamp_seconds: float,
+) -> np.ndarray | None:
+    segment_duration = current.timestamp_seconds - previous.timestamp_seconds
+    if segment_duration <= 0:
+        return None
+
+    s = (timestamp_seconds - previous.timestamp_seconds) / segment_duration
+    s = max(0.0, min(1.0, float(s)))
+    s2 = s * s
+    s3 = s2 * s
+    h00 = (2.0 * s3) - (3.0 * s2) + 1.0
+    h10 = s3 - (2.0 * s2) + s
+    h01 = (-2.0 * s3) + (3.0 * s2)
+    h11 = s3 - s2
+    vector = (
+        h00 * previous.vector
+        + h10 * segment_duration * previous_slope
+        + h01 * current.vector
+        + h11 * segment_duration * current_slope
+    )
+    if not np.all(np.isfinite(vector)):
+        return None
+    return vector
+
+
+def _fill_hermite_gaps(
+    points: list[_TrackPoint],
+    records: list[FrameRecord],
+    config: AppConfig,
+) -> list[_TrackPoint]:
+    if len(points) < 2:
+        return points
+
+    timestamps = np.array(
+        [point.timestamp_seconds for point in points], dtype=np.float64
+    )
+    values = np.stack([point.vector for point in points])
+    slopes = _monotone_hermite_slopes(timestamps, values)
+
+    records_by_index = {record.frame_index: record for record in records}
+    frame_order = [record.frame_index for record in records]
+    frame_position = {
+        frame_index: index for index, frame_index in enumerate(frame_order)
+    }
+
+    filled: list[_TrackPoint] = []
+    for point_index, (previous, current) in enumerate(zip(points, points[1:])):
+        filled.append(previous)
+        gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
+        previous_position = frame_position.get(previous.frame_index)
+        current_position = frame_position.get(current.frame_index)
+        if (
+            previous_position is None
+            or current_position is None
+            or current_position <= previous_position + 1
+            or gap_seconds > config.render.smoothing.max_gap_seconds
+        ):
+            continue
+
+        for frame_index in frame_order[previous_position + 1 : current_position]:
+            frame = records_by_index[frame_index]
+            linear_vector = _linear_interpolate_vector(
+                previous, current, frame.timestamp_seconds
+            )
+            candidate = (
+                _hermite_interpolate_vector(
+                    previous=previous,
+                    current=current,
+                    previous_slope=slopes[point_index],
+                    current_slope=slopes[point_index + 1],
+                    timestamp_seconds=frame.timestamp_seconds,
+                )
+                if slopes is not None
+                else None
+            )
+            if candidate is None:
+                candidate = linear_vector
+            clamped = _clamp_vector(candidate, linear_vector, config)
+            if _vector_to_box(clamped) is None:
+                clamped = linear_vector
+            filled.append(
+                _TrackPoint(
+                    frame_index=frame.frame_index,
+                    timestamp_seconds=frame.timestamp_seconds,
+                    vector=clamped,
+                    source=_interpolated_source(previous, current, frame),
+                    interpolated=True,
+                )
+            )
     filled.append(points[-1])
     return filled
 
@@ -214,6 +525,8 @@ def _local_polynomial_smooth(
 def _clamp_vector(
     candidate: np.ndarray, reference: np.ndarray, config: AppConfig
 ) -> np.ndarray:
+    if not np.all(np.isfinite(candidate)):
+        return reference.copy()
     result = candidate.copy()
     max_offset = (
         max(float(reference[2]), float(reference[3]))
@@ -343,22 +656,37 @@ def smooth_render_tracks(
                 track for track in frame_tracks if track.track_id != track_id
             ]
 
-        filled = (
-            _fill_short_gaps(
+        if not config.render.smoothing.interpolate:
+            filled = points
+        elif config.render.smoothing.interpolation_method == "linear":
+            filled = _fill_linear_gaps(
                 points=points,
                 records=records,
                 max_gap_seconds=config.render.smoothing.max_gap_seconds,
             )
-            if config.render.smoothing.interpolate
-            else points
-        )
+        elif config.render.smoothing.interpolation_method == "polynomial":
+            filled = _fill_polynomial_gaps(
+                points=points,
+                records=records,
+                config=config,
+            )
+        else:
+            filled = _fill_hermite_gaps(
+                points=points,
+                records=records,
+                config=config,
+            )
         smoothing_fps = (
             manifest.source_fps if manifest.source_fps > 0 else manifest.analysis_fps
+        )
+        should_smooth_segment = (
+            config.render.smoothing.smooth_keyframes
+            and config.render.smoothing.interpolation_method == "linear"
         )
         for segment in _split_contiguous_segments(filled, records):
             segment_points = (
                 _smooth_segment(segment, config, smoothing_fps)
-                if config.render.smoothing.smooth_keyframes
+                if should_smooth_segment
                 else segment
             )
             for point in segment_points:

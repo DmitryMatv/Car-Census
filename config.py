@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -40,6 +40,8 @@ class AnalysisConfig(BaseModel):
     imgsz: int = 960
     min_track_frames: int = 3
     min_box_height_px: int = 80
+    crop_padding_ratio: float = Field(default=0.08, ge=0.0)
+    crop_padding_px: int = Field(default=0, ge=0)
     crop_limit_per_track: int = 3
     crop_min_spacing_seconds: float = 0.5
     crop_jpeg_quality: int = 95
@@ -80,11 +82,12 @@ class TrackerConfig(BaseModel):
 class RenderSmoothingConfig(BaseModel):
     enabled: bool = True
     interpolate: bool = True
+    interpolation_method: Literal["linear", "polynomial", "hermite"] = "hermite"
     smooth_keyframes: bool = True
     window_seconds: float = 0.25
     max_gap_seconds: float = 0.35
     min_observations: int = 3
-    polynomial_order: int = 1
+    polynomial_order: int = Field(default=2, ge=1, le=3)
     max_center_offset_ratio: float = 0.20
     max_size_delta_ratio: float = 0.20
 

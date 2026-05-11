@@ -154,6 +154,48 @@ def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     assert DummyAnnotator.seen_track_ids == [[1], [1], [1], [2], [2], [2]]
 
 
+def test_render_uses_configured_output_fps_for_sampling_and_writer(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_frame_records(store.frames_path)
+    writer = DummyWriter()
+    sampled_target_fps = []
+    writer_kwargs = {}
+
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=6),
+    )
+
+    def fake_iter_sampled_frames(video_path, target_fps):
+        sampled_target_fps.append(target_fps)
+        for index in (0, 2, 4):
+            yield index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8)
+
+    def fake_build_video_writer(**kwargs):
+        writer_kwargs.update(kwargs)
+        return writer
+
+    monkeypatch.setattr(render_module, "iter_sampled_frames", fake_iter_sampled_frames)
+    monkeypatch.setattr(render_module, "build_video_writer", fake_build_video_writer)
+    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {"render": {"output_fps": 15.0, "smoothing": {"enabled": False}}}
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert sampled_target_fps == [15.0]
+    assert writer_kwargs["fps"] == 15.0
+    assert len(writer.frames) == 3
+
+
 def test_render_formats_api_counter_prefix() -> None:
     assert (
         format_label_text(
