@@ -69,6 +69,115 @@ def bbox_touches_rect_edge(
     )
 
 
+def _point_in_rect(
+    point: tuple[float, float],
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+) -> bool:
+    x, y = point
+    return left <= x <= right and top <= y <= bottom
+
+
+def _orientation(
+    a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]
+) -> float:
+    return ((b[0] - a[0]) * (c[1] - a[1])) - ((b[1] - a[1]) * (c[0] - a[0]))
+
+
+def _point_on_segment(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> bool:
+    return (
+        min(start[0], end[0]) <= point[0] <= max(start[0], end[0])
+        and min(start[1], end[1]) <= point[1] <= max(start[1], end[1])
+        and _orientation(start, end, point) == 0
+    )
+
+
+def _segments_intersect(
+    a_start: tuple[float, float],
+    a_end: tuple[float, float],
+    b_start: tuple[float, float],
+    b_end: tuple[float, float],
+) -> bool:
+    o1 = _orientation(a_start, a_end, b_start)
+    o2 = _orientation(a_start, a_end, b_end)
+    o3 = _orientation(b_start, b_end, a_start)
+    o4 = _orientation(b_start, b_end, a_end)
+
+    if o1 == 0 and _point_on_segment(b_start, a_start, a_end):
+        return True
+    if o2 == 0 and _point_on_segment(b_end, a_start, a_end):
+        return True
+    if o3 == 0 and _point_on_segment(a_start, b_start, b_end):
+        return True
+    if o4 == 0 and _point_on_segment(a_end, b_start, b_end):
+        return True
+    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0)
+
+
+def _segment_intersects_rect(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+) -> bool:
+    if _point_in_rect(start, left, top, right, bottom) or _point_in_rect(
+        end, left, top, right, bottom
+    ):
+        return True
+
+    edges = [
+        ((left, top), (right, top)),
+        ((right, top), (right, bottom)),
+        ((right, bottom), (left, bottom)),
+        ((left, bottom), (left, top)),
+    ]
+    return any(
+        _segments_intersect(start, end, edge_start, edge_end)
+        for edge_start, edge_end in edges
+    )
+
+
+def bbox_touches_polygon_edge(
+    bbox: BBox, polygon: list[list[int]], margin_px: int = 0
+) -> bool:
+    margin = max(0, margin_px)
+    left = math.floor(bbox.x1) - margin
+    top = math.floor(bbox.y1) - margin
+    right = math.ceil(bbox.x2) + margin
+    bottom = math.ceil(bbox.y2) + margin
+    polygon_points = [(float(x), float(y)) for x, y in polygon]
+    if len(polygon_points) < 2:
+        return False
+
+    for vertex in polygon_points:
+        if _point_in_rect(vertex, left, top, right, bottom):
+            return True
+
+    for index, start in enumerate(polygon_points):
+        end = polygon_points[(index + 1) % len(polygon_points)]
+        if _segment_intersects_rect(start, end, left, top, right, bottom):
+            return True
+
+    contour = polygon_array(polygon)
+    corners = [
+        (float(math.floor(bbox.x1)), float(math.floor(bbox.y1))),
+        (float(math.ceil(bbox.x2)), float(math.floor(bbox.y1))),
+        (float(math.ceil(bbox.x2)), float(math.ceil(bbox.y2))),
+        (float(math.floor(bbox.x1)), float(math.ceil(bbox.y2))),
+    ]
+    return any(
+        abs(cv2.pointPolygonTest(contour, corner, True)) <= margin for corner in corners
+    )
+
+
 def point_in_polygon(point: tuple[float, float], polygon: list[list[int]]) -> bool:
     contour = polygon_array(polygon)
     return cv2.pointPolygonTest(contour, point, False) >= 0

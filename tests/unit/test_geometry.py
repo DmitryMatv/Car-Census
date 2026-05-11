@@ -1,5 +1,6 @@
 from roi.geometry import (
     bbox_touches_frame_edge,
+    bbox_touches_polygon_edge,
     bbox_touches_rect_edge,
     line_crossing_direction,
     point_in_polygon,
@@ -57,3 +58,30 @@ def test_bbox_touches_rect_edge_detects_offset_crop_edge() -> None:
 def test_bbox_touches_frame_edge_uses_rendered_pixel_coordinates() -> None:
     assert bbox_touches_frame_edge(BBox(x1=0.6, y1=5, x2=40, y2=30), (100, 100, 3))
     assert bbox_touches_frame_edge(BBox(x1=5, y1=5, x2=98.2, y2=30), (100, 100, 3))
+
+
+def test_bbox_touches_polygon_edge_detects_slanted_boundary_intersection() -> None:
+    polygon = [[10, 10], [90, 30], [90, 90], [10, 90]]
+
+    assert bbox_touches_polygon_edge(BBox(x1=48, y1=18, x2=56, y2=28), polygon)
+    assert not bbox_touches_rect_edge(
+        BBox(x1=48, y1=18, x2=56, y2=28),
+        left=10,
+        top=10,
+        right=91,
+        bottom=91,
+    )
+
+
+def test_bbox_touches_polygon_edge_ignores_interior_box() -> None:
+    polygon = [[10, 10], [90, 30], [90, 90], [10, 90]]
+
+    assert not bbox_touches_polygon_edge(BBox(x1=50, y1=40, x2=60, y2=50), polygon)
+
+
+def test_bbox_touches_polygon_edge_respects_margin() -> None:
+    polygon = [[10, 10], [90, 30], [90, 90], [10, 90]]
+    bbox = BBox(x1=50, y1=23, x2=58, y2=31)
+
+    assert not bbox_touches_polygon_edge(bbox, polygon)
+    assert bbox_touches_polygon_edge(bbox, polygon, margin_px=3)

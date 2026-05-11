@@ -45,6 +45,7 @@ def _store(
     tmp_path,
     source_fps: float = 10,
     analysis_fps: float = 10,
+    frame_count: int = 0,
 ) -> RunStore:
     store = RunStore(tmp_path)
     store.ensure_directories()
@@ -58,6 +59,7 @@ def _store(
             analysis_fps=analysis_fps,
             width=200,
             height=100,
+            frame_count=frame_count,
         )
     )
     return store
@@ -631,6 +633,58 @@ def test_hermite_handles_two_keyframes_as_linear_like_curve(tmp_path) -> None:
     smoothed = _read_records(store.render_frames_path)
     assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
     assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+
+
+def test_smooth_render_tracks_extrapolates_final_partial_interval(tmp_path) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=6, frame_count=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"min_observations": 2}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(
+            5,
+            5 / 30,
+            [_track(1, 5, 5 / 30, BBox(x1=50, y1=10, x2=70, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[-1].frame_index == 9
+    assert smoothed[5].tracks[0].bbox.x1 == pytest.approx(50)
+    assert smoothed[6].tracks[0].bbox.x1 > smoothed[5].tracks[0].bbox.x1
+    assert smoothed[9].tracks[0].bbox.x1 > smoothed[6].tracks[0].bbox.x1
+
+
+def test_smooth_render_tracks_does_not_extrapolate_track_absent_at_final_keyframe(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=6, frame_count=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"min_observations": 2}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(
+            5,
+            5 / 30,
+            [_track(2, 5, 5 / 30, BBox(x1=50, y1=10, x2=70, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[-1].frame_index == 9
+    assert [track.track_id for track in smoothed[5].tracks] == [2]
+    assert smoothed[9].tracks == []
 
 
 def test_smooth_render_tracks_does_not_interpolate_large_gap(tmp_path) -> None:

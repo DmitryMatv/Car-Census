@@ -17,7 +17,7 @@ from pipeline.vehicles import (
 )
 from roi.geometry import (
     bbox_touches_frame_edge,
-    bbox_touches_rect_edge,
+    bbox_touches_polygon_edge,
     clip_bbox_to_frame,
     crop_to_polygon,
     line_crossing_direction,
@@ -164,6 +164,7 @@ def analyze_video(
         analysis_fps=analysis_fps,
         width=metadata.width,
         height=metadata.height,
+        frame_count=metadata.frame_count,
     )
     run_store.write_manifest(manifest)
 
@@ -181,10 +182,6 @@ def analyze_video(
         video_path, analysis_fps
     ):
         roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
-        roi_left, roi_top = offset
-        roi_height, roi_width = roi_frame.shape[:2]
-        roi_right = roi_left + roi_width
-        roi_bottom = roi_top + roi_height
         detections = detector.detect(roi_frame)
         global_detections = []
         for detection in detections:
@@ -195,6 +192,10 @@ def analyze_video(
             global_bbox = map_bbox_to_global(detection.bbox, offset)
             if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(
                 global_bbox, frame.shape, config.tracker.edge_margin_px
+            ):
+                continue
+            if config.tracker.ignore_edge_touches and bbox_touches_polygon_edge(
+                global_bbox, profile.polygon.points, config.tracker.edge_margin_px
             ):
                 continue
             global_detections.append(detection.model_copy(update={"bbox": global_bbox}))
@@ -226,13 +227,8 @@ def analyze_video(
                 touches_source_edge = bbox_touches_frame_edge(
                     bbox, frame.shape, config.tracker.edge_margin_px
                 )
-                touches_roi_edge = bbox_touches_rect_edge(
-                    bbox=bbox,
-                    left=roi_left,
-                    top=roi_top,
-                    right=roi_right,
-                    bottom=roi_bottom,
-                    margin_px=config.tracker.edge_margin_px,
+                touches_roi_edge = bbox_touches_polygon_edge(
+                    bbox, profile.polygon.points, config.tracker.edge_margin_px
                 )
                 if touches_source_edge or touches_roi_edge:
                     suppressed_edge_track_ids.add(track_id)

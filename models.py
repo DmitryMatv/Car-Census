@@ -112,3 +112,4 @@ class RunManifest(BaseModel):
     analysis_fps: float
     width: int
     height: int
+    frame_count: int = 0

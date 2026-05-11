@@ -102,15 +102,32 @@ class MMRConfig(BaseModel):
 
 class RenderConfig(BaseModel):
     codec: str = "mp4v"
-    box_color: str = "#A855F7"
+    box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0
     label_thickness: int = 1
     label_padding_px: int = 4
     label_gap_px: int = 6
     label_text_color: str = "#FFFFFF"
+    label_bg_color: str = "#101820"
+    label_bg_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
+    label_border_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
+    label_shadow_enabled: bool = False
+    label_shadow_color: str = "#000000"
+    label_shadow_alpha: float = Field(default=0.45, ge=0.0, le=1.0)
+    label_shadow_offset_px: int = Field(default=1, ge=0)
+    label_shadow_thickness_extra: int = Field(default=1, ge=0)
+    label_smart_position: bool = True
+    label_max_offset_px: int = Field(default=48, ge=0)
+    glow_enabled: bool = True
+    glow_color: str = "#FFFFFF"
+    glow_radius_px: int = Field(default=9, ge=0)
+    glow_alpha: float = Field(default=0.55, ge=0.0, le=1.0)
+    label_glow_radius_px: int = Field(default=7, ge=0)
+    label_glow_alpha: float = Field(default=0.30, ge=0.0, le=1.0)
     line_thickness: int = 8
     corner_thickness: int = 2
     corner_length: int = 32
+    trace_enabled: bool = False
     trace_length: int = 25
     output_fps: float = 0.0
     unknown_label: str = "UNKNOWN"

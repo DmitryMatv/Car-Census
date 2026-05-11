@@ -38,11 +38,27 @@ def test_edge_touch_filtering_is_enabled_by_default() -> None:
 def test_render_config_accepts_visual_defaults() -> None:
     config = load_app_config(Path("configs/default.yaml"))
 
-    assert config.render.box_color == "#A855F7"
+    assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
     assert config.render.corner_length == 20
     assert config.render.label_padding_px == 4
     assert config.render.label_text_color == "#FFFFFF"
+    assert config.render.label_bg_color == "#101820"
+    assert config.render.label_bg_alpha == 0.0
+    assert config.render.label_border_alpha == 0.0
+    assert config.render.label_shadow_enabled is False
+    assert config.render.label_shadow_color == "#000000"
+    assert config.render.label_shadow_alpha == 0.45
+    assert config.render.label_shadow_offset_px == 1
+    assert config.render.label_shadow_thickness_extra == 1
+    assert config.render.label_smart_position is True
+    assert config.render.label_max_offset_px == 48
+    assert config.render.glow_enabled is True
+    assert config.render.glow_color == "#FFFFFF"
+    assert config.render.glow_radius_px == 9
+    assert config.render.label_glow_alpha == 0.30
+    assert config.render.label_glow_alpha < config.render.glow_alpha
+    assert config.render.trace_enabled is False
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.interpolation_method == "hermite"
     assert config.render.smoothing.polynomial_order == 2

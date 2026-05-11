@@ -4,7 +4,7 @@ project:
   camera_profiles_dir: configs/cameras
 
 analysis:
-  fps: 5
+  fps: 6
   imgsz: 640
   min_track_frames: 10
   min_box_height_px: 80
@@ -17,7 +17,7 @@ analysis:
 detector:
   provider: onnxruntime_local
   weights: weights/yolo26s.onnx
-  confidence: 0.4
+  confidence: 0.5
   iou: 0.4
   allowed_class_names:
     - car
@@ -25,12 +25,12 @@ detector:
 
 tracker:
   provider: botsort
-  track_high_thresh: 0.25
+  track_high_thresh: 0.35
   track_low_thresh: 0.05
-  new_track_thresh: 0.35
+  new_track_thresh: 0.50
   track_buffer: 15
-  match_thresh: 0.90
-  minimum_consecutive_frames: 3
+  match_thresh: 0.95
+  minimum_consecutive_frames: 4
   frame_rate: 0
   fuse_first_associate: true
   cmc_method: null
@@ -52,18 +52,36 @@ mmr:
 
 render:
   codec: mp4v
-  #font: cv2.FONT_HERSHEY_SIMPLEX
-  box_color: "#A855F7"
+  font: cv2.FONT_HERSHEY_SIMPLEX
+  box_color: "#FFFFFF"
   label_font_scale: 0.8
   label_thickness: 2
   label_padding_px: 4
   #label_gap_px: 8
   label_text_color: "#FFFFFF"
+  label_bg_color: "#101820"
+  label_bg_alpha: 0.0
+  label_border_alpha: 0.0
+  label_shadow_enabled: false
+  label_shadow_color: "#000000"
+  label_shadow_alpha: 0.45
+  label_shadow_offset_px: 1
+  label_shadow_thickness_extra: 1
+  # Smart annotation text avoidance: set false to keep labels anchored under vehicles.
+  label_smart_position: true
+  label_max_offset_px: 48
+  glow_enabled: true
+  glow_color: "#FFFFFF"
+  glow_radius_px: 9
+  glow_alpha: 0.55
+  label_glow_radius_px: 7
+  label_glow_alpha: 0.30
   line_thickness: 1
   line_length: 30
   ellipse_thickness: 1
   corner_thickness: 4
   corner_length: 20
+  trace_enabled: false
   trace_length: 30
   output_fps: 0.0
   unknown_label: Unknown
@@ -73,8 +91,8 @@ render:
     interpolation_method: hermite
     smooth_keyframes: true
     window_seconds: 0.25
-    max_gap_seconds: 0.65
-    min_observations: 3
+    max_gap_seconds: 0.7
+    min_observations: 2
     polynomial_order: 2
-    max_center_offset_ratio: 0.50
-    max_size_delta_ratio: 0.50
+    max_center_offset_ratio: 0.3
+    max_size_delta_ratio: 0.3

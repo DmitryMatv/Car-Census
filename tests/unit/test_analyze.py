@@ -2,15 +2,21 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import orjson
+import supervision as sv
 
-from config import AppConfig
+from config import AppConfig, CameraProfile, PolygonZoneConfig
+from pipeline import analyze as analyze_module
 from pipeline.analyze import (
     MutableTrackState,
     _render_bbox_for_track,
+    analyze_video,
     _save_candidate,
 )
 from pipeline.vehicles import staged_track_crop_dir
-from models import BBox
+from storage.run_store import RunStore
+from models import BBox, Detection, FrameRecord
+from utils.video import VideoMetadata
 
 
 class DummyRunStore:
@@ -88,3 +94,136 @@ def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
     )
 
     assert bbox == BBox(x1=7, y1=7, x2=23, y2=23)
+
+
+class FakeDetector:
+    def __init__(self, detections: list[Detection]) -> None:
+        self.detections = detections
+
+    def detect(self, frame) -> list[Detection]:
+        _ = frame
+        return self.detections
+
+
+class FakeTrackerAdapter:
+    def __init__(self, tracks: sv.Detections) -> None:
+        self.tracks = tracks
+        self.received_detections: list[list[Detection]] = []
+
+    def update(self, detections: list[Detection], frame) -> sv.Detections:
+        _ = frame
+        self.received_detections.append(detections)
+        return self.tracks
+
+
+def _empty_tracks() -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.empty((0, 4), dtype=np.float32),
+        confidence=np.empty((0,), dtype=np.float32),
+        class_id=np.empty((0,), dtype=np.int32),
+        tracker_id=np.empty((0,), dtype=np.int32),
+        data={"class_name": np.empty((0,), dtype=object)},
+    )
+
+
+def _single_track(bbox: BBox) -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.array([[bbox.x1, bbox.y1, bbox.x2, bbox.y2]], dtype=np.float32),
+        confidence=np.array([0.9], dtype=np.float32),
+        class_id=np.array([2], dtype=np.int32),
+        tracker_id=np.array([7], dtype=np.int32),
+        data={"class_name": np.array(["car"], dtype=object)},
+    )
+
+
+def _profile_with_slanted_polygon() -> CameraProfile:
+    return CameraProfile(
+        camera_id="slanted",
+        polygon=PolygonZoneConfig(points=[[10, 10], [90, 30], [90, 90], [10, 90]]),
+    )
+
+
+def _prepare_analyze_test(
+    tmp_path,
+    monkeypatch,
+    detector: FakeDetector,
+    tracker: FakeTrackerAdapter,
+) -> RunStore:
+    store = RunStore(tmp_path / "run")
+    store.ensure_directories()
+    frame = np.full((100, 100, 3), 255, dtype=np.uint8)
+
+    monkeypatch.setattr(
+        analyze_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(
+            width=100, height=100, fps=10.0, frame_count=1
+        ),
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "iter_sampled_frames",
+        lambda video_path, target_fps: iter([(0, 0.0, frame)]),
+    )
+    monkeypatch.setattr(
+        analyze_module, "create_detector", lambda config, project_root: detector
+    )
+    monkeypatch.setattr(
+        analyze_module, "BotSortAdapter", lambda config, frame_rate: tracker
+    )
+    return store
+
+
+def _read_frame_records(path: Path) -> list[FrameRecord]:
+    return [
+        FrameRecord.model_validate(orjson.loads(line))
+        for line in path.read_bytes().splitlines()
+        if line.strip()
+    ]
+
+
+def test_analyze_suppresses_tracker_output_touching_polygon_edge(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(_single_track(BBox(x1=48, y1=18, x2=56, y2=28)))
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig(),
+        profile=_profile_with_slanted_polygon(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert len(records) == 1
+    assert records[0].tracks == []
+
+
+def test_analyze_filters_detection_touching_polygon_edge_before_tracker(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector(
+        [
+            Detection(
+                bbox=BBox(x1=38, y1=8, x2=46, y2=18),
+                confidence=0.9,
+                class_id=2,
+                class_name="car",
+            )
+        ]
+    )
+    tracker = FakeTrackerAdapter(_empty_tracks())
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig(),
+        profile=_profile_with_slanted_polygon(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    assert tracker.received_detections == [[]]

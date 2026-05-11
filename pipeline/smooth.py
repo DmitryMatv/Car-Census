@@ -10,6 +10,7 @@ from config import AppConfig, CameraProfile
 from roi.geometry import point_in_polygon
 from storage.run_store import RunStore
 from models import BBox, FrameRecord, TrackedObject
+from utils.video import read_video_metadata
 
 
 @dataclass(slots=True)
@@ -43,6 +44,7 @@ def _write_frame_records(path: Path, records: list[FrameRecord]) -> None:
 def _expand_records_to_source_frames(
     records: list[FrameRecord],
     source_fps: float,
+    final_frame_index: int | None = None,
 ) -> list[FrameRecord]:
     if not records:
         return []
@@ -51,7 +53,7 @@ def _expand_records_to_source_frames(
 
     records_by_index = {record.frame_index: record for record in records}
     first_frame_index = records[0].frame_index
-    last_frame_index = records[-1].frame_index
+    last_frame_index = max(records[-1].frame_index, final_frame_index or 0)
     expanded: list[FrameRecord] = []
     for frame_index in range(first_frame_index, last_frame_index + 1):
         record = records_by_index.get(frame_index)
@@ -66,6 +68,18 @@ def _expand_records_to_source_frames(
             )
         )
     return expanded
+
+
+def _manifest_final_frame_index(manifest) -> int | None:
+    if manifest.frame_count > 0:
+        return manifest.frame_count - 1
+    try:
+        metadata = read_video_metadata(manifest.video_path)
+    except RuntimeError:
+        return None
+    if metadata.frame_count <= 0:
+        return None
+    return metadata.frame_count - 1
 
 
 def _box_to_vector(bbox: BBox) -> np.ndarray:
@@ -127,6 +141,20 @@ def _linear_interpolate_vector(
         ratio = (timestamp_seconds - previous.timestamp_seconds) / total
     ratio = max(0.0, min(1.0, ratio))
     return previous.vector + ((current.vector - previous.vector) * ratio)
+
+
+def _linear_extrapolate_vector(
+    previous: _TrackPoint,
+    current: _TrackPoint,
+    timestamp_seconds: float,
+) -> np.ndarray | None:
+    total = current.timestamp_seconds - previous.timestamp_seconds
+    if total <= 0:
+        return None
+    return current.vector + (
+        (current.vector - previous.vector)
+        * ((timestamp_seconds - current.timestamp_seconds) / total)
+    )
 
 
 def _interpolated_source(
@@ -460,6 +488,59 @@ def _fill_hermite_gaps(
     return filled
 
 
+def _extrapolate_visible_tail(
+    points: list[_TrackPoint],
+    records: list[FrameRecord],
+    config: AppConfig,
+    final_analysis_frame_index: int,
+) -> list[_TrackPoint]:
+    if len(points) < 2 or points[-1].frame_index != final_analysis_frame_index:
+        return points
+
+    records_by_index = {record.frame_index: record for record in records}
+    frame_order = [record.frame_index for record in records]
+    frame_position = {
+        frame_index: index for index, frame_index in enumerate(frame_order)
+    }
+    last_position = frame_position.get(points[-1].frame_index)
+    if last_position is None or last_position >= len(frame_order) - 1:
+        return points
+
+    previous = points[-2]
+    current = points[-1]
+    extrapolated = list(points)
+    for frame_index in frame_order[last_position + 1 :]:
+        frame = records_by_index[frame_index]
+        gap_seconds = frame.timestamp_seconds - current.timestamp_seconds
+        if gap_seconds > config.render.smoothing.max_gap_seconds:
+            break
+        candidate = _linear_extrapolate_vector(
+            previous, current, frame.timestamp_seconds
+        )
+        if candidate is None:
+            break
+        reference = extrapolated[-1].vector
+        clamped = _clamp_vector(candidate, reference, config)
+        if _vector_to_box(clamped) is None:
+            break
+        extrapolated.append(
+            _TrackPoint(
+                frame_index=frame.frame_index,
+                timestamp_seconds=frame.timestamp_seconds,
+                vector=clamped,
+                source=current.source.model_copy(
+                    update={
+                        "frame_index": frame.frame_index,
+                        "timestamp_seconds": frame.timestamp_seconds,
+                        "crossed_line": False,
+                    }
+                ),
+                interpolated=True,
+            )
+        )
+    return extrapolated
+
+
 def _split_contiguous_segments(
     points: list[_TrackPoint],
     records: list[FrameRecord],
@@ -625,11 +706,15 @@ def smooth_render_tracks(
         return run_store.render_frames_path
 
     manifest = run_store.read_manifest()
+    final_frame_index = _manifest_final_frame_index(manifest)
     records = (
-        _expand_records_to_source_frames(analysis_records, manifest.source_fps)
+        _expand_records_to_source_frames(
+            analysis_records, manifest.source_fps, final_frame_index
+        )
         if config.render.smoothing.interpolate
         else analysis_records
     )
+    final_analysis_frame_index = analysis_records[-1].frame_index
     tracks_by_id: dict[int, list[_TrackPoint]] = {}
     output_by_frame: dict[int, list[TrackedObject]] = {
         record.frame_index: list(record.tracks) for record in records
@@ -675,6 +760,13 @@ def smooth_render_tracks(
                 points=points,
                 records=records,
                 config=config,
+            )
+        if config.render.smoothing.interpolate:
+            filled = _extrapolate_visible_tail(
+                points=filled,
+                records=records,
+                config=config,
+                final_analysis_frame_index=final_analysis_frame_index,
             )
         smoothing_fps = (
             manifest.source_fps if manifest.source_fps > 0 else manifest.analysis_fps
