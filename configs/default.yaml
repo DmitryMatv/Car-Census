@@ -28,8 +28,8 @@ tracker:
   track_high_thresh: 0.35
   track_low_thresh: 0.05
   new_track_thresh: 0.50
-  track_buffer: 15
-  match_thresh: 0.95
+  track_buffer: 20
+  match_thresh: 0.90
   minimum_consecutive_frames: 4
   frame_rate: 0
   fuse_first_associate: true
