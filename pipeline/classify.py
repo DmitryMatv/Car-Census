@@ -67,32 +67,21 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
             None,
         )
         fallback_index = None
-        if vehicle_index is None:
-            legacy_vehicle_index_count += 1
-            fallback_index = legacy_vehicle_index_count
         frames_seen = sum(summary.frames_seen for summary in summaries)
         if (
             config.analysis.min_track_frames > 0
             and frames_seen < config.analysis.min_track_frames
         ):
-            result = _apply_identity(
-                MMRResult(
-                    make="unknown",
-                    model="unknown",
-                    accepted=False,
-                    raw={
-                        "skipped_reason": "track_too_short",
-                        "frames_seen": frames_seen,
-                        "min_track_frames": config.analysis.min_track_frames,
-                        "track_ids": [summary.track_id for summary in summaries],
-                    },
-                ),
-                vehicle_index,
-                fallback_index,
+            logger.info(
+                "Skipping MMR for short track group %s: %s frames < %s",
+                [summary.track_id for summary in summaries],
+                frames_seen,
+                config.analysis.min_track_frames,
             )
-            for summary in summaries:
-                labels_by_track[summary.track_id] = result
             continue
+        if vehicle_index is None:
+            legacy_vehicle_index_count += 1
+            fallback_index = legacy_vehicle_index_count
 
         candidates = [
             candidate for summary in summaries for candidate in summary.candidates

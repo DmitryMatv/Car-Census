@@ -423,6 +423,63 @@ def test_render_hides_tracks_without_vehicle_index_for_new_runs(
     assert DummyAnnotator.seen_labels_by_track[0] == {1: "1 | UNKNOWN"}
 
 
+def test_render_hides_tracks_missing_from_existing_labels_file(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.frames_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, 0, 0.0, vehicle_index=1),
+                _track(2, 0, 0.0, vehicle_index=2),
+            ],
+        )
+    ]
+    store.frames_path.write_bytes(
+        b"".join(
+            orjson.dumps(record.model_dump(mode="json")) + b"\n" for record in records
+        )
+    )
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {"1": MMRResult(make="Toyota", model="Corolla").model_dump(mode="json")}
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=1),
+    )
+    monkeypatch.setattr(
+        render_module,
+        "iter_video_frames",
+        lambda video_path, fps: (
+            (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
+            for index in range(1)
+        ),
+    )
+    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
+    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+
+    render_video(
+        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[1]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {1: "Toyota Corolla"}
+
+
 def test_video_annotator_places_label_above_and_left_aligned() -> None:
     config = AppConfig.model_validate(
         {

@@ -82,6 +82,55 @@ def test_save_candidate_pads_crop_for_classification(tmp_path) -> None:
     assert saved_crop.shape[:2] == (16, 16)
 
 
+def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> None:
+    store = DummyRunStore(tmp_path)
+    state = MutableTrackState(
+        track_id=42,
+        first_frame_index=1,
+        last_frame_index=1,
+        min_box_height_px=40,
+        max_box_height_px=140,
+    )
+    frame = np.full((200, 200, 3), 255, dtype=np.uint8)
+    config = AppConfig.model_validate(
+        {
+            "analysis": {
+                "crop_padding_ratio": 0,
+                "crop_target_box_range_ratio": 0.7,
+                "crop_min_spacing_seconds": 0,
+            }
+        }
+    )
+
+    _save_candidate(
+        store=store,
+        track_state=state,
+        frame=frame,
+        bbox=BBox(x1=10, y1=10, x2=150, y2=150),
+        frame_index=5,
+        timestamp_seconds=0.5,
+        config=config,
+    )
+    first_path = state.candidates[0].image_path
+
+    _save_candidate(
+        store=store,
+        track_state=state,
+        frame=frame,
+        bbox=BBox(x1=20, y1=20, x2=130, y2=130),
+        frame_index=6,
+        timestamp_seconds=0.6,
+        config=config,
+    )
+
+    assert len(state.candidates) == 1
+    assert state.candidates[0].frame_index == 6
+    assert state.candidates[0].vehicle_bbox == BBox(x1=20, y1=20, x2=130, y2=130)
+    assert state.candidates[0].vehicle_bbox.height == 110
+    assert state.candidates[0].image_path.exists()
+    assert not first_path.exists()
+
+
 def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
     config = AppConfig.model_validate(
         {"analysis": {"crop_padding_ratio": 0.1, "crop_padding_px": 2}}
@@ -236,3 +285,41 @@ def test_analyze_filters_detection_touching_polygon_edge_before_tracker(
     )
 
     assert tracker.received_detections == [[]]
+
+
+def test_analyze_discards_crops_and_vehicle_index_for_short_tracks(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(_single_track(BBox(x1=20, y1=20, x2=80, y2=80)))
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+    config = AppConfig.model_validate(
+        {"analysis": {"min_track_frames": 2, "min_box_height_px": 1}}
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    crop_files = [
+        path
+        for path in store.crops_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() == ".jpg"
+    ]
+    assert records[0].tracks[0].vehicle_index is None
+    assert summaries[0]["vehicle_index"] is None
+    assert summaries[0]["candidates"] == []
+    assert crop_files == []

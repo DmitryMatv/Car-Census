@@ -11,7 +11,7 @@ from pipeline.vehicles import (
     rewrite_frame_vehicle_indices,
     staged_track_crop_dir,
     track_summary_from_state,
-    vehicle_crop_dir,
+    vehicle_crop_path,
 )
 from models import BBox, FrameRecord, TrackedObject
 
@@ -45,7 +45,9 @@ def test_vehicle_crop_path_helpers(tmp_path) -> None:
     assert staged_track_crop_dir(crops_dir, 42) == (
         crops_dir / ".track_candidates" / "track_000042"
     )
-    assert vehicle_crop_dir(crops_dir, 13) == crops_dir / "vehicle_000013"
+    assert vehicle_crop_path(crops_dir, 13, Path("frame.jpg")) == (
+        crops_dir / "vehicle_000013.jpg"
+    )
 
 
 def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> None:
@@ -87,16 +89,18 @@ def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> 
     assert later_state.vehicle_index == 2
     assert earlier_state.candidates[0].vehicle_index == 1
     assert later_state.candidates[0].vehicle_index == 2
-    assert earlier_state.candidates[0].image_path.parent == vehicle_crop_dir(
-        store.crops_dir, 1
+    assert earlier_state.candidates[0].image_path == store.crops_dir / (
+        "vehicle_000001.jpg"
     )
-    assert later_state.candidates[0].image_path.parent == vehicle_crop_dir(
-        store.crops_dir, 2
+    assert later_state.candidates[0].image_path == store.crops_dir / (
+        "vehicle_000002.jpg"
     )
     assert sorted(path.name for path in store.crops_dir.iterdir()) == [
-        "vehicle_000001",
-        "vehicle_000002",
+        "vehicle_000001.jpg",
+        "vehicle_000002.jpg",
     ]
+    assert (store.crops_dir / "vehicle_000001.jpg").is_file()
+    assert (store.crops_dir / "vehicle_000002.jpg").is_file()
 
 
 def test_rewrite_frame_vehicle_indices_marks_only_crop_eligible_tracks(

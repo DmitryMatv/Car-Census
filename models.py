@@ -58,6 +58,7 @@ class CropCandidate(BaseModel):
     frame_index: int
     timestamp_seconds: float
     bbox: BBox
+    vehicle_bbox: BBox | None = None
     image_path: Path
     sharpness: float
     edge_margin_score: float
@@ -77,6 +78,21 @@ class MMRResult(BaseModel):
     model: str | None = None
     make_confidence: float | None = None
     model_confidence: float | None = None
+    category: str | None = None
+    category_confidence: float | None = None
+    generation: str | None = None
+    generation_confidence: float | None = None
+    variation: str | None = None
+    variation_confidence: float | None = None
+    color: str | None = None
+    color_confidence: float | None = None
+    view: str | None = None
+    view_confidence: float | None = None
+    view8: str | None = None
+    view8_confidence: float | None = None
+    tags: list[dict[str, Any]] = Field(default_factory=list)
+    detection_box: BBox | None = None
+    detection_confidence: float | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
     accepted: bool = False
     source_image: Path | None = None

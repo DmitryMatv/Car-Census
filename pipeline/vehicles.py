@@ -26,8 +26,9 @@ def staged_track_crop_dir(crops_dir: Path, track_id: int) -> Path:
     return crops_dir / ".track_candidates" / f"track_{track_id:06d}"
 
 
-def vehicle_crop_dir(crops_dir: Path, vehicle_index: int) -> Path:
-    return crops_dir / f"vehicle_{vehicle_index:06d}"
+def vehicle_crop_path(crops_dir: Path, vehicle_index: int, source_path: Path) -> Path:
+    suffix = source_path.suffix or ".jpg"
+    return crops_dir / f"vehicle_{vehicle_index:06d}{suffix}"
 
 
 def discard_track_artifacts(state: TrackStateProtocol | None, crops_dir: Path) -> None:
@@ -38,11 +39,6 @@ def discard_track_artifacts(state: TrackStateProtocol | None, crops_dir: Path) -
             candidate.image_path.unlink()
     for path in [
         staged_track_crop_dir(crops_dir, state.track_id),
-        (
-            vehicle_crop_dir(crops_dir, state.vehicle_index)
-            if state.vehicle_index is not None
-            else None
-        ),
     ]:
         if path is not None and path.exists() and not any(path.iterdir()):
             path.rmdir()
@@ -96,11 +92,11 @@ def finalize_vehicle_identities(
     for vehicle_index, state in enumerate(eligible_states, start=1):
         state.vehicle_index = vehicle_index
         vehicle_index_by_track[state.track_id] = vehicle_index
-        vehicle_dir = vehicle_crop_dir(run_store.crops_dir, vehicle_index)
-        vehicle_dir.mkdir(parents=True, exist_ok=True)
         finalized_candidates: list[CropCandidate] = []
         for candidate in state.candidates:
-            destination = vehicle_dir / candidate.image_path.name
+            destination = vehicle_crop_path(
+                run_store.crops_dir, vehicle_index, candidate.image_path
+            )
             if candidate.image_path.exists():
                 candidate.image_path.replace(destination)
             finalized_candidates.append(

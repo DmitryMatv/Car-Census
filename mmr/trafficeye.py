@@ -11,7 +11,7 @@ import numpy as np
 import orjson
 
 from config import AppConfig
-from models import MMRResult
+from models import BBox, MMRResult
 
 
 def _hash_request(image_bytes: bytes, request_payload: dict[str, Any]) -> str:
@@ -19,23 +19,6 @@ def _hash_request(image_bytes: bytes, request_payload: dict[str, Any]) -> str:
     digest.update(image_bytes)
     digest.update(orjson.dumps(request_payload))
     return digest.hexdigest()
-
-
-def _find_nested_first(data: Any, keys: tuple[str, ...]) -> tuple[Any, str | None]:
-    if isinstance(data, dict):
-        for key, value in data.items():
-            key_lower = key.lower()
-            if any(candidate in key_lower for candidate in keys):
-                return value, key
-            found, found_key = _find_nested_first(value, keys)
-            if found is not None:
-                return found, found_key
-    elif isinstance(data, list):
-        for item in data:
-            found, found_key = _find_nested_first(item, keys)
-            if found is not None:
-                return found, found_key
-    return None, None
 
 
 def _coerce_confidence(value: Any) -> float | None:
@@ -64,24 +47,115 @@ def _coerce_label(value: Any) -> str | None:
     return None
 
 
+def _coerce_box(value: Any) -> BBox | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        box = BBox(
+            x1=float(value["topLeftCol"]),
+            y1=float(value["topLeftRow"]),
+            x2=float(value["bottomRightCol"]),
+            y2=float(value["bottomRightRow"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    if box.width <= 0 or box.height <= 0:
+        return None
+    return box
+
+
+def _recognition_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    data = payload.get("data")
+    if isinstance(data, dict) and isinstance(data.get("combinations"), list):
+        return data
+    return payload
+
+
+def _road_user_box_position(road_user: dict[str, Any]) -> dict[str, Any] | None:
+    box = road_user.get("box")
+    if isinstance(box, dict) and isinstance(box.get("position"), dict):
+        return box["position"]
+    mmr = road_user.get("mmr")
+    if not isinstance(mmr, dict):
+        return None
+    input_data = mmr.get("input")
+    if isinstance(input_data, dict) and isinstance(input_data.get("box"), dict):
+        return input_data["box"]
+    return None
+
+
+def _iter_road_users(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    road_users: list[dict[str, Any]] = []
+    combinations = _recognition_payload(payload).get("combinations")
+    if not isinstance(combinations, list):
+        return road_users
+    for combination in combinations:
+        if not isinstance(combination, dict):
+            continue
+        items = combination.get("roadUsers")
+        if not isinstance(items, list):
+            continue
+        road_users.extend(item for item in items if isinstance(item, dict))
+    return road_users
+
+
+def _selected_road_user(payload: dict[str, Any]) -> dict[str, Any] | None:
+    candidates = [
+        road_user
+        for road_user in _iter_road_users(payload)
+        if isinstance(road_user.get("mmr"), dict)
+    ]
+    if not candidates:
+        return None
+
+    def rank(road_user: dict[str, Any]) -> tuple[float, float, float, float]:
+        position = _road_user_box_position(road_user)
+        box = _coerce_box(position)
+        mmr = road_user.get("mmr")
+        assert isinstance(mmr, dict)
+        return (
+            box.area if box is not None else 0.0,
+            _coerce_confidence(mmr.get("model")) or 0.0,
+            _coerce_confidence(mmr.get("make")) or 0.0,
+            _coerce_confidence(position) or 0.0,
+        )
+
+    return max(candidates, key=rank)
+
+
 def parse_mmr_response(
     payload: dict[str, Any], source_image: Path | None = None
 ) -> MMRResult:
-    make_value, _ = _find_nested_first(payload, ("make", "manufacturer", "brand"))
-    model_value, _ = _find_nested_first(payload, ("model",))
-    make_conf_value, _ = _find_nested_first(payload, ("makescore", "makeconfidence"))
-    model_conf_value, _ = _find_nested_first(payload, ("modelscore", "modelconfidence"))
+    road_user = _selected_road_user(payload)
+    if road_user is None:
+        return MMRResult(raw=payload, source_image=source_image)
 
-    if isinstance(make_value, dict) and make_conf_value is None:
-        make_conf_value = make_value
-    if isinstance(model_value, dict) and model_conf_value is None:
-        model_conf_value = model_value
+    mmr = road_user["mmr"]
+    position = _road_user_box_position(road_user)
+    tags = mmr.get("tags")
 
     return MMRResult(
-        make=_coerce_label(make_value),
-        model=_coerce_label(model_value),
-        make_confidence=_coerce_confidence(make_conf_value),
-        model_confidence=_coerce_confidence(model_conf_value),
+        make=_coerce_label(mmr.get("make")),
+        model=_coerce_label(mmr.get("model")),
+        make_confidence=_coerce_confidence(mmr.get("make")),
+        model_confidence=_coerce_confidence(mmr.get("model")),
+        category=_coerce_label(mmr.get("category")),
+        category_confidence=_coerce_confidence(mmr.get("category")),
+        generation=_coerce_label(mmr.get("generation")),
+        generation_confidence=_coerce_confidence(mmr.get("generation")),
+        variation=_coerce_label(mmr.get("variation")),
+        variation_confidence=_coerce_confidence(mmr.get("variation")),
+        color=_coerce_label(mmr.get("color")),
+        color_confidence=_coerce_confidence(mmr.get("color")),
+        view=_coerce_label(mmr.get("view")),
+        view_confidence=_coerce_confidence(mmr.get("view")),
+        view8=_coerce_label(mmr.get("view8")),
+        view8_confidence=_coerce_confidence(mmr.get("view8")),
+        tags=[tag for tag in tags if isinstance(tag, dict)]
+        if isinstance(tags, list)
+        else [],
+        detection_box=_coerce_box(position),
+        detection_confidence=_coerce_confidence(position),
         raw=payload,
         source_image=source_image,
     )
@@ -99,6 +173,9 @@ class TrafficEyeClient:
         self.timeout = config.mmr.timeout_seconds
         self.cache_dir = cache_dir
         self.accept_model_confidence = config.mmr.accept_model_confidence
+        self.tasks = config.mmr.tasks
+        self.requested_detection_types = config.mmr.requested_detection_types
+        self.mmr_preference = config.mmr.mmr_preference
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
@@ -108,25 +185,10 @@ class TrafficEyeClient:
         )
         if image is None:
             raise RuntimeError(f"Could not decode crop for MMR request: {image_path}")
-        height, width = image.shape[:2]
         request_payload = {
-            "tasks": ["MMR"],
-            "combinations": [
-                {
-                    "roadUsers": [
-                        {
-                            "box": {
-                                "position": {
-                                    "topLeftCol": 0,
-                                    "topLeftRow": 0,
-                                    "bottomRightCol": width,
-                                    "bottomRightRow": height,
-                                }
-                            }
-                        }
-                    ]
-                }
-            ],
+            "tasks": self.tasks,
+            "requestedDetectionTypes": self.requested_detection_types,
+            "mmrPreference": self.mmr_preference,
         }
         cache_key = _hash_request(image_bytes, request_payload)
         cache_path = self.cache_dir / f"{cache_key}.json"

@@ -8,6 +8,14 @@ import cv2
 
 from config import AppConfig, CameraProfile
 from detectors.base import create_detector
+from models import (
+    BBox,
+    CountEvent,
+    CropCandidate,
+    FrameRecord,
+    RunManifest,
+    TrackedObject,
+)
 from pipeline.vehicles import (
     discard_track_artifacts,
     finalize_vehicle_identities,
@@ -26,14 +34,6 @@ from roi.geometry import (
 )
 from storage.run_store import RunStore
 from trackers.botsort import BotSortAdapter
-from models import (
-    BBox,
-    CountEvent,
-    CropCandidate,
-    FrameRecord,
-    RunManifest,
-    TrackedObject,
-)
 from utils.image_quality import laplacian_sharpness
 from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
 
@@ -47,6 +47,7 @@ class MutableTrackState:
     last_frame_index: int
     vehicle_index: int | None = None
     frames_seen: int = 0
+    min_box_height_px: float | None = None
     max_box_height_px: float = 0.0
     previous_bottom_center: tuple[float, float] | None = None
     counted: bool = False
@@ -57,7 +58,7 @@ class MutableTrackState:
 
 def _score_candidate(
     crop: cv2.typing.MatLike, bbox: BBox, frame_shape: tuple[int, int, int]
-) -> tuple[float, float, float, float]:
+) -> tuple[float, float, float]:
     sharpness = laplacian_sharpness(crop)
     area_score = bbox.area
     height, width = frame_shape[:2]
@@ -66,8 +67,78 @@ def _score_candidate(
     margin_right = width - bbox.x2
     margin_bottom = height - bbox.y2
     edge_margin_score = min(margin_left, margin_top, margin_right, margin_bottom)
-    total_score = area_score + (sharpness * 2.0) + (edge_margin_score * 10.0)
-    return sharpness, edge_margin_score, area_score, total_score
+    return sharpness, edge_margin_score, area_score
+
+
+def _candidate_target_score(
+    *,
+    bbox_height: float,
+    sharpness: float,
+    edge_margin_score: float,
+    area_score: float,
+    frame_index: int,
+    min_box_height_px: float | None,
+    max_box_height_px: float,
+    target_ratio: float,
+) -> float:
+    min_height = (
+        min_box_height_px if min_box_height_px is not None else max_box_height_px
+    )
+    target_height = min_height + ((max_box_height_px - min_height) * target_ratio)
+    scale_error = abs(bbox_height - target_height) / max(target_height, 1.0)
+    return (
+        (-scale_error * 1_000_000_000.0)
+        + (sharpness * 1_000.0)
+        + (edge_margin_score * 10.0)
+        + area_score
+        - (frame_index * 0.000001)
+    )
+
+
+def _candidate_rank(
+    candidate: CropCandidate,
+    min_box_height_px: float | None,
+    max_box_height_px: float,
+    config: AppConfig,
+) -> tuple[float, float, float, float, int]:
+    min_height = (
+        min_box_height_px if min_box_height_px is not None else max_box_height_px
+    )
+    target_height = min_height + (
+        (max_box_height_px - min_height) * config.analysis.crop_target_box_range_ratio
+    )
+    vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
+    scale_error = abs(vehicle_bbox.height - target_height) / max(target_height, 1.0)
+    return (
+        -scale_error,
+        candidate.sharpness,
+        candidate.edge_margin_score,
+        candidate.area_score,
+        -candidate.frame_index,
+    )
+
+
+def _refresh_candidate_score(
+    candidate: CropCandidate,
+    min_box_height_px: float | None,
+    max_box_height_px: float,
+    config: AppConfig,
+) -> CropCandidate:
+    vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
+    return candidate.model_copy(
+        update={
+            "total_score": _candidate_target_score(
+                bbox_height=vehicle_bbox.height,
+                sharpness=candidate.sharpness,
+                edge_margin_score=candidate.edge_margin_score,
+                area_score=candidate.area_score,
+                frame_index=candidate.frame_index,
+                min_box_height_px=min_box_height_px,
+                max_box_height_px=max_box_height_px,
+                target_ratio=config.analysis.crop_target_box_range_ratio,
+            )
+        }
+    )
 
 
 def _expand_crop_bbox(bbox: BBox, config: AppConfig) -> BBox:
@@ -104,35 +175,65 @@ def _save_candidate(
     crop = frame[int(clipped.y1) : int(clipped.y2), int(clipped.x1) : int(clipped.x2)]
     if crop.size == 0:
         return
-    sharpness, edge_margin_score, area_score, total_score = _score_candidate(
+    sharpness, edge_margin_score, area_score = _score_candidate(
         crop, clipped, frame.shape
     )
     track_dir = staged_track_crop_dir(store.crops_dir, track_state.track_id)
     track_dir.mkdir(parents=True, exist_ok=True)
     image_path = track_dir / f"frame_{frame_index:08d}.jpg"
-    cv2.imwrite(
-        str(image_path),
-        crop,
-        [int(cv2.IMWRITE_JPEG_QUALITY), config.analysis.crop_jpeg_quality],
-    )
     candidate = CropCandidate(
         track_id=track_state.track_id,
         vehicle_index=None,
         frame_index=frame_index,
         timestamp_seconds=timestamp_seconds,
         bbox=clipped,
+        vehicle_bbox=bbox,
         image_path=image_path,
         sharpness=sharpness,
         edge_margin_score=edge_margin_score,
         area_score=area_score,
-        total_score=total_score,
+        total_score=_candidate_target_score(
+            bbox_height=bbox.height,
+            sharpness=sharpness,
+            edge_margin_score=edge_margin_score,
+            area_score=area_score,
+            frame_index=frame_index,
+            min_box_height_px=track_state.min_box_height_px,
+            max_box_height_px=track_state.max_box_height_px,
+            target_ratio=config.analysis.crop_target_box_range_ratio,
+        ),
     )
-    track_state.candidates.append(candidate)
-    track_state.candidates.sort(key=lambda item: item.total_score, reverse=True)
-    if len(track_state.candidates) > config.analysis.crop_limit_per_track:
-        removed = track_state.candidates.pop()
-        if removed.image_path.exists():
-            removed.image_path.unlink()
+    track_state.candidates = [
+        _refresh_candidate_score(
+            existing,
+            track_state.min_box_height_px,
+            track_state.max_box_height_px,
+            config,
+        )
+        for existing in track_state.candidates
+    ]
+    current = track_state.candidates[0] if track_state.candidates else None
+    if current is not None and _candidate_rank(
+        current,
+        track_state.min_box_height_px,
+        track_state.max_box_height_px,
+        config,
+    ) >= _candidate_rank(
+        candidate,
+        track_state.min_box_height_px,
+        track_state.max_box_height_px,
+        config,
+    ):
+        return
+
+    cv2.imwrite(
+        str(image_path),
+        crop,
+        [int(cv2.IMWRITE_JPEG_QUALITY), config.analysis.crop_jpeg_quality],
+    )
+    if current is not None and current.image_path.exists():
+        current.image_path.unlink()
+    track_state.candidates = [candidate]
     track_state.last_candidate_time = timestamp_seconds
 
 
@@ -290,6 +391,11 @@ def analyze_video(
 
             state.frames_seen += 1
             state.last_frame_index = frame_index
+            state.min_box_height_px = (
+                bbox.height
+                if state.min_box_height_px is None
+                else min(state.min_box_height_px, bbox.height)
+            )
             state.max_box_height_px = max(state.max_box_height_px, bbox.height)
             state.previous_bottom_center = bottom_center
 
@@ -339,6 +445,11 @@ def analyze_video(
 
     all_track_states = [*finished_track_states, *track_states.values()]
     all_track_states.sort(key=lambda item: (item.first_frame_index, item.track_id))
+    if config.analysis.min_track_frames > 0:
+        for state in all_track_states:
+            if state.frames_seen < config.analysis.min_track_frames:
+                discard_track_artifacts(state, run_store.crops_dir)
+                state.candidates = []
     vehicle_index_by_track = finalize_vehicle_identities(run_store, all_track_states)
     rewrite_frame_vehicle_indices(run_store.frames_path, vehicle_index_by_track)
     for state in all_track_states:

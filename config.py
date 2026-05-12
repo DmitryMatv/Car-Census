@@ -51,7 +51,8 @@ class AnalysisConfig(StrictBaseModel):
     min_box_height_px: int = 80
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
     crop_padding_px: int = Field(default=0, ge=0)
-    crop_limit_per_track: int = 3
+    crop_limit_per_track: int = 1
+    crop_target_box_range_ratio: float = Field(default=0.70, ge=0.0, le=1.0)
     crop_min_spacing_seconds: float = 0.5
     crop_jpeg_quality: int = 95
 
@@ -106,6 +107,9 @@ class MMRConfig(StrictBaseModel):
     api_key_env: str = "TRAFFICEYE_API_KEY"
     timeout_seconds: float = 45.0
     accept_model_confidence: float = 0.60
+    tasks: list[str] = Field(default_factory=lambda: ["DETECTION", "MMR"])
+    requested_detection_types: list[str] = Field(default_factory=lambda: ["BOX"])
+    mmr_preference: str = "BOX"
 
 
 class RenderConfig(StrictBaseModel):

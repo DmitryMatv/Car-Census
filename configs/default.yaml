@@ -14,7 +14,8 @@ analysis:
   min_box_height_px: 80
   crop_padding_ratio: 0.10
   crop_padding_px: 0
-  crop_limit_per_track: 3
+  crop_limit_per_track: 1
+  crop_target_box_range_ratio: 0.70
   crop_min_spacing_seconds: 0.5
   crop_jpeg_quality: 95
 
@@ -52,6 +53,12 @@ mmr:
   api_key_env: TRAFFICEYE_API_KEY
   timeout_seconds: 45.0
   accept_model_confidence: 0.60
+  tasks:
+    - DETECTION
+    - MMR
+  requested_detection_types:
+    - BOX
+  mmr_preference: BOX
 
 render:
   codec: mp4v
@@ -59,7 +66,7 @@ render:
   label_font_scale: 0.8
   label_thickness: 2
   label_padding_px: 4
-  label_gap_px: 5
+  label_gap_px: 8
   label_text_color: "#FFFFFF"
   label_bg_color: "#101820"
   label_bg_alpha: 0.0

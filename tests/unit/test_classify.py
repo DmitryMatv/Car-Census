@@ -50,7 +50,7 @@ def _write_summaries(path: Path, summaries: list[TrackSummary]) -> None:
     )
 
 
-def test_classify_tracks_skips_tracks_below_min_track_frames(
+def test_classify_tracks_omits_tracks_below_min_track_frames(
     tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
@@ -68,9 +68,7 @@ def test_classify_tracks_skips_tracks_below_min_track_frames(
                 accepted=True,
             )
 
-    monkeypatch.setattr(
-        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
-    )
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
 
     store = DummyRunStore(tmp_path)
     short_crop = tmp_path / "short.jpg"
@@ -102,17 +100,14 @@ def test_classify_tracks_skips_tracks_below_min_track_frames(
     labels = classify_tracks(config=config, run_store=store)
 
     assert calls == [long_crop]
-    assert labels[1].make == "unknown"
-    assert labels[1].raw["skipped_reason"] == "track_too_short"
-    assert labels[1].api_classification_index == 1
+    assert set(labels) == {2}
     assert labels[2].make == "Toyota"
-    assert labels[2].api_classification_index == 2
+    assert labels[2].api_classification_index == 1
 
     payload = orjson.loads(store.labels_path.read_bytes())
-    assert payload["1"]["raw"]["frames_seen"] == 4
-    assert payload["1"]["api_classification_index"] == 1
+    assert set(payload) == {"2"}
     assert payload["2"]["make"] == "Toyota"
-    assert payload["2"]["api_classification_index"] == 2
+    assert payload["2"]["api_classification_index"] == 1
 
 
 def test_classify_tracks_assigns_api_classification_index(
@@ -140,9 +135,7 @@ def test_classify_tracks_assigns_api_classification_index(
                 accepted=False,
             )
 
-    monkeypatch.setattr(
-        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
-    )
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
 
     store = DummyRunStore(tmp_path)
     skipped_crop = tmp_path / "skipped.jpg"
@@ -183,16 +176,16 @@ def test_classify_tracks_assigns_api_classification_index(
     labels = classify_tracks(config=config, run_store=store)
 
     assert calls == [rejected_crop, accepted_crop]
-    assert labels[1].api_classification_index == 1
-    assert labels[2].api_classification_index == 2
+    assert set(labels) == {2, 3}
+    assert labels[2].api_classification_index == 1
     assert labels[2].accepted is False
-    assert labels[3].api_classification_index == 3
+    assert labels[3].api_classification_index == 2
     assert labels[3].accepted is True
 
     payload = orjson.loads(store.labels_path.read_bytes())
-    assert payload["1"]["api_classification_index"] == 1
-    assert payload["2"]["api_classification_index"] == 2
-    assert payload["3"]["api_classification_index"] == 3
+    assert set(payload) == {"2", "3"}
+    assert payload["2"]["api_classification_index"] == 1
+    assert payload["3"]["api_classification_index"] == 2
 
 
 def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
@@ -213,9 +206,7 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 accepted=True,
             )
 
-    monkeypatch.setattr(
-        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
-    )
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
 
     store = DummyRunStore(tmp_path)
     weak_crop = tmp_path / "weak.jpg"
@@ -307,9 +298,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
             calls.append(image_path)
             return MMRResult(make="Toyota", model="Corolla", accepted=True)
 
-    monkeypatch.setattr(
-        "pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient
-    )
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
 
     store = DummyRunStore(tmp_path)
     _write_summaries(

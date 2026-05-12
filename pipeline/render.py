@@ -89,14 +89,17 @@ def render_video(
         expected_fps=config.video.fps,
         tolerance=config.video.fps_tolerance,
     )
+    has_labels_file = run_store.labels_path.exists()
     labels = _load_labels(run_store.labels_path)
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
         if config.render.smoothing.enabled
         else run_store.frames_path
     )
-    label_text = visible_track_label_text_by_track(
-        frames_path, config.render.unknown_label
+    label_text = (
+        {}
+        if has_labels_file
+        else visible_track_label_text_by_track(frames_path, config.render.unknown_label)
     )
     label_text.update(
         {

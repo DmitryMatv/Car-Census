@@ -64,6 +64,14 @@ Set your API key in the environment:
 export TRAFFICEYE_API_KEY=your_key_here
 ```
 
+Classification sends one selected crop per vehicle to TrafficEye. The request
+uses only `DETECTION` and `MMR` with `requestedDetectionTypes: ["BOX"]` and
+`mmrPreference: "BOX"`, so OCR and plate detection are intentionally not
+requested. The full TrafficEye response is preserved under
+`mmr/labels.json[*].raw`; common MMR fields such as make, model, generation,
+color, tags, and the selected detection box are also promoted to typed label
+fields.
+
 ## Quick Start
 
 Create an ROI profile:
