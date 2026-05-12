@@ -4,7 +4,7 @@ project:
   camera_profiles_dir: configs/cameras
 
 analysis:
-  fps: 6
+  fps: 10
   imgsz: 640
   min_track_frames: 10
   min_box_height_px: 80
@@ -28,9 +28,9 @@ tracker:
   track_high_thresh: 0.35
   track_low_thresh: 0.05
   new_track_thresh: 0.50
-  track_buffer: 20
+  track_buffer: 30
   match_thresh: 0.90
-  minimum_consecutive_frames: 4
+  minimum_consecutive_frames: 7
   frame_rate: 0
   fuse_first_associate: true
   cmc_method: null
@@ -91,7 +91,7 @@ render:
     interpolation_method: hermite
     smooth_keyframes: true
     window_seconds: 0.25
-    max_gap_seconds: 0.7
+    max_gap_seconds: 0.5
     min_observations: 2
     polynomial_order: 2
     max_center_offset_ratio: 0.3
