@@ -9,8 +9,7 @@ import orjson
 from config import AppConfig, CameraProfile
 from roi.geometry import point_in_polygon
 from storage.run_store import RunStore
-from models import BBox, FrameRecord, TrackedObject
-from utils.video import read_video_metadata
+from models import BBox, FrameRecord, RunManifest, TrackedObject
 
 
 @dataclass(slots=True)
@@ -20,6 +19,24 @@ class _TrackPoint:
     vector: np.ndarray
     source: TrackedObject
     interpolated: bool = False
+
+
+@dataclass(slots=True)
+class _FrameGrid:
+    records: list[FrameRecord]
+    by_index: dict[int, FrameRecord]
+    order: list[int]
+    position: dict[int, int]
+
+
+def _build_frame_grid(records: list[FrameRecord]) -> _FrameGrid:
+    order = [record.frame_index for record in records]
+    return _FrameGrid(
+        records=records,
+        by_index={record.frame_index: record for record in records},
+        order=order,
+        position={frame_index: index for index, frame_index in enumerate(order)},
+    )
 
 
 def _iter_frame_records(path: Path) -> list[FrameRecord]:
@@ -70,16 +87,10 @@ def _expand_records_to_source_frames(
     return expanded
 
 
-def _manifest_final_frame_index(manifest) -> int | None:
+def _manifest_final_frame_index(manifest: RunManifest) -> int | None:
     if manifest.frame_count > 0:
         return manifest.frame_count - 1
-    try:
-        metadata = read_video_metadata(manifest.video_path)
-    except RuntimeError:
-        return None
-    if metadata.frame_count <= 0:
-        return None
-    return metadata.frame_count - 1
+    return None
 
 
 def _box_to_vector(bbox: BBox) -> np.ndarray:
@@ -175,24 +186,18 @@ def _interpolated_source(
 
 def _fill_linear_gaps(
     points: list[_TrackPoint],
-    records: list[FrameRecord],
+    grid: _FrameGrid,
     max_gap_seconds: float,
 ) -> list[_TrackPoint]:
     if len(points) < 2:
         return points
 
-    records_by_index = {record.frame_index: record for record in records}
-    frame_order = [record.frame_index for record in records]
-    frame_position = {
-        frame_index: index for index, frame_index in enumerate(frame_order)
-    }
-
     filled: list[_TrackPoint] = []
     for previous, current in zip(points, points[1:]):
         filled.append(previous)
         gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
-        previous_position = frame_position.get(previous.frame_index)
-        current_position = frame_position.get(current.frame_index)
+        previous_position = grid.position.get(previous.frame_index)
+        current_position = grid.position.get(current.frame_index)
         if (
             previous_position is None
             or current_position is None
@@ -200,8 +205,8 @@ def _fill_linear_gaps(
             or gap_seconds > max_gap_seconds
         ):
             continue
-        for frame_index in frame_order[previous_position + 1 : current_position]:
-            frame = records_by_index[frame_index]
+        for frame_index in grid.order[previous_position + 1 : current_position]:
+            frame = grid.by_index[frame_index]
             filled.append(_interpolate_point(previous, current, frame))
     filled.append(points[-1])
     return filled
@@ -273,25 +278,19 @@ def _polynomial_interpolate_vector(
 
 def _fill_polynomial_gaps(
     points: list[_TrackPoint],
-    records: list[FrameRecord],
+    grid: _FrameGrid,
     config: AppConfig,
 ) -> list[_TrackPoint]:
     if len(points) < 2:
         return points
-
-    records_by_index = {record.frame_index: record for record in records}
-    frame_order = [record.frame_index for record in records]
-    frame_position = {
-        frame_index: index for index, frame_index in enumerate(frame_order)
-    }
 
     filled: list[_TrackPoint] = []
     requested_order = config.render.smoothing.polynomial_order
     for point_index, (previous, current) in enumerate(zip(points, points[1:])):
         filled.append(previous)
         gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
-        previous_position = frame_position.get(previous.frame_index)
-        current_position = frame_position.get(current.frame_index)
+        previous_position = grid.position.get(previous.frame_index)
+        current_position = grid.position.get(current.frame_index)
         if (
             previous_position is None
             or current_position is None
@@ -300,8 +299,8 @@ def _fill_polynomial_gaps(
         ):
             continue
 
-        for frame_index in frame_order[previous_position + 1 : current_position]:
-            frame = records_by_index[frame_index]
+        for frame_index in grid.order[previous_position + 1 : current_position]:
+            frame = grid.by_index[frame_index]
             linear_vector = _linear_interpolate_vector(
                 previous, current, frame.timestamp_seconds
             )
@@ -422,7 +421,7 @@ def _hermite_interpolate_vector(
 
 def _fill_hermite_gaps(
     points: list[_TrackPoint],
-    records: list[FrameRecord],
+    grid: _FrameGrid,
     config: AppConfig,
 ) -> list[_TrackPoint]:
     if len(points) < 2:
@@ -434,18 +433,12 @@ def _fill_hermite_gaps(
     values = np.stack([point.vector for point in points])
     slopes = _monotone_hermite_slopes(timestamps, values)
 
-    records_by_index = {record.frame_index: record for record in records}
-    frame_order = [record.frame_index for record in records]
-    frame_position = {
-        frame_index: index for index, frame_index in enumerate(frame_order)
-    }
-
     filled: list[_TrackPoint] = []
     for point_index, (previous, current) in enumerate(zip(points, points[1:])):
         filled.append(previous)
         gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
-        previous_position = frame_position.get(previous.frame_index)
-        current_position = frame_position.get(current.frame_index)
+        previous_position = grid.position.get(previous.frame_index)
+        current_position = grid.position.get(current.frame_index)
         if (
             previous_position is None
             or current_position is None
@@ -454,8 +447,8 @@ def _fill_hermite_gaps(
         ):
             continue
 
-        for frame_index in frame_order[previous_position + 1 : current_position]:
-            frame = records_by_index[frame_index]
+        for frame_index in grid.order[previous_position + 1 : current_position]:
+            frame = grid.by_index[frame_index]
             linear_vector = _linear_interpolate_vector(
                 previous, current, frame.timestamp_seconds
             )
@@ -490,27 +483,22 @@ def _fill_hermite_gaps(
 
 def _extrapolate_visible_tail(
     points: list[_TrackPoint],
-    records: list[FrameRecord],
+    grid: _FrameGrid,
     config: AppConfig,
     final_analysis_frame_index: int,
 ) -> list[_TrackPoint]:
     if len(points) < 2 or points[-1].frame_index != final_analysis_frame_index:
         return points
 
-    records_by_index = {record.frame_index: record for record in records}
-    frame_order = [record.frame_index for record in records]
-    frame_position = {
-        frame_index: index for index, frame_index in enumerate(frame_order)
-    }
-    last_position = frame_position.get(points[-1].frame_index)
-    if last_position is None or last_position >= len(frame_order) - 1:
+    last_position = grid.position.get(points[-1].frame_index)
+    if last_position is None or last_position >= len(grid.order) - 1:
         return points
 
     previous = points[-2]
     current = points[-1]
     extrapolated = list(points)
-    for frame_index in frame_order[last_position + 1 :]:
-        frame = records_by_index[frame_index]
+    for frame_index in grid.order[last_position + 1 :]:
+        frame = grid.by_index[frame_index]
         gap_seconds = frame.timestamp_seconds - current.timestamp_seconds
         if gap_seconds > config.render.smoothing.max_gap_seconds:
             break
@@ -543,17 +531,16 @@ def _extrapolate_visible_tail(
 
 def _split_contiguous_segments(
     points: list[_TrackPoint],
-    records: list[FrameRecord],
+    grid: _FrameGrid,
 ) -> list[list[_TrackPoint]]:
     if not points:
         return []
 
-    frame_position = {record.frame_index: index for index, record in enumerate(records)}
     segments: list[list[_TrackPoint]] = [[points[0]]]
     for point in points[1:]:
         previous = segments[-1][-1]
-        previous_position = frame_position.get(previous.frame_index)
-        current_position = frame_position.get(point.frame_index)
+        previous_position = grid.position.get(previous.frame_index)
+        current_position = grid.position.get(point.frame_index)
         if (
             previous_position is not None
             and current_position is not None
@@ -709,16 +696,14 @@ def smooth_render_tracks(
     final_frame_index = _manifest_final_frame_index(manifest)
     records = (
         _expand_records_to_source_frames(
-            analysis_records, manifest.source_fps, final_frame_index
+            analysis_records, config.video.fps, final_frame_index
         )
         if config.render.smoothing.interpolate
         else analysis_records
     )
+    grid = _build_frame_grid(records)
     final_analysis_frame_index = analysis_records[-1].frame_index
     tracks_by_id: dict[int, list[_TrackPoint]] = {}
-    output_by_frame: dict[int, list[TrackedObject]] = {
-        record.frame_index: list(record.tracks) for record in records
-    }
 
     for record in analysis_records:
         for track in record.tracks:
@@ -731,53 +716,58 @@ def smooth_render_tracks(
                 )
             )
 
+    eligible_track_ids = {
+        track_id
+        for track_id, points in tracks_by_id.items()
+        if len(points) >= config.render.smoothing.min_observations
+    }
+    output_by_frame: dict[int, list[TrackedObject]] = {
+        record.frame_index: [] for record in records
+    }
+    for record in analysis_records:
+        for track in record.tracks:
+            if track.track_id not in eligible_track_ids:
+                output_by_frame[record.frame_index].append(track)
+
     for track_id, points in tracks_by_id.items():
         points.sort(key=lambda point: point.timestamp_seconds)
-        if len(points) < config.render.smoothing.min_observations:
+        if track_id not in eligible_track_ids:
             continue
-
-        for frame_tracks in output_by_frame.values():
-            frame_tracks[:] = [
-                track for track in frame_tracks if track.track_id != track_id
-            ]
 
         if not config.render.smoothing.interpolate:
             filled = points
         elif config.render.smoothing.interpolation_method == "linear":
             filled = _fill_linear_gaps(
                 points=points,
-                records=records,
+                grid=grid,
                 max_gap_seconds=config.render.smoothing.max_gap_seconds,
             )
         elif config.render.smoothing.interpolation_method == "polynomial":
             filled = _fill_polynomial_gaps(
                 points=points,
-                records=records,
+                grid=grid,
                 config=config,
             )
         else:
             filled = _fill_hermite_gaps(
                 points=points,
-                records=records,
+                grid=grid,
                 config=config,
             )
         if config.render.smoothing.interpolate:
             filled = _extrapolate_visible_tail(
                 points=filled,
-                records=records,
+                grid=grid,
                 config=config,
                 final_analysis_frame_index=final_analysis_frame_index,
             )
-        smoothing_fps = (
-            manifest.source_fps if manifest.source_fps > 0 else manifest.analysis_fps
-        )
         should_smooth_segment = (
             config.render.smoothing.smooth_keyframes
             and config.render.smoothing.interpolation_method == "linear"
         )
-        for segment in _split_contiguous_segments(filled, records):
+        for segment in _split_contiguous_segments(filled, grid):
             segment_points = (
-                _smooth_segment(segment, config, smoothing_fps)
+                _smooth_segment(segment, config, config.video.fps)
                 if should_smooth_segment
                 else segment
             )

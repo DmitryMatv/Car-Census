@@ -3,6 +3,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import orjson
+import pytest
 
 from config import AppConfig, build_full_frame_profile
 from pipeline import render as render_module
@@ -34,7 +35,7 @@ class DummyRunStore:
         self.render_frames_path = root / "analysis" / "render_frames.jsonl"
         self.tracks_path = root / "analysis" / "tracks.jsonl"
         self.labels_path = root / "mmr" / "labels.json"
-        self.output_video_path = root / "render" / "annotated.mp4"
+        self.output_video_path = root / "annotated.mp4"
         self.manifest = RunManifest(
             run_id="test",
             video_path=root / "input.mp4",
@@ -155,8 +156,8 @@ def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     )
     monkeypatch.setattr(
         render_module,
-        "iter_sampled_frames",
-        lambda video_path, target_fps: (
+        "iter_video_frames",
+        lambda video_path, fps: (
             (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
             for index in range(6)
         ),
@@ -180,13 +181,13 @@ def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     assert DummyAnnotator.seen_track_ids == [[1], [1], [1], [2], [2], [2]]
 
 
-def test_render_uses_configured_output_fps_for_sampling_and_writer(
+def test_render_uses_configured_video_fps_for_iteration_and_writer(
     tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_frame_records(store.frames_path)
     writer = DummyWriter()
-    sampled_target_fps = []
+    iterated_fps = []
     writer_kwargs = {}
 
     monkeypatch.setattr(
@@ -195,31 +196,50 @@ def test_render_uses_configured_output_fps_for_sampling_and_writer(
         lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=6),
     )
 
-    def fake_iter_sampled_frames(video_path, target_fps):
-        sampled_target_fps.append(target_fps)
-        for index in (0, 2, 4):
+    def fake_iter_video_frames(video_path, fps):
+        iterated_fps.append(fps)
+        for index in range(3):
             yield index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8)
 
     def fake_build_video_writer(**kwargs):
         writer_kwargs.update(kwargs)
         return writer
 
-    monkeypatch.setattr(render_module, "iter_sampled_frames", fake_iter_sampled_frames)
+    monkeypatch.setattr(render_module, "iter_video_frames", fake_iter_video_frames)
     monkeypatch.setattr(render_module, "build_video_writer", fake_build_video_writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
-        config=AppConfig.model_validate(
-            {"render": {"output_fps": 15.0, "smoothing": {"enabled": False}}}
-        ),
+        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
     )
 
-    assert sampled_target_fps == [15.0]
-    assert writer_kwargs["fps"] == 15.0
+    assert iterated_fps == [30.0]
+    assert writer_kwargs["fps"] == 30.0
     assert len(writer.frames) == 3
+
+
+def test_render_rejects_non_30_fps_input(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_frame_records(store.frames_path)
+
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(width=16, height=16, fps=25.0, frame_count=6),
+    )
+
+    with pytest.raises(RuntimeError, match="Input video FPS"):
+        render_video(
+            config=AppConfig.model_validate(
+                {"render": {"smoothing": {"enabled": False}}}
+            ),
+            profile=build_full_frame_profile(width=16, height=16),
+            video_path=store.manifest.video_path,
+            run_store=store,
+        )
 
 
 def test_render_formats_api_counter_prefix() -> None:
@@ -329,8 +349,8 @@ def test_render_passes_numbered_unknown_labels_when_labels_file_is_missing(
     )
     monkeypatch.setattr(
         render_module,
-        "iter_sampled_frames",
-        lambda video_path, target_fps: (
+        "iter_video_frames",
+        lambda video_path, fps: (
             (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
             for index in range(6)
         ),
@@ -383,8 +403,8 @@ def test_render_hides_tracks_without_vehicle_index_for_new_runs(
     )
     monkeypatch.setattr(
         render_module,
-        "iter_sampled_frames",
-        lambda video_path, target_fps: (
+        "iter_video_frames",
+        lambda video_path, fps: (
             (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
             for index in range(1)
         ),
@@ -403,7 +423,7 @@ def test_render_hides_tracks_without_vehicle_index_for_new_runs(
     assert DummyAnnotator.seen_labels_by_track[0] == {1: "1 | UNKNOWN"}
 
 
-def test_video_annotator_places_label_below_and_centered() -> None:
+def test_video_annotator_places_label_above_and_left_aligned() -> None:
     config = AppConfig.model_validate(
         {
             "render": {
@@ -414,7 +434,7 @@ def test_video_annotator_places_label_below_and_centered() -> None:
             }
         }
     )
-    bbox = BBox(x1=60, y1=20, x2=100, y2=60)
+    bbox = BBox(x1=60, y1=40, x2=100, y2=80)
     track = TrackedObject(
         track_id=1,
         frame_index=0,
@@ -433,12 +453,10 @@ def test_video_annotator_places_label_below_and_centered() -> None:
         label="#1 Toyota",
         config=config,
     )
-    left, top, right, _bottom, _baseline = bounds
-    bbox_center_x = (track.bbox.x1 + track.bbox.x2) / 2.0
-    label_center_x = (left + right) / 2.0
+    left, top, _right, bottom, _baseline = bounds
 
-    assert top == int(round(track.bbox.y2 + config.render.label_gap_px))
-    assert label_center_x == bbox_center_x
+    assert left + config.render.label_padding_px == int(round(track.bbox.x1 + 1))
+    assert bottom == int(round(track.bbox.y1 - config.render.label_gap_px))
 
 
 def test_video_annotator_vertically_centers_label_text() -> None:
@@ -542,7 +560,7 @@ def test_video_annotator_can_draw_glass_label_without_solid_purple() -> None:
             }
         }
     )
-    bbox = BBox(x1=40, y1=20, x2=90, y2=55)
+    bbox = BBox(x1=40, y1=50, x2=90, y2=85)
     track = _render_track(bbox=bbox)
     frame = np.full((130, 180, 3), 100, dtype=np.uint8)
 
@@ -626,11 +644,9 @@ def test_video_annotator_does_not_draw_trace_history_between_frames() -> None:
     config = AppConfig.model_validate(
         {
             "render": {
-                "line_thickness": 3,
                 "glow_enabled": False,
                 "glow_alpha": 0.0,
                 "label_glow_alpha": 0.0,
-                "trace_enabled": False,
             }
         }
     )
@@ -668,13 +684,12 @@ def test_video_annotator_does_not_draw_bright_label_border() -> None:
                 "label_padding_px": 5,
                 "label_gap_px": 6,
                 "label_bg_alpha": 0.42,
-                "label_border_alpha": 0.0,
                 "label_shadow_enabled": False,
                 "glow_enabled": False,
             }
         }
     )
-    bbox = BBox(x1=40, y1=20, x2=90, y2=55)
+    bbox = BBox(x1=40, y1=50, x2=90, y2=85)
     track = _render_track(bbox=bbox)
     frame = np.full((130, 180, 3), 100, dtype=np.uint8)
 

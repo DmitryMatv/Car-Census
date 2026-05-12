@@ -721,6 +721,55 @@ def test_smooth_render_tracks_keeps_short_tracks_unsmoothed(tmp_path) -> None:
     assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
 
 
+def test_smooth_render_tracks_keeps_unsmoothed_short_track_without_full_frame_scan_assumption(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, frame_count=4)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "interpolation_method": "linear",
+                    "min_observations": 3,
+                }
+            }
+        }
+    )
+    short_track_bbox = BBox(x1=100, y1=10, x2=120, y2=30)
+    records = [
+        _record(
+            0,
+            0.0,
+            [
+                _track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30)),
+                _track(2, 0, 0.0, short_track_bbox),
+            ],
+        ),
+        _record(1, 1 / 30),
+        _record(
+            2,
+            2 / 30,
+            [_track(1, 2, 2 / 30, BBox(x1=20, y1=10, x2=40, y2=30))],
+        ),
+        _record(
+            3,
+            3 / 30,
+            [_track(1, 3, 3 / 30, BBox(x1=30, y1=10, x2=50, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert [track.track_id for track in smoothed[0].tracks] == [1, 2]
+    assert smoothed[0].tracks[1].bbox == short_track_bbox
+    assert [track.track_id for track in smoothed[1].tracks] == [1]
+    assert [track.track_id for track in smoothed[2].tracks] == [1]
+    assert [track.track_id for track in smoothed[3].tracks] == [1]
+
+
 def test_smooth_render_tracks_clamps_extreme_center_offset(tmp_path) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)

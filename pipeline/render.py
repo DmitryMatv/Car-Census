@@ -12,8 +12,9 @@ from models import FrameRecord, MMRResult
 from pipeline.smooth import smooth_render_tracks
 from utils.video import (
     build_video_writer,
-    iter_sampled_frames,
+    iter_video_frames,
     read_video_metadata,
+    validate_video_fps,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,11 +84,11 @@ def render_video(
     run_store: RunStore,
 ) -> Path:
     metadata = read_video_metadata(video_path)
-    manifest = run_store.read_manifest()
-    output_fps = (
-        metadata.fps if config.render.output_fps <= 0 else config.render.output_fps
+    validate_video_fps(
+        metadata=metadata,
+        expected_fps=config.video.fps,
+        tolerance=config.video.fps_tolerance,
     )
-    _ = manifest
     labels = _load_labels(run_store.labels_path)
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
@@ -106,7 +107,7 @@ def render_video(
     annotator = VideoAnnotator(config)
     writer = build_video_writer(
         output_path=run_store.output_video_path,
-        fps=output_fps,
+        fps=config.video.fps,
         width=metadata.width,
         height=metadata.height,
         codec=config.render.codec,
@@ -116,8 +117,8 @@ def render_video(
     latest_tracks = []
 
     try:
-        for frame_index, _timestamp_seconds, frame in iter_sampled_frames(
-            video_path, output_fps
+        for frame_index, _timestamp_seconds, frame in iter_video_frames(
+            video_path, config.video.fps
         ):
             while (
                 current_record is not None and current_record.frame_index <= frame_index

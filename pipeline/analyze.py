@@ -35,7 +35,7 @@ from models import (
     TrackedObject,
 )
 from utils.image_quality import laplacian_sharpness
-from utils.video import iter_sampled_frames, read_video_metadata
+from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
 
 logger = logging.getLogger(__name__)
 
@@ -150,17 +150,18 @@ def analyze_video(
     run_store: RunStore,
 ) -> RunStore:
     metadata = read_video_metadata(video_path)
-    analysis_fps = (
-        metadata.fps
-        if config.analysis.fps <= 0
-        else min(config.analysis.fps, metadata.fps)
+    validate_video_fps(
+        metadata=metadata,
+        expected_fps=config.video.fps,
+        tolerance=config.video.fps_tolerance,
     )
+    analysis_fps = min(config.analysis.fps, config.video.fps)
     manifest = RunManifest(
         run_id=run_store.root.name,
         video_path=video_path,
         camera_id=profile.camera_id,
         root_dir=run_store.root,
-        source_fps=metadata.fps,
+        source_fps=config.video.fps,
         analysis_fps=analysis_fps,
         width=metadata.width,
         height=metadata.height,
@@ -179,7 +180,7 @@ def analyze_video(
         line_end = tuple(count_line.end)
 
     for frame_index, timestamp_seconds, frame in iter_sampled_frames(
-        video_path, analysis_fps
+        video_path, source_fps=config.video.fps, target_fps=analysis_fps
     ):
         roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
         detections = detector.detect(roi_frame)

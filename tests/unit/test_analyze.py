@@ -109,6 +109,7 @@ class FakeTrackerAdapter:
     def __init__(self, tracks: sv.Detections) -> None:
         self.tracks = tracks
         self.received_detections: list[list[Detection]] = []
+        self.frame_rate: float | None = None
 
     def update(self, detections: list[Detection], frame) -> sv.Detections:
         _ = frame
@@ -157,19 +158,23 @@ def _prepare_analyze_test(
         analyze_module,
         "read_video_metadata",
         lambda video_path: VideoMetadata(
-            width=100, height=100, fps=10.0, frame_count=1
+            width=100, height=100, fps=30.0, frame_count=1
         ),
     )
     monkeypatch.setattr(
         analyze_module,
         "iter_sampled_frames",
-        lambda video_path, target_fps: iter([(0, 0.0, frame)]),
+        lambda video_path, source_fps, target_fps: iter([(0, 0.0, frame)]),
     )
     monkeypatch.setattr(
         analyze_module, "create_detector", lambda config, project_root: detector
     )
     monkeypatch.setattr(
-        analyze_module, "BotSortAdapter", lambda config, frame_rate: tracker
+        analyze_module,
+        "BotSortAdapter",
+        lambda config, frame_rate: (
+            setattr(tracker, "frame_rate", frame_rate) or tracker
+        ),
     )
     return store
 
@@ -198,8 +203,12 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     )
 
     records = _read_frame_records(store.frames_path)
+    manifest = store.read_manifest()
     assert len(records) == 1
     assert records[0].tracks == []
+    assert tracker.frame_rate == 10.0
+    assert manifest.source_fps == 30.0
+    assert manifest.analysis_fps == 10.0
 
 
 def test_analyze_filters_detection_touching_polygon_edge_before_tracker(

@@ -5,6 +5,7 @@ from typing import Sequence
 
 import cv2
 import numpy as np
+import supervision as sv
 from supervision.annotators.core import spread_out_boxes
 
 from config import AppConfig, CameraProfile
@@ -157,42 +158,22 @@ def _draw_glow(
     return _blend_layer(base, blurred, alpha)
 
 
-def _clip_point(
-    point: tuple[float, float], frame_shape: tuple[int, ...]
-) -> tuple[int, int]:
-    frame_height, frame_width = frame_shape[:2]
-    x = int(round(point[0]))
-    y = int(round(point[1]))
-    return max(0, min(x, frame_width - 1)), max(0, min(y, frame_height - 1))
-
-
-def _draw_corner_box(
-    frame: np.ndarray,
-    track: TrackedObject,
-    color: tuple[int, int, int],
-    thickness: int,
-    corner_length: int,
-) -> None:
-    x1 = int(round(track.bbox.x1))
-    y1 = int(round(track.bbox.y1))
-    x2 = int(round(track.bbox.x2))
-    y2 = int(round(track.bbox.y2))
-    length = max(0, min(corner_length, x2 - x1, y2 - y1))
-    if length == 0 or thickness <= 0:
-        return
-
-    segments = [
-        ((x1, y1), (x1 + length, y1)),
-        ((x1, y1), (x1, y1 + length)),
-        ((x2, y1), (x2 - length, y1)),
-        ((x2, y1), (x2, y1 + length)),
-        ((x1, y2), (x1 + length, y2)),
-        ((x1, y2), (x1, y2 - length)),
-        ((x2, y2), (x2 - length, y2)),
-        ((x2, y2), (x2, y2 - length)),
-    ]
-    for start, end in segments:
-        cv2.line(frame, start, end, color, thickness, cv2.LINE_AA)
+def _tracks_to_detections(tracks: Sequence[TrackedObject]) -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.array(
+            [
+                [track.bbox.x1, track.bbox.y1, track.bbox.x2, track.bbox.y2]
+                for track in tracks
+            ],
+            dtype=np.float32,
+        ),
+        confidence=np.array([track.confidence for track in tracks], dtype=np.float32),
+        class_id=np.array(
+            [track.class_id if track.class_id is not None else 0 for track in tracks],
+            dtype=np.int32,
+        ),
+        tracker_id=np.array([track.track_id for track in tracks], dtype=np.int32),
+    )
 
 
 def _draw_trace(
@@ -261,11 +242,9 @@ def _anchored_label_layout(
         label, config
     )
     frame_height, frame_width = frame_shape[:2]
-    bbox_center_x = (track.bbox.x1 + track.bbox.x2) / 2.0
-
-    left = int(round(bbox_center_x - (label_width / 2.0)))
+    left = int(round(track.bbox.x1 - config.render.label_padding_px + 1))
     left = max(0, min(left, max(0, frame_width - label_width)))
-    top = int(round(track.bbox.y2 + config.render.label_gap_px))
+    top = int(round(track.bbox.y1 - label_height - config.render.label_gap_px))
     top = max(0, min(top, max(0, frame_height - label_height)))
     return _layout_from_bounds(left, top, label, config)
 
@@ -359,7 +338,16 @@ def label_box_bounds(
 class VideoAnnotator:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        self.box_color = _color_to_bgr(config.render.box_color)
+        self.corner_annotator = sv.BoxCornerAnnotator(
+            color=sv.Color.from_hex(config.render.box_color),
+            thickness=config.render.corner_thickness,
+            corner_length=config.render.corner_length,
+        )
+        self.glow_corner_annotator = sv.BoxCornerAnnotator(
+            color=sv.Color.from_hex(config.render.glow_color),
+            thickness=config.render.corner_thickness + 2,
+            corner_length=config.render.corner_length,
+        )
         self.glow_color = _color_to_bgr(config.render.glow_color)
         self.label_bg_color = _color_to_bgr(config.render.label_bg_color)
         self.label_text_color = _color_to_bgr(config.render.label_text_color)
@@ -379,27 +367,15 @@ class VideoAnnotator:
 
         glow_layer = np.zeros_like(annotated)
         solid_layer = np.zeros_like(annotated)
+        detections = _tracks_to_detections(tracks)
         label_text = [
             labels_by_track.get(track.track_id, self.config.render.unknown_label)
             for track in tracks
         ]
 
-        for track in tracks:
-            if self.config.render.glow_enabled:
-                _draw_corner_box(
-                    glow_layer,
-                    track,
-                    self.glow_color,
-                    self.config.render.corner_thickness + 2,
-                    self.config.render.corner_length,
-                )
-            _draw_corner_box(
-                solid_layer,
-                track,
-                self.box_color,
-                self.config.render.corner_thickness,
-                self.config.render.corner_length,
-            )
+        if self.config.render.glow_enabled:
+            self.glow_corner_annotator.annotate(glow_layer, detections)
+        self.corner_annotator.annotate(solid_layer, detections)
 
         if self.config.render.glow_enabled:
             annotated = _draw_glow(

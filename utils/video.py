@@ -54,27 +54,60 @@ def read_first_frame(video_path: Path) -> np.ndarray:
         capture.release()
 
 
-def iter_sampled_frames(
+def validate_video_fps(
+    metadata: VideoMetadata, expected_fps: float, tolerance: float
+) -> None:
+    if metadata.fps <= 0:
+        raise RuntimeError("Could not determine input video FPS.")
+    if abs(metadata.fps - expected_fps) > tolerance:
+        raise RuntimeError(
+            "Input video FPS does not match configured FPS. "
+            f"Expected {expected_fps:.3f} +/- {tolerance:.3f}, got {metadata.fps:.3f}."
+        )
+
+
+def iter_video_frames(
     video_path: Path,
-    target_fps: float,
+    fps: float,
 ) -> Iterator[tuple[int, float, np.ndarray]]:
     capture = open_capture(video_path)
     try:
-        source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
-        if source_fps <= 0:
-            raise RuntimeError(f"Invalid source FPS for video: {video_path}")
-        if target_fps <= 0 or target_fps >= source_fps:
-            step = 1
-        else:
-            step = max(1, int(round(source_fps / target_fps)))
         frame_index = 0
         while True:
             ok, frame = capture.read()
             if not ok or frame is None:
                 break
-            if frame_index % step == 0:
-                timestamp = frame_index / source_fps
+            timestamp = frame_index / fps
+            yield frame_index, timestamp, frame
+            frame_index += 1
+    finally:
+        capture.release()
+
+
+def iter_sampled_frames(
+    video_path: Path,
+    source_fps: float,
+    target_fps: float,
+) -> Iterator[tuple[int, float, np.ndarray]]:
+    if source_fps <= 0:
+        raise RuntimeError(f"Invalid source FPS for video: {video_path}")
+    if target_fps <= 0:
+        raise RuntimeError(f"Invalid target FPS for video: {video_path}")
+
+    capture = open_capture(video_path)
+    try:
+        frame_index = 0
+        next_sample_time = 0.0
+        sample_interval = 1.0 / min(target_fps, source_fps)
+        epsilon = 1e-9
+        while True:
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                break
+            timestamp = frame_index / source_fps
+            if timestamp + epsilon >= next_sample_time:
                 yield frame_index, timestamp, frame
+                next_sample_time += sample_interval
             frame_index += 1
     finally:
         capture.release()

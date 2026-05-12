@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _coco_class_names() -> dict[int, str]:
@@ -29,14 +29,23 @@ def _coco_class_names() -> dict[int, str]:
     }
 
 
-class ProjectConfig(BaseModel):
+class StrictBaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProjectConfig(StrictBaseModel):
     output_root: Path = Path("outputs")
     device: str = "auto"
     camera_profiles_dir: Path = Path("configs/cameras")
 
 
-class AnalysisConfig(BaseModel):
-    fps: float = 0.0
+class VideoConfig(StrictBaseModel):
+    fps: float = Field(default=30.0, gt=0.0)
+    fps_tolerance: float = Field(default=0.05, ge=0.0)
+
+
+class AnalysisConfig(StrictBaseModel):
+    fps: float = Field(default=10.0, gt=0.0)
     imgsz: int = 960
     min_track_frames: int = 3
     min_box_height_px: int = 80
@@ -47,7 +56,7 @@ class AnalysisConfig(BaseModel):
     crop_jpeg_quality: int = 95
 
 
-class DetectorConfig(BaseModel):
+class DetectorConfig(StrictBaseModel):
     provider: str = "onnxruntime_local"
     weights: str = "weights/yolo26n.onnx"
     confidence: float = 0.4
@@ -58,7 +67,7 @@ class DetectorConfig(BaseModel):
     onnx_threads: int = 4
 
 
-class TrackerConfig(BaseModel):
+class TrackerConfig(StrictBaseModel):
     provider: str = "botsort"
     track_high_thresh: float = 0.25
     track_low_thresh: float = 0.10
@@ -79,7 +88,7 @@ class TrackerConfig(BaseModel):
     edge_margin_px: int = 0
 
 
-class RenderSmoothingConfig(BaseModel):
+class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool = True
     interpolate: bool = True
     interpolation_method: Literal["linear", "polynomial", "hermite"] = "hermite"
@@ -92,25 +101,23 @@ class RenderSmoothingConfig(BaseModel):
     max_size_delta_ratio: float = 0.20
 
 
-class MMRConfig(BaseModel):
+class MMRConfig(StrictBaseModel):
     api_url: str = "https://trafficeye.ai/recognition"
     api_key_env: str = "TRAFFICEYE_API_KEY"
     timeout_seconds: float = 45.0
-    max_attempts_per_track: int = 3
     accept_model_confidence: float = 0.60
 
 
-class RenderConfig(BaseModel):
+class RenderConfig(StrictBaseModel):
     codec: str = "mp4v"
     box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0
     label_thickness: int = 1
     label_padding_px: int = 4
-    label_gap_px: int = 6
+    label_gap_px: int = 5
     label_text_color: str = "#FFFFFF"
     label_bg_color: str = "#101820"
     label_bg_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
-    label_border_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
     label_shadow_enabled: bool = False
     label_shadow_color: str = "#000000"
     label_shadow_alpha: float = Field(default=0.45, ge=0.0, le=1.0)
@@ -124,27 +131,23 @@ class RenderConfig(BaseModel):
     glow_alpha: float = Field(default=0.55, ge=0.0, le=1.0)
     label_glow_radius_px: int = Field(default=7, ge=0)
     label_glow_alpha: float = Field(default=0.30, ge=0.0, le=1.0)
-    line_thickness: int = 8
     corner_thickness: int = 2
     corner_length: int = 32
-    trace_enabled: bool = False
-    trace_length: int = 25
-    output_fps: float = 0.0
     unknown_label: str = "UNKNOWN"
     smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
 
 
-class PolygonZoneConfig(BaseModel):
+class PolygonZoneConfig(StrictBaseModel):
     points: list[list[int]]
 
 
-class CountLineConfig(BaseModel):
+class CountLineConfig(StrictBaseModel):
     start: list[int]
     end: list[int]
     direction: str = "BOTH"
 
 
-class CameraProfile(BaseModel):
+class CameraProfile(StrictBaseModel):
     camera_id: str
     polygon: PolygonZoneConfig
     count_line: CountLineConfig | None = None
@@ -173,8 +176,9 @@ def build_full_frame_profile(
     )
 
 
-class AppConfig(BaseModel):
+class AppConfig(StrictBaseModel):
     project: ProjectConfig = Field(default_factory=ProjectConfig)
+    video: VideoConfig = Field(default_factory=VideoConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     detector: DetectorConfig = Field(default_factory=DetectorConfig)
     tracker: TrackerConfig = Field(default_factory=TrackerConfig)

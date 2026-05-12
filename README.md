@@ -100,8 +100,7 @@ outputs/<run-id>/
   mmr/
     labels.json
     cache/
-  render/
-    annotated.mp4
+  annotated.mp4
   reports/
     counts.csv
     counts.json
@@ -109,8 +108,8 @@ outputs/<run-id>/
 
 ## Notes
 
-- Analysis defaults to the source video FPS. Set `analysis.fps` to a positive value if you want downsampling.
-- Render output defaults to the source video FPS. Set `render.output_fps` to a positive value if you want a different export rate.
+- Input videos are expected to be 30 fps by default. `video.fps` controls source-frame timestamps and render output FPS; `video.fps_tolerance` controls how much OpenCV-reported input FPS drift is accepted before the run fails.
+- Analysis can run at a lower cadence for faster tracking. Set `analysis.fps` to the desired tracking rate, such as `10`; rendering still processes every decoded input frame and writes at `video.fps`.
 - Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
 - By default, `tracker.ignore_edge_touches: true` ignores detections and tracker outputs whose boxes touch the source-frame edge or selected camera crop edge. Increase `tracker.edge_margin_px` to ignore boxes that are near, but not exactly on, the edge.
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.

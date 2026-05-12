@@ -76,7 +76,7 @@ class RunStore:
 
     @property
     def output_video_path(self) -> Path:
-        return self.render_dir / "annotated.mp4"
+        return self.root / "annotated.mp4"
 
     @property
     def counts_json_path(self) -> Path:
