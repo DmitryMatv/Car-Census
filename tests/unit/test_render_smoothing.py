@@ -366,6 +366,7 @@ def test_polynomial_interpolation_clamps_overshoot_to_linear_reference(
                     "interpolation_method": "polynomial",
                     "polynomial_order": 3,
                     "max_center_offset_ratio": 0.1,
+                    "reject_short_excursions": False,
                 }
             }
         }
@@ -508,6 +509,7 @@ def test_hermite_interpolation_reduces_overshoot_on_turning_motion(
                 "smoothing": {
                     "interpolation_method": "hermite",
                     "max_center_offset_ratio": 10,
+                    "reject_short_excursions": False,
                 }
             }
         }
@@ -587,6 +589,7 @@ def test_hermite_interpolation_clamps_box_size_and_center(tmp_path) -> None:
                     "interpolation_method": "hermite",
                     "max_center_offset_ratio": 0.1,
                     "max_size_delta_ratio": 0.1,
+                    "reject_short_excursions": False,
                 }
             }
         }
@@ -770,11 +773,101 @@ def test_smooth_render_tracks_keeps_unsmoothed_short_track_without_full_frame_sc
     assert [track.track_id for track in smoothed[3].tracks] == [1]
 
 
+def test_smooth_render_tracks_rejects_one_frame_excursion(tmp_path) -> None:
+    store = _store(tmp_path)
+    profile = build_full_frame_profile(width=500, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(1, 0.1, [_track(1, 1, 0.1, BBox(x1=10, y1=10, x2=30, y2=30))]),
+        _record(2, 0.2, [_track(1, 2, 0.2, BBox(x1=300, y1=10, x2=320, y2=30))]),
+        _record(3, 0.3, [_track(1, 3, 0.3, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(4, 0.4, [_track(1, 4, 0.4, BBox(x1=40, y1=10, x2=60, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+
+
+def test_smooth_render_tracks_rejects_two_frame_excursion(tmp_path) -> None:
+    store = _store(tmp_path)
+    profile = build_full_frame_profile(width=500, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(1, 0.1, [_track(1, 1, 0.1, BBox(x1=10, y1=10, x2=30, y2=30))]),
+        _record(2, 0.2, [_track(1, 2, 0.2, BBox(x1=300, y1=10, x2=320, y2=30))]),
+        _record(3, 0.3, [_track(1, 3, 0.3, BBox(x1=320, y1=10, x2=340, y2=30))]),
+        _record(4, 0.4, [_track(1, 4, 0.4, BBox(x1=40, y1=10, x2=60, y2=30))]),
+        _record(5, 0.5, [_track(1, 5, 0.5, BBox(x1=50, y1=10, x2=70, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(30)
+
+
+def test_smooth_render_tracks_preserves_sustained_excursion(tmp_path) -> None:
+    store = _store(tmp_path)
+    profile = build_full_frame_profile(width=500, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(1, 0.1, [_track(1, 1, 0.1, BBox(x1=10, y1=10, x2=30, y2=30))]),
+        _record(2, 0.2, [_track(1, 2, 0.2, BBox(x1=300, y1=10, x2=320, y2=30))]),
+        _record(3, 0.3, [_track(1, 3, 0.3, BBox(x1=320, y1=10, x2=340, y2=30))]),
+        _record(4, 0.4, [_track(1, 4, 0.4, BBox(x1=340, y1=10, x2=360, y2=30))]),
+        _record(5, 0.5, [_track(1, 5, 0.5, BBox(x1=50, y1=10, x2=70, y2=30))]),
+        _record(6, 0.6, [_track(1, 6, 0.6, BBox(x1=60, y1=10, x2=80, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(300)
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(320)
+    assert smoothed[4].tracks[0].bbox.x1 == pytest.approx(340)
+
+
+def test_smooth_render_tracks_can_disable_short_excursion_rejection(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path)
+    profile = build_full_frame_profile(width=500, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"reject_short_excursions": False}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(1, 0.1, [_track(1, 1, 0.1, BBox(x1=10, y1=10, x2=30, y2=30))]),
+        _record(2, 0.2, [_track(1, 2, 0.2, BBox(x1=300, y1=10, x2=320, y2=30))]),
+        _record(3, 0.3, [_track(1, 3, 0.3, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(4, 0.4, [_track(1, 4, 0.4, BBox(x1=40, y1=10, x2=60, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(300)
+
+
 def test_smooth_render_tracks_clamps_extreme_center_offset(tmp_path) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     config = AppConfig.model_validate(
-        {"render": {"smoothing": {"max_center_offset_ratio": 0.1}}}
+        {
+            "render": {
+                "smoothing": {
+                    "max_center_offset_ratio": 0.1,
+                    "reject_short_excursions": False,
+                }
+            }
+        }
     )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),

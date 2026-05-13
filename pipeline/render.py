@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from pathlib import Path
 
 import orjson
@@ -77,11 +78,21 @@ def visible_track_label_text_by_track(
     return labels
 
 
+def visible_track_ids_by_observation_count(
+    frames_path: Path, min_observations: int
+) -> set[int]:
+    counts: Counter[int] = Counter()
+    for record in _iter_frame_records(frames_path):
+        counts.update(track.track_id for track in record.tracks)
+    return {track_id for track_id, count in counts.items() if count >= min_observations}
+
+
 def render_video(
     config: AppConfig,
     profile: CameraProfile,
     video_path: Path,
     run_store: RunStore,
+    allow_unclassified_annotations: bool = False,
 ) -> Path:
     metadata = read_video_metadata(video_path)
     validate_video_fps(
@@ -89,24 +100,27 @@ def render_video(
         expected_fps=config.video.fps,
         tolerance=config.video.fps_tolerance,
     )
-    has_labels_file = run_store.labels_path.exists()
     labels = _load_labels(run_store.labels_path)
+    visible_track_ids = visible_track_ids_by_observation_count(
+        run_store.frames_path,
+        config.render.min_visible_track_observations,
+    )
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
         if config.render.smoothing.enabled
         else run_store.frames_path
     )
-    label_text = (
-        {}
-        if has_labels_file
-        else visible_track_label_text_by_track(frames_path, config.render.unknown_label)
-    )
-    label_text.update(
-        {
+    if labels:
+        label_text = {
             track_id: format_label_text(result, config.render.unknown_label)
             for track_id, result in labels.items()
         }
-    )
+    elif allow_unclassified_annotations:
+        label_text = visible_track_label_text_by_track(
+            frames_path, config.render.unknown_label
+        )
+    else:
+        label_text = {}
     annotator = VideoAnnotator(config)
     writer = build_video_writer(
         output_path=run_store.output_video_path,
@@ -129,7 +143,9 @@ def render_video(
                 latest_tracks = current_record.tracks
                 current_record = next(record_iter, None)
             render_tracks = [
-                track for track in latest_tracks if track.track_id in label_text
+                track
+                for track in latest_tracks
+                if track.track_id in label_text and track.track_id in visible_track_ids
             ]
             annotated = annotator.annotate(
                 frame=frame,

@@ -47,7 +47,7 @@ class VideoConfig(StrictBaseModel):
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
     imgsz: int = 960
-    min_track_frames: int = 3
+    min_track_frames: int = 10
     min_box_height_px: int = 80
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
     crop_padding_px: int = Field(default=0, ge=0)
@@ -100,6 +100,9 @@ class RenderSmoothingConfig(StrictBaseModel):
     polynomial_order: int = Field(default=2, ge=1, le=3)
     max_center_offset_ratio: float = 0.20
     max_size_delta_ratio: float = 0.20
+    reject_short_excursions: bool = True
+    max_excursion_observations: int = Field(default=2, ge=1)
+    excursion_center_ratio: float = Field(default=1.25, ge=0.0)
 
 
 class MMRConfig(StrictBaseModel):
@@ -114,6 +117,7 @@ class MMRConfig(StrictBaseModel):
 
 class RenderConfig(StrictBaseModel):
     codec: str = "mp4v"
+    min_visible_track_observations: int = Field(default=10, ge=1)
     box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0
     label_thickness: int = 1

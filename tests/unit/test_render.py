@@ -140,6 +140,48 @@ def _write_frame_records(path: Path) -> None:
     )
 
 
+def _write_records(path: Path, records: list[FrameRecord]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        b"".join(
+            orjson.dumps(record.model_dump(mode="json")) + b"\n" for record in records
+        )
+    )
+
+
+def _render_config_without_smoothing(
+    min_visible_track_observations: int = 1,
+) -> AppConfig:
+    return AppConfig.model_validate(
+        {
+            "render": {
+                "min_visible_track_observations": min_visible_track_observations,
+                "smoothing": {"enabled": False},
+            }
+        }
+    )
+
+
+def _patch_render_io(monkeypatch, writer: DummyWriter, frame_count: int) -> None:
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(
+            width=16, height=16, fps=30.0, frame_count=frame_count
+        ),
+    )
+    monkeypatch.setattr(
+        render_module,
+        "iter_video_frames",
+        lambda video_path, fps: (
+            (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
+            for index in range(frame_count)
+        ),
+    )
+    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
+    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+
+
 def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     tmp_path, monkeypatch
 ) -> None:
@@ -170,10 +212,11 @@ def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
-        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        config=_render_config_without_smoothing(),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
+        allow_unclassified_annotations=True,
     )
 
     assert len(writer.frames) == 6
@@ -210,7 +253,7 @@ def test_render_uses_configured_video_fps_for_iteration_and_writer(
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
-        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        config=_render_config_without_smoothing(),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
@@ -333,7 +376,7 @@ def test_render_uses_vehicle_index_for_visible_track_labels(
     }
 
 
-def test_render_passes_numbered_unknown_labels_when_labels_file_is_missing(
+def test_render_draws_no_tracks_when_labels_file_missing_by_default(
     tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
@@ -341,28 +384,35 @@ def test_render_passes_numbered_unknown_labels_when_labels_file_is_missing(
     writer = DummyWriter()
     DummyAnnotator.seen_track_ids = []
     DummyAnnotator.seen_labels_by_track = []
-
-    monkeypatch.setattr(
-        render_module,
-        "read_video_metadata",
-        lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=6),
-    )
-    monkeypatch.setattr(
-        render_module,
-        "iter_video_frames",
-        lambda video_path, fps: (
-            (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
-            for index in range(6)
-        ),
-    )
-    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
-    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+    _patch_render_io(monkeypatch, writer, frame_count=6)
 
     render_video(
-        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        config=_render_config_without_smoothing(),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[], [], [], [], [], []]
+    assert DummyAnnotator.seen_labels_by_track[0] == {}
+
+
+def test_render_can_allow_unclassified_unknown_annotations(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_frame_records(store.frames_path)
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=6)
+
+    render_video(
+        config=_render_config_without_smoothing(),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
     )
 
     assert DummyAnnotator.seen_labels_by_track
@@ -372,7 +422,91 @@ def test_render_passes_numbered_unknown_labels_when_labels_file_is_missing(
     }
 
 
-def test_render_hides_tracks_without_vehicle_index_for_new_runs(
+def test_render_hides_tracks_below_min_visible_observations(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, 0, 0.0), _track(2, 0, 0.0)],
+        ),
+        FrameRecord(
+            frame_index=1,
+            timestamp_seconds=1 / 30,
+            tracks=[_track(1, 1, 1 / 30), _track(2, 1, 1 / 30)],
+        ),
+        FrameRecord(
+            frame_index=2,
+            timestamp_seconds=2 / 30,
+            tracks=[_track(2, 2, 2 / 30)],
+        ),
+    ]
+    _write_records(store.frames_path, records)
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=3)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "min_visible_track_observations": 3,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[2], [2], [2]]
+    assert DummyAnnotator.seen_labels_by_track[0][1] == "1 | UNKNOWN"
+
+
+def test_render_can_restore_single_observation_track_visibility(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, 0, 0.0), _track(2, 0, 0.0)],
+        ),
+        FrameRecord(
+            frame_index=1,
+            timestamp_seconds=1 / 30,
+            tracks=[_track(1, 1, 1 / 30), _track(2, 1, 1 / 30)],
+        ),
+        FrameRecord(
+            frame_index=2,
+            timestamp_seconds=2 / 30,
+            tracks=[_track(2, 2, 2 / 30)],
+        ),
+    ]
+    _write_records(store.frames_path, records)
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=3)
+
+    render_video(
+        config=_render_config_without_smoothing(min_visible_track_observations=1),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[1, 2], [1, 2], [2]]
+
+
+def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
@@ -413,10 +547,11 @@ def test_render_hides_tracks_without_vehicle_index_for_new_runs(
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
-        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        config=_render_config_without_smoothing(),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
+        allow_unclassified_annotations=True,
     )
 
     assert DummyAnnotator.seen_track_ids == [[1]]
@@ -470,7 +605,7 @@ def test_render_hides_tracks_missing_from_existing_labels_file(
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
-        config=AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}}),
+        config=_render_config_without_smoothing(),
         profile=build_full_frame_profile(width=16, height=16),
         video_path=store.manifest.video_path,
         run_store=store,
@@ -478,6 +613,95 @@ def test_render_hides_tracks_missing_from_existing_labels_file(
 
     assert DummyAnnotator.seen_track_ids == [[1]]
     assert DummyAnnotator.seen_labels_by_track[0] == {1: "Toyota Corolla"}
+
+
+def test_render_draws_only_tracks_present_in_labels_file(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, 0, 0.0), _track(2, 0, 0.0)],
+        )
+    ]
+    _write_records(store.frames_path, records)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {"1": MMRResult(make="Toyota", model="Corolla").model_dump(mode="json")}
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=1)
+
+    render_video(
+        config=_render_config_without_smoothing(),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[1]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {1: "Toyota Corolla"}
+
+
+def test_render_still_applies_min_visible_observation_filter_to_labeled_tracks(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, 0, 0.0), _track(2, 0, 0.0)],
+        ),
+        FrameRecord(
+            frame_index=1,
+            timestamp_seconds=1 / 30,
+            tracks=[_track(1, 1, 1 / 30), _track(2, 1, 1 / 30)],
+        ),
+        FrameRecord(
+            frame_index=2,
+            timestamp_seconds=2 / 30,
+            tracks=[_track(2, 2, 2 / 30)],
+        ),
+    ]
+    _write_records(store.frames_path, records)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(make="Short", model="Track").model_dump(mode="json"),
+                "2": MMRResult(make="Stable", model="Track").model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=3)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "min_visible_track_observations": 3,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[2], [2], [2]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {
+        1: "Short Track",
+        2: "Stable Track",
+    }
 
 
 def test_video_annotator_places_label_above_and_left_aligned() -> None:

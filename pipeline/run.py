@@ -32,7 +32,11 @@ def run_pipeline(
     if not skip_classification:
         classify_tracks(config=config, run_store=run_store)
     render_video(
-        config=config, profile=profile, video_path=video_path, run_store=run_store
+        config=config,
+        profile=profile,
+        video_path=video_path,
+        run_store=run_store,
+        allow_unclassified_annotations=skip_classification,
     )
     generate_reports(run_store=run_store)
     return run_store

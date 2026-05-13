@@ -48,6 +48,8 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
+    assert config.analysis.min_track_frames == 10
+    assert config.render.min_visible_track_observations == 10
     assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
     assert config.render.corner_length == 20
@@ -70,6 +72,9 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.interpolation_method == "hermite"
     assert config.render.smoothing.polynomial_order == 2
+    assert config.render.smoothing.reject_short_excursions is True
+    assert config.render.smoothing.max_excursion_observations == 2
+    assert config.render.smoothing.excursion_center_ratio == 1.25
     assert not hasattr(config.mmr, "max_attempts_per_track")
 
 

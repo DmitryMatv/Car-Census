@@ -552,6 +552,123 @@ def _split_contiguous_segments(
     return segments
 
 
+def _split_temporal_segments(
+    points: list[_TrackPoint],
+    grid: _FrameGrid,
+    max_gap_seconds: float,
+) -> list[list[_TrackPoint]]:
+    if not points:
+        return []
+
+    segments: list[list[_TrackPoint]] = [[points[0]]]
+    for point in points[1:]:
+        previous = segments[-1][-1]
+        previous_position = grid.position.get(previous.frame_index)
+        current_position = grid.position.get(point.frame_index)
+        gap_seconds = point.timestamp_seconds - previous.timestamp_seconds
+        if (
+            previous_position is not None
+            and current_position is not None
+            and current_position > previous_position
+            and 0 <= gap_seconds <= max_gap_seconds
+        ):
+            segments[-1].append(point)
+        else:
+            segments.append([point])
+    return segments
+
+
+def _is_short_excursion(
+    segment: list[_TrackPoint],
+    start_index: int,
+    run_length: int,
+    config: AppConfig,
+) -> bool:
+    before = segment[start_index - 1]
+    after = segment[start_index + run_length]
+    anchor_distance = float(np.linalg.norm(after.vector[0:2] - before.vector[0:2]))
+    anchor_size = max(
+        float(before.vector[2]),
+        float(before.vector[3]),
+        float(after.vector[2]),
+        float(after.vector[3]),
+    )
+    max_anchor_distance = (
+        config.render.smoothing.excursion_center_ratio
+        * max(anchor_size, 1.0)
+        * (run_length + 1)
+    )
+    if anchor_distance > max_anchor_distance:
+        return False
+
+    for point in segment[start_index : start_index + run_length]:
+        expected = _linear_interpolate_vector(
+            before, after, point.timestamp_seconds
+        )
+        distance = float(np.linalg.norm(point.vector[0:2] - expected[0:2]))
+        threshold = (
+            config.render.smoothing.excursion_center_ratio
+            * max(float(expected[2]), float(expected[3]), 1.0)
+        )
+        if distance <= threshold:
+            return False
+    return True
+
+
+def _reject_short_excursions(
+    points: list[_TrackPoint],
+    grid: _FrameGrid,
+    config: AppConfig,
+) -> list[_TrackPoint]:
+    smoothing = config.render.smoothing
+    if not smoothing.reject_short_excursions or len(points) < 3:
+        return points
+
+    output: list[_TrackPoint] = []
+    max_run_length = smoothing.max_excursion_observations
+    for segment in _split_temporal_segments(points, grid, smoothing.max_gap_seconds):
+        if len(segment) < 3:
+            output.extend(segment)
+            continue
+
+        corrected = list(segment)
+        index = 1
+        while index < len(segment) - 1:
+            remaining = len(segment) - index - 1
+            candidate_lengths = range(min(max_run_length, remaining), 0, -1)
+            accepted_length = next(
+                (
+                    run_length
+                    for run_length in candidate_lengths
+                    if _is_short_excursion(segment, index, run_length, config)
+                ),
+                None,
+            )
+            if accepted_length is None:
+                index += 1
+                continue
+
+            before = segment[index - 1]
+            after = segment[index + accepted_length]
+            for offset, point in enumerate(
+                segment[index : index + accepted_length]
+            ):
+                expected = _linear_interpolate_vector(
+                    before, after, point.timestamp_seconds
+                )
+                corrected[index + offset] = _TrackPoint(
+                    frame_index=point.frame_index,
+                    timestamp_seconds=point.timestamp_seconds,
+                    vector=expected,
+                    source=point.source,
+                    interpolated=True,
+                )
+            index += accepted_length
+
+        output.extend(corrected)
+    return output
+
+
 def _local_polynomial_smooth(
     values: np.ndarray,
     timestamps: np.ndarray,
@@ -733,6 +850,7 @@ def smooth_render_tracks(
         points.sort(key=lambda point: point.timestamp_seconds)
         if track_id not in eligible_track_ids:
             continue
+        points = _reject_short_excursions(points, grid, config)
 
         if not config.render.smoothing.interpolate:
             filled = points

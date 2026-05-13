@@ -11,7 +11,7 @@ analysis:
   fps: 10
   imgsz: 640
   min_track_frames: 10
-  min_box_height_px: 80
+  min_box_height_px: 128
   crop_padding_ratio: 0.10
   crop_padding_px: 0
   crop_limit_per_track: 1
@@ -62,6 +62,7 @@ mmr:
 
 render:
   codec: mp4v
+  min_visible_track_observations: 10
   box_color: "#FFFFFF"
   label_font_scale: 0.8
   label_thickness: 2
@@ -98,3 +99,6 @@ render:
     polynomial_order: 2
     max_center_offset_ratio: 0.3
     max_size_delta_ratio: 0.3
+    reject_short_excursions: true
+    max_excursion_observations: 2
+    excursion_center_ratio: 1.25
