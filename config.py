@@ -66,6 +66,10 @@ class DetectorConfig(StrictBaseModel):
     allowed_class_ids: list[int] | None = None
     class_names: dict[int, str] = Field(default_factory=_coco_class_names)
     onnx_threads: int = 4
+    onnx_execution_providers: list[str] = Field(
+        default_factory=lambda: ["CPUExecutionProvider"]
+    )
+    onnx_require_gpu: bool = False
 
 
 class TrackerConfig(StrictBaseModel):
@@ -117,6 +121,11 @@ class MMRConfig(StrictBaseModel):
 
 class RenderConfig(StrictBaseModel):
     codec: str = "mp4v"
+    encode_backend: Literal["opencv", "auto-nvenc", "ffmpeg-nvenc"] = "opencv"
+    ffmpeg_path: str = "ffmpeg"
+    nvenc_codec: str = "h264_nvenc"
+    nvenc_preset: str = "p4"
+    nvenc_cq: int = Field(default=20, ge=0, le=51)
     min_visible_track_observations: int = Field(default=10, ge=1)
     box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0

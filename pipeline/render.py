@@ -7,12 +7,12 @@ from pathlib import Path
 import orjson
 
 from config import AppConfig, CameraProfile
-from render.annotators import VideoAnnotator
-from storage.run_store import RunStore
 from models import FrameRecord, MMRResult
 from pipeline.smooth import smooth_render_tracks
+from render.annotators import VideoAnnotator
+from storage.run_store import RunStore
 from utils.video import (
-    build_video_writer,
+    build_frame_writer,
     iter_video_frames,
     read_video_metadata,
     validate_video_fps,
@@ -125,12 +125,17 @@ def render_video(
     else:
         label_text = {}
     annotator = VideoAnnotator(config)
-    writer = build_video_writer(
+    writer = build_frame_writer(
         output_path=run_store.output_video_path,
         fps=config.video.fps,
         width=metadata.width,
         height=metadata.height,
         codec=config.render.codec,
+        encode_backend=config.render.encode_backend,
+        ffmpeg_path=config.render.ffmpeg_path,
+        nvenc_codec=config.render.nvenc_codec,
+        nvenc_preset=config.render.nvenc_preset,
+        nvenc_cq=config.render.nvenc_cq,
     )
     record_iter = iter(_iter_frame_records(frames_path))
     current_record = next(record_iter, None)

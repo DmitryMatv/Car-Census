@@ -3,8 +3,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import utils.video as video_module
 from utils.video import (
+    OpenCVFrameWriter,
     VideoMetadata,
+    build_frame_writer,
     build_video_writer,
     iter_sampled_frames,
     iter_video_frames,
@@ -108,3 +111,65 @@ def test_validate_video_fps_rejects_unknown_fps() -> None:
 
     with pytest.raises(RuntimeError, match="Could not determine input video FPS"):
         validate_video_fps(metadata, expected_fps=30.0, tolerance=0.05)
+
+
+def test_build_frame_writer_uses_opencv_backend(tmp_path: Path) -> None:
+    writer = build_frame_writer(
+        output_path=tmp_path / "opencv.mp4",
+        fps=30.0,
+        width=16,
+        height=16,
+        codec="mp4v",
+        encode_backend="opencv",
+        ffmpeg_path="ffmpeg",
+        nvenc_codec="h264_nvenc",
+        nvenc_preset="p4",
+        nvenc_cq=23,
+    )
+    try:
+        assert isinstance(writer, OpenCVFrameWriter)
+    finally:
+        writer.release()
+
+
+def test_build_frame_writer_auto_nvenc_falls_back_to_opencv(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(video_module, "has_ffmpeg_encoder", lambda *args: False)
+
+    writer = build_frame_writer(
+        output_path=tmp_path / "fallback.mp4",
+        fps=30.0,
+        width=16,
+        height=16,
+        codec="mp4v",
+        encode_backend="auto-nvenc",
+        ffmpeg_path="ffmpeg",
+        nvenc_codec="h264_nvenc",
+        nvenc_preset="p4",
+        nvenc_cq=23,
+    )
+    try:
+        assert isinstance(writer, OpenCVFrameWriter)
+    finally:
+        writer.release()
+
+
+def test_build_frame_writer_ffmpeg_nvenc_requires_encoder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(video_module, "has_ffmpeg_encoder", lambda *args: False)
+
+    with pytest.raises(RuntimeError, match="h264_nvenc"):
+        build_frame_writer(
+            output_path=tmp_path / "required.mp4",
+            fps=30.0,
+            width=16,
+            height=16,
+            codec="mp4v",
+            encode_backend="ffmpeg-nvenc",
+            ffmpeg_path="ffmpeg",
+            nvenc_codec="h264_nvenc",
+            nvenc_preset="p4",
+            nvenc_cq=23,
+        )

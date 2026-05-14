@@ -54,7 +54,38 @@ Device selection is explicit:
 car-census run input_data/test_vid.MP4 --camera-id home-road --device cpu
 ```
 
-The ONNX Runtime detector always uses `CPUExecutionProvider`; `project.device` only affects the optional Ultralytics/PyTorch provider.
+By default, the ONNX Runtime detector uses `CPUExecutionProvider`.
+`--accelerator colab-t4`, `--accelerator onnx-cuda`, or a config override can
+request CUDA/TensorRT providers. `project.device` still affects the optional
+Ultralytics/PyTorch provider.
+
+## Google Colab T4
+
+For Colab GPU runs, install the tracking extra and use the GPU ONNX Runtime
+package:
+
+```bash
+source .venv/bin/activate
+pip install -e ".[tracking]"
+pip install onnxruntime-gpu
+car-census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
+```
+
+The `--accelerator colab-t4` preset keeps the existing ONNX weights path and
+requests ONNX Runtime CUDA execution with CPU fallback registered. ONNX is not
+required for GPU inference in general, but it is the cleanest GPU path for this
+project because the default detector is already ONNX-based. PyTorch CUDA remains
+available through `detector.provider: ultralytics_local` and a local `.pt`
+model or Ultralytics model name.
+
+If the runtime still has the CPU-only `onnxruntime` package, replace it with
+`onnxruntime-gpu`. TensorRT can be requested explicitly with
+`--accelerator tensorrt`, but it requires ONNX Runtime TensorRT provider
+dependencies in the Colab runtime and does not auto-export `.engine` files.
+
+Colab FFmpeg builds vary. `--accelerator colab-t4` enables `auto-nvenc` for the
+final video encode, which uses NVENC when FFmpeg exposes it and falls back to
+the current OpenCV writer when it does not.
 
 ## TrafficEye Setup
 

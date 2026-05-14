@@ -5,6 +5,7 @@ from detectors.onnxruntime_local import (
     OnnxRuntimeLocalDetector,
     _letterbox,
     _metadata_names,
+    _select_execution_providers,
 )
 
 
@@ -50,3 +51,52 @@ def test_parse_ultralytics_detection_output_filters_allowed_car() -> None:
     assert detections[0].class_name == "car"
     assert detections[0].bbox.x1 == 30
     assert detections[0].bbox.y1 == 40
+
+
+def test_select_execution_providers_keeps_cpu_default() -> None:
+    assert _select_execution_providers(
+        requested=["CPUExecutionProvider"],
+        available=["AzureExecutionProvider", "CPUExecutionProvider"],
+        require_gpu=False,
+    ) == ["CPUExecutionProvider"]
+
+
+def test_select_execution_providers_uses_cuda_when_available() -> None:
+    assert _select_execution_providers(
+        requested=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        available=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        require_gpu=True,
+    ) == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+
+def test_select_execution_providers_rejects_required_missing_gpu() -> None:
+    try:
+        _select_execution_providers(
+            requested=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            available=["CPUExecutionProvider"],
+            require_gpu=True,
+        )
+    except RuntimeError as exc:
+        assert "onnxruntime-gpu" in str(exc)
+    else:
+        raise AssertionError("Expected missing required GPU provider to fail")
+
+
+def test_select_execution_providers_uses_tensorrt_order_when_available() -> None:
+    assert _select_execution_providers(
+        requested=[
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider",
+        ],
+        available=[
+            "TensorrtExecutionProvider",
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider",
+        ],
+        require_gpu=True,
+    ) == [
+        "TensorrtExecutionProvider",
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ]

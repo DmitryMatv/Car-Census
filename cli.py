@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from dotenv import load_dotenv
@@ -28,6 +28,8 @@ app = typer.Typer(no_args_is_help=True)
 roi_app = typer.Typer(no_args_is_help=True)
 app.add_typer(roi_app, name="roi")
 
+SUPPORTED_ACCELERATORS = {"default", "colab-t4", "onnx-cuda", "tensorrt"}
+
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parent
@@ -39,16 +41,75 @@ def _load_config(config_path: Optional[Path]) -> tuple[Path, object]:
     return project_root, config
 
 
-def _load_config_with_device(
-    config_path: Optional[Path], device: str
+def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
+    accelerator = accelerator.strip().lower()
+    if accelerator == "default":
+        return {"project": {"device": device}}
+    if accelerator == "colab-t4":
+        return {
+            "project": {"device": "cuda"},
+            "detector": {
+                "onnx_execution_providers": [
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "onnx_require_gpu": True,
+            },
+            "tracker": {
+                "reid_device": "cuda:0",
+                "reid_half": True,
+            },
+            "render": {
+                "encode_backend": "auto-nvenc",
+            },
+        }
+    if accelerator == "onnx-cuda":
+        return {
+            "project": {"device": "cuda"},
+            "detector": {
+                "onnx_execution_providers": [
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "onnx_require_gpu": True,
+            },
+        }
+    if accelerator == "tensorrt":
+        return {
+            "project": {"device": "cuda"},
+            "detector": {
+                "onnx_execution_providers": [
+                    "TensorrtExecutionProvider",
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "onnx_require_gpu": True,
+            },
+        }
+    supported = ", ".join(sorted(SUPPORTED_ACCELERATORS))
+    raise typer.BadParameter(
+        f"Unsupported accelerator '{accelerator}'. Expected one of: {supported}."
+    )
+
+
+def _load_config_with_accelerator(
+    config_path: Optional[Path],
+    device: str,
+    accelerator: str = "default",
 ) -> tuple[Path, object]:
     project_root = _project_root()
     config = build_effective_config(
         root=project_root,
         config_path=config_path,
-        overrides={"project": {"device": device}},
+        overrides=_accelerator_overrides(accelerator, device),
     )
     return project_root, config
+
+
+def _load_config_with_device(
+    config_path: Optional[Path], device: str
+) -> tuple[Path, object]:
+    return _load_config_with_accelerator(config_path, device)
 
 
 def _resolve_profile(project_root: Path, config, video: Path, camera_id: Optional[str]):
@@ -82,13 +143,20 @@ def analyze(
     video: Path,
     camera_id: Optional[str] = typer.Option(None, "--camera-id"),
     device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
+    accelerator: str = typer.Option(
+        "default",
+        "--accelerator",
+        help="default, colab-t4, onnx-cuda, or tensorrt",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     run_dir: Optional[Path] = typer.Option(None, "--run-dir"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(
+        config_path, device, accelerator
+    )
     profile = _resolve_profile(project_root, config, video, camera_id)
     store = (
         run_dir
@@ -129,12 +197,19 @@ def classify(
 def render(
     run_dir: Path = typer.Option(..., "--run-dir"),
     device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
+    accelerator: str = typer.Option(
+        "default",
+        "--accelerator",
+        help="default, colab-t4, onnx-cuda, or tensorrt",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(
+        config_path, device, accelerator
+    )
     store = RunStore.from_existing(run_dir)
     manifest = store.read_manifest()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
@@ -186,6 +261,11 @@ def run(
     video: Path,
     camera_id: Optional[str] = typer.Option(None, "--camera-id"),
     device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
+    accelerator: str = typer.Option(
+        "default",
+        "--accelerator",
+        help="default, colab-t4, onnx-cuda, or tensorrt",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     skip_classify: bool = typer.Option(
         False, "--skip-classify", help="Skip make/model API calls."
@@ -194,7 +274,9 @@ def run(
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(
+        config_path, device, accelerator
+    )
     profile = _resolve_profile(project_root, config, video, camera_id)
     store = run_pipeline(
         project_root=project_root,

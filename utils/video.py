@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal, Protocol
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -20,6 +24,100 @@ class VideoMetadata:
         if self.fps <= 0:
             return 0.0
         return self.frame_count / self.fps
+
+
+class FrameWriter(Protocol):
+    def write(self, frame: np.ndarray) -> None:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        raise NotImplementedError
+
+
+class OpenCVFrameWriter:
+    def __init__(self, writer: cv2.VideoWriter) -> None:
+        self.writer = writer
+
+    def write(self, frame: np.ndarray) -> None:
+        self.writer.write(frame)
+
+    def release(self) -> None:
+        self.writer.release()
+
+
+class FFmpegRawVideoWriter:
+    def __init__(
+        self,
+        *,
+        output_path: Path,
+        fps: float,
+        width: int,
+        height: int,
+        ffmpeg_path: str,
+        encoder: str,
+        preset: str,
+        cq: int,
+    ) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            ffmpeg_path,
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            f"{fps}",
+            "-i",
+            "-",
+            "-an",
+            "-c:v",
+            encoder,
+            "-preset",
+            preset,
+            "-cq",
+            str(cq),
+            "-pix_fmt",
+            "yuv420p",
+            str(output_path),
+        ]
+        try:
+            self.process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not start FFmpeg encoder '{ffmpeg_path}': {exc}"
+            ) from exc
+        self.output_path = output_path
+        self.command = command
+
+    def write(self, frame: np.ndarray) -> None:
+        if self.process.stdin is None:
+            raise RuntimeError("FFmpeg writer stdin is closed")
+        try:
+            self.process.stdin.write(np.ascontiguousarray(frame).tobytes())
+        except BrokenPipeError as exc:
+            raise RuntimeError("FFmpeg encoder stopped while writing frames") from exc
+
+    def release(self) -> None:
+        stderr = b""
+        if self.process.stdin is not None and not self.process.stdin.closed:
+            self.process.stdin.close()
+        if self.process.stderr is not None:
+            stderr = self.process.stderr.read()
+        return_code = self.process.wait()
+        if return_code != 0:
+            detail = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                "FFmpeg encoder failed with exit code "
+                f"{return_code}: {detail or 'no stderr'}"
+            )
 
 
 def open_capture(video_path: Path) -> cv2.VideoCapture:
@@ -126,3 +224,114 @@ def build_video_writer(
     if not writer.isOpened():
         raise RuntimeError(f"Could not open video writer: {output_path}")
     return writer
+
+
+def has_ffmpeg_encoder(ffmpeg_path: str, encoder: str) -> bool:
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-hide_banner", "-encoders"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    if result.returncode != 0:
+        return False
+    if encoder not in result.stdout:
+        return False
+    try:
+        probe = subprocess.run(
+            [
+                ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=size=16x16:rate=1:duration=1",
+                "-frames:v",
+                "1",
+                "-an",
+                "-c:v",
+                encoder,
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return probe.returncode == 0
+
+
+def build_frame_writer(
+    *,
+    output_path: Path,
+    fps: float,
+    width: int,
+    height: int,
+    codec: str,
+    encode_backend: Literal["opencv", "auto-nvenc", "ffmpeg-nvenc"],
+    ffmpeg_path: str,
+    nvenc_codec: str,
+    nvenc_preset: str,
+    nvenc_cq: int,
+) -> FrameWriter:
+    if encode_backend == "opencv":
+        return OpenCVFrameWriter(
+            build_video_writer(
+                output_path=output_path,
+                fps=fps,
+                width=width,
+                height=height,
+                codec=codec,
+            )
+        )
+
+    nvenc_available = has_ffmpeg_encoder(ffmpeg_path, nvenc_codec)
+    if not nvenc_available:
+        message = (
+            f"FFmpeg encoder '{nvenc_codec}' is not available via '{ffmpeg_path}'."
+        )
+        if encode_backend == "ffmpeg-nvenc":
+            raise RuntimeError(message)
+        logger.warning("%s Falling back to OpenCV video writer.", message)
+        return OpenCVFrameWriter(
+            build_video_writer(
+                output_path=output_path,
+                fps=fps,
+                width=width,
+                height=height,
+                codec=codec,
+            )
+        )
+
+    try:
+        return FFmpegRawVideoWriter(
+            output_path=output_path,
+            fps=fps,
+            width=width,
+            height=height,
+            ffmpeg_path=ffmpeg_path,
+            encoder=nvenc_codec,
+            preset=nvenc_preset,
+            cq=nvenc_cq,
+        )
+    except RuntimeError:
+        if encode_backend == "ffmpeg-nvenc":
+            raise
+        logger.warning("Could not start FFmpeg NVENC writer; falling back to OpenCV.")
+        return OpenCVFrameWriter(
+            build_video_writer(
+                output_path=output_path,
+                fps=fps,
+                width=width,
+                height=height,
+                codec=codec,
+            )
+        )

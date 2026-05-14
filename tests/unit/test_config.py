@@ -4,9 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from config import (
+    FULL_FRAME_CAMERA_ID,
     AppConfig,
     CameraProfile,
-    FULL_FRAME_CAMERA_ID,
     build_full_frame_profile,
     load_app_config,
 )
@@ -49,6 +49,13 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
     assert config.analysis.min_track_frames == 10
+    assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
+    assert config.detector.onnx_require_gpu is False
+    assert config.render.encode_backend == "opencv"
+    assert config.render.ffmpeg_path == "ffmpeg"
+    assert config.render.nvenc_codec == "h264_nvenc"
+    assert config.render.nvenc_preset == "p4"
+    assert config.render.nvenc_cq == 23
     assert config.render.min_visible_track_observations == 10
     assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
@@ -81,6 +88,51 @@ def test_render_config_accepts_visual_defaults() -> None:
 def test_config_rejects_unknown_nested_keys() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate({"render": {"line_thickness": 1}})
+
+
+def test_detector_config_accepts_onnx_execution_provider_options() -> None:
+    config = AppConfig.model_validate(
+        {
+            "detector": {
+                "onnx_execution_providers": [
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ],
+                "onnx_require_gpu": True,
+            }
+        }
+    )
+
+    assert config.detector.onnx_execution_providers == [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    assert config.detector.onnx_require_gpu is True
+
+
+def test_render_config_accepts_nvenc_backend() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "encode_backend": "auto-nvenc",
+                "ffmpeg_path": "/usr/bin/ffmpeg",
+                "nvenc_codec": "hevc_nvenc",
+                "nvenc_preset": "p5",
+                "nvenc_cq": 19,
+            }
+        }
+    )
+
+    assert config.render.encode_backend == "auto-nvenc"
+    assert config.render.ffmpeg_path == "/usr/bin/ffmpeg"
+    assert config.render.nvenc_codec == "hevc_nvenc"
+    assert config.render.nvenc_preset == "p5"
+    assert config.render.nvenc_cq == 19
+
+
+def test_render_config_rejects_unknown_encode_backend() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"encode_backend": "cuda-draw"}})
 
 
 def test_render_smoothing_accepts_supported_interpolation_methods() -> None:

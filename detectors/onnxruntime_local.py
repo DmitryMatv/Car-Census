@@ -14,6 +14,8 @@ from models import BBox, Detection
 
 logger = logging.getLogger(__name__)
 
+GPU_EXECUTION_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
+
 
 def _letterbox(
     image: np.ndarray, size: int
@@ -82,6 +84,50 @@ def _nms_indices(boxes: np.ndarray, scores: np.ndarray, threshold: float) -> lis
     return keep
 
 
+def _select_execution_providers(
+    *,
+    requested: list[str],
+    available: list[str],
+    require_gpu: bool,
+) -> list[str]:
+    selected = [provider for provider in requested if provider in available]
+    selected_gpu = [
+        provider for provider in selected if provider in GPU_EXECUTION_PROVIDERS
+    ]
+    requested_gpu = [
+        provider for provider in requested if provider in GPU_EXECUTION_PROVIDERS
+    ]
+
+    if require_gpu and not selected_gpu:
+        install_hint = (
+            "Install `onnxruntime-gpu` in Colab for CUDA support. "
+            "TensorRT acceleration also requires ONNX Runtime TensorRT provider "
+            "dependencies to be available in the runtime."
+        )
+        raise RuntimeError(
+            "ONNX Runtime GPU execution was requested, but none of the requested "
+            f"GPU providers are available. requested={requested_gpu or requested}; "
+            f"available={available}. {install_hint}"
+        )
+
+    if selected:
+        return selected
+
+    if "CPUExecutionProvider" in available:
+        logger.warning(
+            "None of the requested ONNX Runtime providers are available; "
+            "falling back to CPUExecutionProvider. requested=%s available=%s",
+            requested,
+            available,
+        )
+        return ["CPUExecutionProvider"]
+
+    raise RuntimeError(
+        "No usable ONNX Runtime execution provider is available. "
+        f"requested={requested}; available={available}"
+    )
+
+
 class OnnxRuntimeLocalDetector(Detector):
     def __init__(self, config: AppConfig, project_root: Path) -> None:
         try:
@@ -102,10 +148,17 @@ class OnnxRuntimeLocalDetector(Detector):
         options = ort.SessionOptions()
         options.intra_op_num_threads = max(1, config.detector.onnx_threads)
         options.inter_op_num_threads = 1
+        requested_providers = list(config.detector.onnx_execution_providers)
+        available_providers = list(ort.get_available_providers())
+        providers = _select_execution_providers(
+            requested=requested_providers,
+            available=available_providers,
+            require_gpu=config.detector.onnx_require_gpu,
+        )
         self.session = ort.InferenceSession(
             str(weights_path),
             sess_options=options,
-            providers=["CPUExecutionProvider"],
+            providers=providers,
         )
         self.input_name = self.session.get_inputs()[0].name
         metadata = self.session.get_modelmeta().custom_metadata_map
@@ -118,9 +171,17 @@ class OnnxRuntimeLocalDetector(Detector):
             name.lower() for name in config.detector.allowed_class_names
         }
         self.allowed_ids = config.detector.allowed_class_ids
+        active_providers = list(self.session.get_providers())
         logger.info(
-            "Device active: cpu | provider=onnxruntime | threads=%s",
+            "Device active: %s | provider=onnxruntime | threads=%s | "
+            "requested_providers=%s | available_providers=%s | active_providers=%s",
+            "gpu"
+            if any(provider in GPU_EXECUTION_PROVIDERS for provider in active_providers)
+            else "cpu",
             options.intra_op_num_threads,
+            requested_providers,
+            available_providers,
+            active_providers,
         )
 
     def detect(self, image: np.ndarray) -> list[Detection]:

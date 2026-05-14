@@ -178,7 +178,7 @@ def _patch_render_io(monkeypatch, writer: DummyWriter, frame_count: int) -> None
             for index in range(frame_count)
         ),
     )
-    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
+    monkeypatch.setattr(render_module, "build_frame_writer", lambda **kwargs: writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
 
@@ -206,7 +206,7 @@ def test_render_writes_every_source_frame_when_analysis_is_downsampled(
     )
     monkeypatch.setattr(
         render_module,
-        "build_video_writer",
+        "build_frame_writer",
         lambda **kwargs: writer,
     )
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
@@ -244,12 +244,12 @@ def test_render_uses_configured_video_fps_for_iteration_and_writer(
         for index in range(3):
             yield index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8)
 
-    def fake_build_video_writer(**kwargs):
+    def fake_build_frame_writer(**kwargs):
         writer_kwargs.update(kwargs)
         return writer
 
     monkeypatch.setattr(render_module, "iter_video_frames", fake_iter_video_frames)
-    monkeypatch.setattr(render_module, "build_video_writer", fake_build_video_writer)
+    monkeypatch.setattr(render_module, "build_frame_writer", fake_build_frame_writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
@@ -262,6 +262,59 @@ def test_render_uses_configured_video_fps_for_iteration_and_writer(
     assert iterated_fps == [30.0]
     assert writer_kwargs["fps"] == 30.0
     assert len(writer.frames) == 3
+
+
+def test_render_passes_encode_backend_to_frame_writer(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_frame_records(store.frames_path)
+    writer = DummyWriter()
+    writer_kwargs = {}
+
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=1),
+    )
+    monkeypatch.setattr(
+        render_module,
+        "iter_video_frames",
+        lambda video_path, fps: (
+            (index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8))
+            for index in range(1)
+        ),
+    )
+
+    def fake_build_frame_writer(**kwargs):
+        writer_kwargs.update(kwargs)
+        return writer
+
+    monkeypatch.setattr(render_module, "build_frame_writer", fake_build_frame_writer)
+    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "encode_backend": "auto-nvenc",
+                    "ffmpeg_path": "/usr/bin/ffmpeg",
+                    "nvenc_codec": "h264_nvenc",
+                    "nvenc_preset": "p5",
+                    "nvenc_cq": 19,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+    )
+
+    assert writer_kwargs["encode_backend"] == "auto-nvenc"
+    assert writer_kwargs["ffmpeg_path"] == "/usr/bin/ffmpeg"
+    assert writer_kwargs["nvenc_codec"] == "h264_nvenc"
+    assert writer_kwargs["nvenc_preset"] == "p5"
+    assert writer_kwargs["nvenc_cq"] == 19
 
 
 def test_render_rejects_non_30_fps_input(tmp_path, monkeypatch) -> None:
@@ -545,7 +598,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
             for index in range(1)
         ),
     )
-    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
+    monkeypatch.setattr(render_module, "build_frame_writer", lambda **kwargs: writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
@@ -603,7 +656,7 @@ def test_render_hides_tracks_missing_from_existing_labels_file(
             for index in range(1)
         ),
     )
-    monkeypatch.setattr(render_module, "build_video_writer", lambda **kwargs: writer)
+    monkeypatch.setattr(render_module, "build_frame_writer", lambda **kwargs: writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
 
     render_video(
