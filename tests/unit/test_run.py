@@ -6,7 +6,7 @@ from pipeline.run import run_pipeline
 
 
 class DummyRunStore:
-    root = Path("outputs/test-run")
+    root = Path("output/test-run")
 
 
 def test_run_pipeline_orders_analyze_classify_render_report(

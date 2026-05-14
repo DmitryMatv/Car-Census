@@ -1,7 +1,9 @@
+import csv
+
 import orjson
 
+from models import MMRResult
 from pipeline.report import generate_reports
-from models import MMRResult, TrackSummary
 
 
 class DummyRunStore:
@@ -9,11 +11,12 @@ class DummyRunStore:
         self.labels_path = root / "labels.json"
         self.count_events_path = root / "count_events.jsonl"
         self.tracks_path = root / "tracks.jsonl"
+        self.report_csv_path = root / "reports" / "report.csv"
         self.counts_json_path = root / "counts.json"
         self.counts_csv_path = root / "counts.csv"
 
 
-def test_generate_reports_falls_back_to_counted_track_summaries(tmp_path) -> None:
+def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     store = DummyRunStore(tmp_path)
     store.labels_path.write_bytes(
         orjson.dumps(
@@ -21,28 +24,81 @@ def test_generate_reports_falls_back_to_counted_track_summaries(tmp_path) -> Non
                 "7": MMRResult(
                     make="Toyota",
                     model="Corolla",
+                    generation="E210 (2018)",
+                    variation="Hybrid Touring Sports",
+                    color="white",
+                    accepted=True,
                     vehicle_index=1,
                     api_classification_index=1,
-                ).model_dump(mode="json")
+                    model_confidence=0.91,
+                    tags=[
+                        {"name": "taxi", "value": "yes", "score": 0.9},
+                        {"name": "damaged", "value": "no", "score": 0.8},
+                    ],
+                ).model_dump(mode="json"),
+                "8": MMRResult(
+                    make="Toyota",
+                    model="Corolla",
+                    vehicle_index=1,
+                    api_classification_index=1,
+                    tags=[{"name": "taxi", "value": "yes"}],
+                ).model_dump(mode="json"),
+                "9": MMRResult(
+                    make="Audi",
+                    model="A4",
+                    generation="B9",
+                    variation="Avant",
+                    vehicle_index=2,
+                    api_classification_index=2,
+                    tags=[{"name": "Police Car", "value": True, "score": 0.72}],
+                ).model_dump(mode="json"),
             }
         )
     )
-    store.tracks_path.write_bytes(
-        orjson.dumps(
-            TrackSummary(
-                track_id=7,
-                vehicle_index=1,
-                first_frame_index=1,
-                last_frame_index=3,
-                frames_seen=3,
-                max_box_height_px=100,
-                counted=True,
-            ).model_dump(mode="json")
-        )
-        + b"\n"
-    )
+    store.counts_json_path.write_text("old json", encoding="utf-8")
+    store.counts_csv_path.write_text("old csv", encoding="utf-8")
 
     payload = generate_reports(store)
 
-    assert payload["total_counted"] == 1
-    assert payload["by_make_model"]["Toyota Corolla"] == 1
+    assert payload == {
+        "report_csv": str(store.report_csv_path),
+        "rows": 2,
+    }
+    assert store.report_csv_path.exists()
+    assert not store.counts_json_path.exists()
+    assert not store.counts_csv_path.exists()
+
+    with store.report_csv_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert len(rows) == 2
+    assert rows[0]["vehicle_index"] == "1"
+    assert rows[0]["track_id"] == "7"
+    assert rows[0]["make"] == "Toyota"
+    assert rows[0]["model"] == "Corolla"
+    assert rows[0]["generation"] == "E210 (2018)"
+    assert rows[0]["variation"] == "Hybrid Touring Sports"
+    assert rows[0]["color"] == "white"
+    assert rows[0]["accepted"] == "True"
+    assert rows[0]["model_confidence"] == "0.91"
+    assert "category" not in rows[0]
+    assert "view" not in rows[0]
+    assert "view8" not in rows[0]
+    assert "category_confidence" not in rows[0]
+    assert "color_confidence" not in rows[0]
+    assert "view_confidence" not in rows[0]
+    assert "view8_confidence" not in rows[0]
+    assert "detection_confidence" not in rows[0]
+    assert "source_image" not in rows[0]
+    assert rows[0]["tag_taxi"] == "True"
+    assert rows[0]["tag_taxi_confidence"] == "0.9"
+    assert rows[0]["tag_police_car"] == ""
+    assert rows[0]["tag_police_car_confidence"] == ""
+    assert "tag_damaged" not in rows[0]
+
+    assert rows[1]["vehicle_index"] == "2"
+    assert rows[1]["track_id"] == "9"
+    assert rows[1]["tag_taxi"] == ""
+    assert rows[1]["tag_taxi_confidence"] == ""
+    assert rows[1]["tag_police_car"] == "True"
+    assert rows[1]["tag_police_car_confidence"] == "0.72"

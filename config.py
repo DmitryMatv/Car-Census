@@ -34,7 +34,7 @@ class StrictBaseModel(BaseModel):
 
 
 class ProjectConfig(StrictBaseModel):
-    output_root: Path = Path("outputs")
+    output_root: Path = Path("output")
     device: str = "auto"
     camera_profiles_dir: Path = Path("configs/cameras")
 
@@ -122,6 +122,9 @@ class RenderConfig(StrictBaseModel):
     label_font_scale: float = 1.0
     label_thickness: int = 1
     label_padding_px: int = 4
+    label_line_gap_px: int = Field(default=2, ge=0)
+    label_max_width_ratio: float = Field(default=0.35, gt=0.0, le=1.0)
+    label_min_width_px: int = Field(default=160, ge=1)
     label_gap_px: int = 5
     label_text_color: str = "#FFFFFF"
     label_bg_color: str = "#101820"

@@ -4,7 +4,7 @@ Offline vehicle tracking and make/model census for roadside video.
 
 ## What It Does
 
-`car-census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports counts.
+`car-census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
 
 The pipeline is staged:
 
@@ -12,7 +12,7 @@ The pipeline is staged:
 2. `analyze` to detect, track, count polygon-zone tracks, and save crop candidates
 3. `classify` to run TrafficEye make/model recognition
 4. `render` to create the annotated output video
-5. `report` to export counts
+5. `report` to export `report.csv`
 
 If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as the ROI.
 
@@ -92,12 +92,12 @@ Run without make/model API calls:
 car-census run input_data/test_vid.MP4 --skip-classify
 ```
 
-Artifacts are written to `outputs/<run-id>/`.
+Artifacts are written to `output/<run-id>/`.
 
 ## Output Layout
 
 ```text
-outputs/<run-id>/
+output/<run-id>/
   run.json
   analysis/
     frames.jsonl
@@ -110,8 +110,7 @@ outputs/<run-id>/
     cache/
   annotated.mp4
   reports/
-    counts.csv
-    counts.json
+    report.csv
 ```
 
 ## Notes
@@ -123,4 +122,7 @@ outputs/<run-id>/
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
 - `render.smoothing.interpolate` controls whether source-frame annotations are generated between analyzed frames. `render.smoothing.interpolation_method: hermite` is the default and uses monotone cubic Hermite interpolation through tracked keyframes to reduce overshoot. `linear` uses straight-line fills, while `polynomial` uses an arbitrary local polynomial fit and is mainly experimental. `polynomial_order` affects only polynomial interpolation and linear keyframe smoothing. `max_center_offset_ratio` and `max_size_delta_ratio` clamp generated boxes against the linear reference path. The `polynomial` and `hermite` methods preserve actual tracked keyframes exactly.
 - For static cameras, leave `tracker.cmc_method` as `null` to disable camera motion compensation. Supported BoxMOT CMC values are `ecc`, `orb`, `sift`, and `sof`.
-- Rendering uses ellipse markers and compact make/model labels by default.
+- Rendering shows make, model, generation, and variation when available.
+- `reports/report.csv` contains one row per identified vehicle. It preserves the
+  detailed MMR fields and affirmative tags as boolean columns with matching
+  confidence columns so downstream analytics can aggregate the CSV as needed.

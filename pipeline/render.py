@@ -39,16 +39,19 @@ def _iter_frame_records(path: Path):
 
 
 def format_label_text(result: MMRResult, unknown_label: str) -> str:
-    base_label = (
-        " ".join(
-            part for part in [result.make or None, result.model or None] if part
-        ).strip()
-        or unknown_label
-    )
+    make_model = " ".join(
+        part.strip()
+        for part in [result.make or None, result.model or None]
+        if part and part.strip()
+    ).strip()
+    lines = [make_model or unknown_label]
+    for part in [result.generation, result.variation]:
+        if part and part.strip():
+            lines.append(part.strip())
     label_index = result.vehicle_index or result.api_classification_index
-    if label_index is None:
-        return base_label
-    return f"{label_index} | {base_label}"
+    if label_index is not None:
+        lines[0] = f"{label_index} | {lines[0]}"
+    return "\n".join(lines)
 
 
 def visible_track_label_text_by_track(

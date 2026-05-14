@@ -5,25 +5,25 @@ import numpy as np
 import orjson
 import pytest
 
-from config import AppConfig, build_full_frame_profile
-from pipeline import render as render_module
-from pipeline.render import (
-    format_label_text,
-    render_video,
-    visible_track_label_text_by_track,
-)
 import render.annotators as annotator_module
-from render.annotators import (
-    VideoAnnotator,
-    label_box_bounds,
-    resolve_label_box_bounds,
-)
+from config import AppConfig, build_full_frame_profile
 from models import (
     BBox,
     FrameRecord,
     MMRResult,
     RunManifest,
     TrackedObject,
+)
+from pipeline import render as render_module
+from pipeline.render import (
+    format_label_text,
+    render_video,
+    visible_track_label_text_by_track,
+)
+from render.annotators import (
+    VideoAnnotator,
+    label_box_bounds,
+    resolve_label_box_bounds,
 )
 from utils.video import VideoMetadata
 
@@ -291,12 +291,14 @@ def test_render_formats_api_counter_prefix() -> None:
             MMRResult(
                 make="Toyota",
                 model="Corolla",
+                generation="E210 (2018)",
+                variation="Hybrid Touring Sports",
                 vehicle_index=13,
                 api_classification_index=3,
             ),
             "unknown",
         )
-        == "13 | Toyota Corolla"
+        == "13 | Toyota Corolla\nE210 (2018)\nHybrid Touring Sports"
     )
     assert (
         format_label_text(MMRResult(api_classification_index=3), "unknown")
@@ -740,7 +742,7 @@ def test_video_annotator_places_label_above_and_left_aligned() -> None:
     assert bottom == int(round(track.bbox.y1 - config.render.label_gap_px))
 
 
-def test_video_annotator_vertically_centers_label_text() -> None:
+def test_video_annotator_positions_single_line_text_from_top_padding() -> None:
     config = AppConfig.model_validate(
         {
             "render": {
@@ -767,13 +769,98 @@ def test_video_annotator_vertically_centers_label_text() -> None:
         config.render.label_font_scale,
         config.render.label_thickness,
     )
-    label_height = layout.bottom - layout.top
-    old_origin_y = layout.bottom - config.render.label_padding_px - baseline
+    _ = baseline
 
-    assert layout.text_origin[1] == layout.top + int(
-        round((label_height + text_height) / 2.0)
+    assert (
+        layout.text_origin[1]
+        == layout.top + config.render.label_padding_px + text_height
     )
-    assert layout.text_origin[1] != old_origin_y
+
+
+def test_video_annotator_uses_multiline_label_bounds() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_font_scale": 0.5,
+                "label_thickness": 1,
+                "label_padding_px": 4,
+                "label_line_gap_px": 3,
+                "label_max_width_ratio": 0.8,
+                "label_gap_px": 6,
+            }
+        }
+    )
+    track = _render_track(bbox=BBox(x1=60, y1=40, x2=100, y2=80))
+
+    single = resolve_label_box_bounds(
+        frame_shape=(140, 400, 3),
+        tracks=[track],
+        labels=["1 | Toyota Corolla"],
+        config=config,
+    )[0]
+    multiline = resolve_label_box_bounds(
+        frame_shape=(140, 400, 3),
+        tracks=[track],
+        labels=["1 | Toyota Corolla\nE210 (2018)\nHybrid Touring Sports"],
+        config=config,
+    )[0]
+
+    assert multiline.lines == (
+        "1 | Toyota Corolla",
+        "E210 (2018)",
+        "Hybrid Touring Sports",
+    )
+    assert multiline.bottom - multiline.top > single.bottom - single.top
+    assert len(multiline.line_origins) == 3
+
+
+def test_video_annotator_wraps_long_label_lines_to_frame_width() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_font_scale": 0.5,
+                "label_thickness": 1,
+                "label_padding_px": 4,
+                "label_max_width_ratio": 0.35,
+                "label_min_width_px": 60,
+                "label_smart_position": False,
+            }
+        }
+    )
+    track = _render_track(bbox=BBox(x1=40, y1=80, x2=100, y2=130))
+
+    layout = resolve_label_box_bounds(
+        frame_shape=(160, 200, 3),
+        tracks=[track],
+        labels=["1 | Toyota Corolla Hybrid Touring Sports"],
+        config=config,
+    )[0]
+
+    assert len(layout.lines) > 1
+    assert layout.right - layout.left <= 70 + (config.render.label_padding_px * 2)
+
+
+def test_video_annotator_draws_multiline_labels_without_error() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_font_scale": 0.5,
+                "label_thickness": 1,
+                "label_shadow_enabled": True,
+            }
+        }
+    )
+    frame = np.zeros((160, 220, 3), dtype=np.uint8)
+    track = _render_track(bbox=BBox(x1=50, y1=60, x2=120, y2=130))
+
+    annotated = VideoAnnotator(config).annotate(
+        frame=frame,
+        profile=build_full_frame_profile(width=220, height=160),
+        tracks=[track],
+        labels_by_track={1: "1 | Toyota Corolla\nE210 (2018)\nHybrid"},
+    )
+
+    assert annotated.shape == frame.shape
 
 
 def test_video_annotator_uses_fixed_color_without_class_ids() -> None:

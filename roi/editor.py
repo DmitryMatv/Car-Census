@@ -9,7 +9,6 @@ import yaml
 from config import CameraProfile, PolygonZoneConfig
 from utils.video import read_first_frame
 
-
 WINDOW_NAME = "Car Census ROI Editor"
 
 

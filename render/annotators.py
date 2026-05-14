@@ -20,6 +20,8 @@ class LabelLayout:
     bottom: int
     baseline: int
     text_origin: tuple[int, int]
+    lines: tuple[str, ...]
+    line_origins: tuple[tuple[int, int], ...]
 
 
 def _color_to_bgr(color_hex: str) -> tuple[int, int, int]:
@@ -194,41 +196,102 @@ def _draw_trace(
     )
 
 
-def _label_metrics(label: str, config: AppConfig) -> tuple[int, int, int, int, int]:
+def _text_metrics(text: str, config: AppConfig) -> tuple[int, int, int]:
     text_size, baseline = cv2.getTextSize(
-        label,
+        text,
         cv2.FONT_HERSHEY_SIMPLEX,
         config.render.label_font_scale,
         config.render.label_thickness,
     )
     text_width, text_height = text_size
+    return text_width, text_height, baseline
+
+
+def _max_label_text_width(frame_shape: tuple[int, ...], config: AppConfig) -> int:
+    _frame_height, frame_width = frame_shape[:2]
+    padding = config.render.label_padding_px
+    available_width = max(1, frame_width - (padding * 2))
+    configured_width = max(
+        config.render.label_min_width_px,
+        int(round(frame_width * config.render.label_max_width_ratio)),
+    )
+    return max(1, min(available_width, configured_width))
+
+
+def _wrap_line(line: str, max_text_width: int, config: AppConfig) -> list[str]:
+    words = line.split()
+    if not words:
+        return [""]
+
+    wrapped: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        candidate_width, _candidate_height, _candidate_baseline = _text_metrics(
+            candidate, config
+        )
+        if current and candidate_width > max_text_width:
+            wrapped.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        wrapped.append(current)
+    return wrapped
+
+
+def _wrap_label(
+    label: str, frame_shape: tuple[int, ...], config: AppConfig
+) -> tuple[str, ...]:
+    max_text_width = _max_label_text_width(frame_shape, config)
+    lines: list[str] = []
+    for raw_line in label.splitlines() or [label]:
+        lines.extend(_wrap_line(raw_line, max_text_width, config))
+    return tuple(lines or [""])
+
+
+def _label_metrics(
+    label: str, frame_shape: tuple[int, ...], config: AppConfig
+) -> tuple[tuple[str, ...], int, int, int]:
+    lines = _wrap_label(label, frame_shape, config)
+    metrics = [_text_metrics(line, config) for line in lines]
+    text_width = max((width for width, _height, _baseline in metrics), default=0)
+    text_height = sum(height for _width, height, _baseline in metrics)
+    baseline = max((baseline for _width, _height, baseline in metrics), default=0)
+    line_gap = config.render.label_line_gap_px * max(0, len(lines) - 1)
     padding = config.render.label_padding_px
     label_width = text_width + (padding * 2)
-    label_height = text_height + (padding * 2)
-    return text_width, text_height, baseline, label_width, label_height
+    label_height = text_height + line_gap + (padding * 2)
+    return lines, baseline, label_width, label_height
 
 
 def _layout_from_bounds(
     left: int,
     top: int,
     label: str,
+    frame_shape: tuple[int, ...],
     config: AppConfig,
 ) -> LabelLayout:
-    _text_width, text_height, baseline, label_width, label_height = _label_metrics(
-        label, config
+    lines, baseline, label_width, label_height = _label_metrics(
+        label, frame_shape, config
     )
     padding = config.render.label_padding_px
-    text_origin = (
-        left + padding,
-        top + int(round((label_height + text_height) / 2.0)),
-    )
+    line_origins: list[tuple[int, int]] = []
+    origin_y = top + padding
+    for line in lines:
+        _text_width, text_height, _baseline = _text_metrics(line, config)
+        origin_y += text_height
+        line_origins.append((left + padding, origin_y))
+        origin_y += config.render.label_line_gap_px
     return LabelLayout(
         left=left,
         top=top,
         right=left + label_width,
         bottom=top + label_height,
         baseline=baseline,
-        text_origin=text_origin,
+        text_origin=line_origins[0],
+        lines=lines,
+        line_origins=tuple(line_origins),
     )
 
 
@@ -238,15 +301,15 @@ def _anchored_label_layout(
     label: str,
     config: AppConfig,
 ) -> LabelLayout:
-    _text_width, _text_height, _baseline, label_width, label_height = _label_metrics(
-        label, config
+    _lines, _baseline, label_width, label_height = _label_metrics(
+        label, frame_shape, config
     )
     frame_height, frame_width = frame_shape[:2]
     left = int(round(track.bbox.x1 - config.render.label_padding_px + 1))
     left = max(0, min(left, max(0, frame_width - label_width)))
     top = int(round(track.bbox.y1 - label_height - config.render.label_gap_px))
     top = max(0, min(top, max(0, frame_height - label_height)))
-    return _layout_from_bounds(left, top, label, config)
+    return _layout_from_bounds(left, top, label, frame_shape, config)
 
 
 def _clamp_label_box(
@@ -319,6 +382,7 @@ def resolve_label_box_bounds(
                 left=int(round(float(box[0]))),
                 top=int(round(float(box[1]))),
                 label=label,
+                frame_shape=frame_shape,
                 config=config,
             )
         )
@@ -421,20 +485,21 @@ class VideoAnnotator:
             shadow_width = max(0, shadow_right - shadow_left)
             shadow_height = max(0, shadow_bottom - shadow_top)
             shadow_mask = np.zeros((shadow_height, shadow_width), dtype=np.uint8)
-            shadow_origin = (
-                layout.text_origin[0] + shadow_offset - shadow_left,
-                layout.text_origin[1] + shadow_offset - shadow_top,
-            )
-            cv2.putText(
-                shadow_mask,
-                label,
-                shadow_origin,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                self.config.render.label_font_scale,
-                255,
-                shadow_thickness,
-                cv2.LINE_AA,
-            )
+            for line, origin in zip(layout.lines, layout.line_origins, strict=True):
+                shadow_origin = (
+                    origin[0] + shadow_offset - shadow_left,
+                    origin[1] + shadow_offset - shadow_top,
+                )
+                cv2.putText(
+                    shadow_mask,
+                    line,
+                    shadow_origin,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    self.config.render.label_font_scale,
+                    255,
+                    shadow_thickness,
+                    cv2.LINE_AA,
+                )
             _overlay_text_mask_roi(
                 frame,
                 shadow_mask,
@@ -455,20 +520,21 @@ class VideoAnnotator:
             glow_width = max(0, glow_right - glow_left)
             glow_height = max(0, glow_bottom - glow_top)
             text_glow_layer = np.zeros((glow_height, glow_width, 3), dtype=np.uint8)
-            glow_origin = (
-                layout.text_origin[0] - glow_left,
-                layout.text_origin[1] - glow_top,
-            )
-            cv2.putText(
-                text_glow_layer,
-                label,
-                glow_origin,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                self.config.render.label_font_scale,
-                self.glow_color,
-                self.config.render.label_thickness + 2,
-                cv2.LINE_AA,
-            )
+            for line, origin in zip(layout.lines, layout.line_origins, strict=True):
+                glow_origin = (
+                    origin[0] - glow_left,
+                    origin[1] - glow_top,
+                )
+                cv2.putText(
+                    text_glow_layer,
+                    line,
+                    glow_origin,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    self.config.render.label_font_scale,
+                    self.glow_color,
+                    self.config.render.label_thickness + 2,
+                    cv2.LINE_AA,
+                )
             if glow_margin > 1:
                 text_glow_layer = cv2.GaussianBlur(
                     text_glow_layer,
@@ -483,13 +549,14 @@ class VideoAnnotator:
                 self.config.render.label_glow_alpha,
             )
 
-        cv2.putText(
-            frame,
-            label,
-            layout.text_origin,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            self.config.render.label_font_scale,
-            self.label_text_color,
-            self.config.render.label_thickness,
-            cv2.LINE_AA,
-        )
+        for line, origin in zip(layout.lines, layout.line_origins, strict=True):
+            cv2.putText(
+                frame,
+                line,
+                origin,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                self.config.render.label_font_scale,
+                self.label_text_color,
+                self.config.render.label_thickness,
+                cv2.LINE_AA,
+            )

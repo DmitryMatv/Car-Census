@@ -1,5 +1,5 @@
 # Custom ignore rules for this project
-outputs
+output
 input_data
 weights
 

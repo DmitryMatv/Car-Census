@@ -79,6 +79,10 @@ class RunStore:
         return self.root / "annotated.mp4"
 
     @property
+    def report_csv_path(self) -> Path:
+        return self.root / "report.csv"
+
+    @property
     def counts_json_path(self) -> Path:
         return self.reports_dir / "counts.json"
 

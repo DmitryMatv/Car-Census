@@ -177,7 +177,7 @@ def report(
     _ = device
     store = RunStore.from_existing(run_dir)
     payload = generate_reports(run_store=store)
-    typer.echo(typer.style("Counts generated", fg=typer.colors.GREEN))
+    typer.echo(typer.style("Report generated", fg=typer.colors.GREEN))
     typer.echo(str(payload))
 
 
