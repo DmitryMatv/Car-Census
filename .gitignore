@@ -1,7 +1,7 @@
 # Custom ignore rules for this project
-output
-input_data
-weights
+output/*
+input_data/*
+weights/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

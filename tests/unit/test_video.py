@@ -9,6 +9,7 @@ from utils.video import (
     VideoMetadata,
     build_frame_writer,
     build_video_writer,
+    has_ffmpeg_encoder,
     iter_sampled_frames,
     iter_video_frames,
     validate_video_fps,
@@ -130,6 +131,21 @@ def test_build_frame_writer_uses_opencv_backend(tmp_path: Path) -> None:
         assert isinstance(writer, OpenCVFrameWriter)
     finally:
         writer.release()
+
+
+def test_has_ffmpeg_encoder_probe_uses_nvenc_supported_dimensions(monkeypatch) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        stdout = " V....D h264_nvenc           NVIDIA NVENC H.264 encoder"
+        return video_module.subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(video_module.subprocess, "run", fake_run)
+
+    assert has_ffmpeg_encoder("ffmpeg", "h264_nvenc")
+
+    assert "color=size=128x128:rate=1:duration=1" in commands[1]
 
 
 def test_build_frame_writer_auto_nvenc_falls_back_to_opencv(
