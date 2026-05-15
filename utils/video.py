@@ -250,7 +250,7 @@ def has_ffmpeg_encoder(ffmpeg_path: str, encoder: str) -> bool:
                 "-f",
                 "lavfi",
                 "-i",
-                "color=size=128x128:rate=1:duration=1",
+                "color=size=640x360:rate=1:duration=1",
                 "-frames:v",
                 "1",
                 "-an",

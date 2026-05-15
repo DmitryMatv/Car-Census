@@ -145,7 +145,7 @@ def test_has_ffmpeg_encoder_probe_uses_nvenc_supported_dimensions(monkeypatch) -
 
     assert has_ffmpeg_encoder("ffmpeg", "h264_nvenc")
 
-    assert "color=size=128x128:rate=1:duration=1" in commands[1]
+    assert "color=size=640x360:rate=1:duration=1" in commands[1]
 
 
 def test_build_frame_writer_auto_nvenc_falls_back_to_opencv(
