@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import orjson
 
 from config import AppConfig
 from mmr.trafficeye import TrafficEyeClient
-from storage.run_store import RunStore
 from models import MMRResult, TrackSummary
+from storage.run_store import RunStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _ClassificationTask:
+    image_path: Path
+    summaries: list[TrackSummary]
+    vehicle_index: int | None
+    fallback_index: int | None
 
 
 def _load_track_summaries(path: Path) -> list[TrackSummary]:
@@ -42,9 +51,42 @@ def _apply_identity(
     )
 
 
+def _chunks(
+    items: list[_ClassificationTask], size: int
+) -> list[list[_ClassificationTask]]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
+def _recognize_tasks(
+    client: TrafficEyeClient, tasks: list[_ClassificationTask], batch_size: int
+) -> list[MMRResult]:
+    if not tasks:
+        return []
+    if batch_size <= 1:
+        return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
+    if hasattr(client, "recognize_vehicle_crops"):
+        return client.recognize_vehicle_crops([task.image_path for task in tasks])
+    return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
+
+
+def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
+    if path.exists():
+        return path
+    relocated_path = run_store.crops_dir / path.name
+    if relocated_path.exists():
+        logger.warning(
+            "Using relocated crop %s for stale track path %s",
+            relocated_path,
+            path,
+        )
+        return relocated_path
+    return path
+
+
 def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
     client = TrafficEyeClient(config=config, cache_dir=run_store.mmr_cache_dir)
     labels_by_track: dict[int, MMRResult] = {}
+    classification_tasks: list[_ClassificationTask] = []
     summaries_by_vehicle: dict[int, list[TrackSummary]] = {}
     for summary in _load_track_summaries(run_store.tracks_path):
         if summary.vehicle_index is None and not summary.candidates:
@@ -107,10 +149,27 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 labels_by_track[summary.track_id] = result
             continue
 
-        result = client.recognize_vehicle_crop(best_candidate.image_path)
-        result = _apply_identity(result, vehicle_index, fallback_index)
-        for summary in summaries:
-            labels_by_track[summary.track_id] = result
+        classification_tasks.append(
+            _ClassificationTask(
+                image_path=_resolve_candidate_image_path(
+                    best_candidate.image_path, run_store
+                ),
+                summaries=summaries,
+                vehicle_index=vehicle_index,
+                fallback_index=fallback_index,
+            )
+        )
+
+    for batch in _chunks(classification_tasks, config.mmr.batch_size):
+        results = _recognize_tasks(client, batch, config.mmr.batch_size)
+        if len(results) != len(batch):
+            raise RuntimeError(
+                f"TrafficEye returned {len(results)} MMR results for {len(batch)} crops"
+            )
+        for task, result in zip(batch, results, strict=True):
+            result = _apply_identity(result, task.vehicle_index, task.fallback_index)
+            for summary in task.summaries:
+                labels_by_track[summary.track_id] = result
 
     serializable = {
         str(track_id): result.model_dump(mode="json")

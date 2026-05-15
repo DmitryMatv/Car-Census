@@ -9,9 +9,14 @@ Use Virtual Environment `source .venv/bin/activate` because `pytest` and everyth
 ## Environment & Setup
 
 - Requires Python 3.12 for tracking (BoxMOT incompatibility with 3.13+)
-- ONNX model expected at `weights/yolo26n.onnx` (local offline use)
+- ONNX model expected at `weights/yolo26s.onnx` (local offline use)
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
-- Device flag affects only optional Ultralytics provider; ONNX Runtime always uses CPU
+- TrafficEye manual `combinations` are projected into the response by order, but
+  manually supplied boxes may not be returned. For batched MMR grids, match
+  results by combination/cell order first; use returned boxes only as fallback.
+- `analysis/tracks.jsonl` may contain absolute crop paths from the original run
+  location. If a run directory is renamed or moved, classification should resolve
+  crop filenames against the current run's `crops/` directory.
 
 ## Project Snapshot
 

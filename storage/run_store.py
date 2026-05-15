@@ -17,6 +17,7 @@ class RunStore:
         self.render_dir = root / "render"
         self.reports_dir = root / "reports"
         self.mmr_cache_dir = self.mmr_dir / "cache"
+        self.mmr_batch_grids_dir = self.mmr_dir / "batch_grids"
 
     @classmethod
     def create(
@@ -47,6 +48,7 @@ class RunStore:
             self.render_dir,
             self.reports_dir,
             self.mmr_cache_dir,
+            self.mmr_batch_grids_dir,
         ]:
             path.mkdir(parents=True, exist_ok=True)
 

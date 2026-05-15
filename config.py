@@ -59,7 +59,7 @@ class AnalysisConfig(StrictBaseModel):
 
 class DetectorConfig(StrictBaseModel):
     provider: str = "onnxruntime_local"
-    weights: str = "weights/yolo26n.onnx"
+    weights: str = "weights/yolo26s.onnx"
     confidence: float = 0.4
     iou: float = 0.4
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
@@ -117,6 +117,9 @@ class MMRConfig(StrictBaseModel):
     tasks: list[str] = Field(default_factory=lambda: ["DETECTION", "MMR"])
     requested_detection_types: list[str] = Field(default_factory=lambda: ["BOX"])
     mmr_preference: str = "BOX"
+    batch_size: int = Field(default=16, ge=1)
+    batch_grid_columns: int = Field(default=4, ge=1)
+    batch_cell_size_px: int = Field(default=512, ge=64)
 
 
 class RenderConfig(StrictBaseModel):

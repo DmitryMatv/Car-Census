@@ -3,7 +3,12 @@ import numpy as np
 import orjson
 
 from config import AppConfig
-from mmr.trafficeye import TrafficEyeClient, parse_mmr_response
+from mmr.trafficeye import (
+    TrafficEyeClient,
+    parse_mmr_response,
+    parse_mmr_results,
+    parse_mmr_results_by_combination,
+)
 from models import BBox
 
 
@@ -160,6 +165,88 @@ def test_parse_mmr_response_without_mmr_preserves_raw() -> None:
     assert result.raw == payload
 
 
+def test_parse_mmr_results_reads_all_detected_road_users() -> None:
+    payload = {
+        "combinations": [
+            {
+                "roadUsers": [
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 0,
+                                "topLeftRow": 0,
+                                "bottomRightCol": 10,
+                                "bottomRightRow": 10,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Toyota", "score": 0.9},
+                            "model": {"value": "Corolla", "score": 0.8},
+                        },
+                    },
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 20,
+                                "topLeftRow": 0,
+                                "bottomRightCol": 30,
+                                "bottomRightRow": 10,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Audi", "score": 0.91},
+                            "model": {"value": "A4", "score": 0.81},
+                        },
+                    },
+                ]
+            }
+        ]
+    }
+
+    results = parse_mmr_results(payload)
+
+    assert [result.make for result in results] == ["Toyota", "Audi"]
+    assert [result.model for result in results] == ["Corolla", "A4"]
+    assert results[0].detection_box == BBox(x1=0, y1=0, x2=10, y2=10)
+    assert results[1].raw == payload
+
+
+def test_parse_mmr_results_by_combination_preserves_empty_slots() -> None:
+    payload = {
+        "combinations": [
+            {
+                "roadUsers": [
+                    {
+                        "mmr": {
+                            "make": {"value": "Toyota", "score": 0.9},
+                            "model": {"value": "Corolla", "score": 0.8},
+                        }
+                    }
+                ]
+            },
+            {"roadUsers": [{"box": {"position": {}}}]},
+            {
+                "roadUsers": [
+                    {
+                        "mmr": {
+                            "make": {"value": "Audi", "score": 0.91},
+                            "model": {"value": "A4", "score": 0.81},
+                        }
+                    }
+                ]
+            },
+        ]
+    }
+
+    results = parse_mmr_results_by_combination(payload)
+
+    assert [result.make if result is not None else None for result in results] == [
+        "Toyota",
+        None,
+        "Audi",
+    ]
+
+
 def test_traffic_eye_client_requests_box_detection_and_mmr_only(
     tmp_path, monkeypatch
 ) -> None:
@@ -203,3 +290,241 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
     assert "OCR" not in request["tasks"]
     assert "PLATE" not in request["requestedDetectionTypes"]
     assert "combinations" not in request
+
+
+def test_traffic_eye_client_batches_crops_with_manual_boxes(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
+    first_crop = tmp_path / "first.jpg"
+    second_crop = tmp_path / "second.jpg"
+    cv2.imwrite(str(first_crop), np.full((50, 80, 3), 50, dtype=np.uint8))
+    cv2.imwrite(str(second_crop), np.full((80, 50, 3), 150, dtype=np.uint8))
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "combinations": [
+                    {
+                        "roadUsers": [
+                            {
+                                "box": {
+                                    "position": {
+                                        "topLeftCol": 0,
+                                        "topLeftRow": 18,
+                                        "bottomRightCol": 100,
+                                        "bottomRightRow": 82,
+                                    }
+                                },
+                                "mmr": {
+                                    "make": {"value": "Toyota", "score": 0.9},
+                                    "model": {"value": "Corolla", "score": 0.8},
+                                },
+                            }
+                        ]
+                    },
+                    {
+                        "roadUsers": [
+                            {
+                                "box": {
+                                    "position": {
+                                        "topLeftCol": 119,
+                                        "topLeftRow": 0,
+                                        "bottomRightCol": 181,
+                                        "bottomRightRow": 100,
+                                    }
+                                },
+                                "mmr": {
+                                    "make": {"value": "Audi", "score": 0.91},
+                                    "model": {"value": "A4", "score": 0.81},
+                                },
+                            }
+                        ]
+                    },
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self, timeout: float) -> None:
+            captured["timeout"] = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            pass
+
+        def post(self, url, headers, files):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["filename"] = files["file"][0]
+            captured["request"] = orjson.loads(files["request"][1])
+            return FakeResponse()
+
+    monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
+    config = AppConfig.model_validate(
+        {"mmr": {"batch_grid_columns": 2, "batch_cell_size_px": 100}}
+    )
+
+    client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
+    results = client.recognize_vehicle_crops([first_crop, second_crop])
+    debug_images = sorted((tmp_path / "batch_grids").glob("*.jpg"))
+    debug_manifests = sorted((tmp_path / "batch_grids").glob("*.json"))
+
+    request = captured["request"]
+    assert request["tasks"] == ["MMR"]
+    assert "requestedDetectionTypes" not in request
+    assert request["mmrPreference"] == "BOX"
+    assert len(request["combinations"]) == 2
+    assert request["combinations"][0]["roadUsers"][0]["box"]["position"] == {
+        "topLeftCol": 0.0,
+        "topLeftRow": 19.0,
+        "bottomRightCol": 100.0,
+        "bottomRightRow": 81.0,
+    }
+    assert [result.make for result in results] == ["Toyota", "Audi"]
+    assert [result.source_image for result in results] == [first_crop, second_crop]
+    assert all(result.accepted for result in results)
+    assert len(debug_images) == 1
+    assert cv2.imread(str(debug_images[0])).shape[:2] == (100, 200)
+    assert len(debug_manifests) == 1
+    manifest = orjson.loads(debug_manifests[0].read_bytes())
+    assert manifest["image"] == debug_images[0].name
+    assert [cell["source_image"] for cell in manifest["cells"]] == [
+        str(first_crop),
+        str(second_crop),
+    ]
+
+
+def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
+    crops = []
+    for index in range(3):
+        crop = tmp_path / f"crop-{index}.jpg"
+        cv2.imwrite(str(crop), np.full((50, 80, 3), index, dtype=np.uint8))
+        crops.append(crop)
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "combinations": [
+                    {
+                        "roadUsers": [
+                            {
+                                "mmr": {
+                                    "make": {"value": "Toyota", "score": 0.9},
+                                    "model": {"value": "Corolla", "score": 0.8},
+                                }
+                            }
+                        ]
+                    },
+                    {"roadUsers": [{"box": {}}]},
+                    {
+                        "roadUsers": [
+                            {
+                                "mmr": {
+                                    "make": {"value": "Audi", "score": 0.91},
+                                    "model": {"value": "A4", "score": 0.81},
+                                }
+                            }
+                        ]
+                    },
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self, timeout: float) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            pass
+
+        def post(self, url, headers, files):
+            return FakeResponse()
+
+    monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
+    config = AppConfig.model_validate(
+        {"mmr": {"batch_grid_columns": 3, "batch_cell_size_px": 100}}
+    )
+
+    client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
+    results = client.recognize_vehicle_crops(crops)
+
+    assert [result.make for result in results] == ["Toyota", None, "Audi"]
+    assert results[1].raw["skipped_reason"] == "batch_no_mmr_result"
+
+
+def test_traffic_eye_client_does_not_reuse_ordered_batch_result_for_empty_slot(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
+    crops = []
+    for index in range(2):
+        crop = tmp_path / f"crop-{index}.jpg"
+        cv2.imwrite(str(crop), np.full((80, 80, 3), index, dtype=np.uint8))
+        crops.append(crop)
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "combinations": [
+                    {
+                        "roadUsers": [
+                            {
+                                "box": {
+                                    "position": {
+                                        "topLeftCol": 75,
+                                        "topLeftRow": 0,
+                                        "bottomRightCol": 125,
+                                        "bottomRightRow": 100,
+                                    }
+                                },
+                                "mmr": {
+                                    "make": {"value": "Toyota", "score": 0.9},
+                                    "model": {"value": "Corolla", "score": 0.8},
+                                },
+                            }
+                        ]
+                    },
+                    {"roadUsers": []},
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self, timeout: float) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            pass
+
+        def post(self, url, headers, files):
+            return FakeResponse()
+
+    monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
+    config = AppConfig.model_validate(
+        {"mmr": {"batch_grid_columns": 2, "batch_cell_size_px": 100}}
+    )
+
+    client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
+    results = client.recognize_vehicle_crops(crops)
+
+    assert [result.make for result in results] == ["Toyota", None]
+    assert results[1].raw["skipped_reason"] == "batch_no_mmr_result"

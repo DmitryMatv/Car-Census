@@ -3,15 +3,17 @@ from pathlib import Path
 import orjson
 
 from config import AppConfig
-from pipeline.classify import classify_tracks
 from models import BBox, CropCandidate, MMRResult, TrackSummary
+from pipeline.classify import classify_tracks
 
 
 class DummyRunStore:
     def __init__(self, root: Path) -> None:
+        self.crops_dir = root / "crops"
         self.tracks_path = root / "analysis" / "tracks.jsonl"
         self.labels_path = root / "mmr" / "labels.json"
         self.mmr_cache_dir = root / "mmr" / "cache"
+        self.crops_dir.mkdir(parents=True)
         self.tracks_path.parent.mkdir(parents=True)
         self.labels_path.parent.mkdir(parents=True)
         self.mmr_cache_dir.mkdir(parents=True)
@@ -283,6 +285,130 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
     assert payload["11"]["vehicle_index"] == 7
     assert payload["10"]["api_classification_index"] == 7
     assert payload["11"]["api_classification_index"] == 7
+
+
+def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> None:
+    calls: list[list[Path]] = []
+
+    class FakeTrafficEyeClient:
+        def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+            pass
+
+        def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
+            calls.append([image_path])
+            return MMRResult(
+                make=f"Make {image_path.stem}",
+                model=f"Model {image_path.stem}",
+                model_confidence=0.9,
+                accepted=True,
+                source_image=image_path,
+            )
+
+        def recognize_vehicle_crops(self, image_paths: list[Path]) -> list[MMRResult]:
+            calls.append(image_paths)
+            return [
+                MMRResult(
+                    make=f"Make {image_path.stem}",
+                    model=f"Model {image_path.stem}",
+                    model_confidence=0.9,
+                    accepted=True,
+                    source_image=image_path,
+                )
+                for image_path in image_paths
+            ]
+
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
+
+    store = DummyRunStore(tmp_path)
+    first_crop = tmp_path / "first.jpg"
+    second_crop = tmp_path / "second.jpg"
+    third_crop = tmp_path / "third.jpg"
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(first_crop, track_id=1, vehicle_index=1)],
+            ),
+            TrackSummary(
+                track_id=2,
+                vehicle_index=2,
+                first_frame_index=11,
+                last_frame_index=20,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(second_crop, track_id=2, vehicle_index=2)],
+            ),
+            TrackSummary(
+                track_id=3,
+                vehicle_index=3,
+                first_frame_index=21,
+                last_frame_index=30,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(third_crop, track_id=3, vehicle_index=3)],
+            ),
+        ],
+    )
+    config = AppConfig.model_validate({"mmr": {"batch_size": 2}})
+    config.analysis.min_track_frames = 1
+
+    labels = classify_tracks(config=config, run_store=store)
+
+    assert calls == [[first_crop, second_crop], [third_crop]]
+    assert labels[1].make == "Make first"
+    assert labels[2].make == "Make second"
+    assert labels[3].make == "Make third"
+    assert labels[1].api_classification_index == 1
+    assert labels[2].api_classification_index == 2
+    assert labels[3].api_classification_index == 3
+
+
+def test_classify_tracks_uses_relocated_crop_when_track_path_is_stale(
+    tmp_path, monkeypatch
+) -> None:
+    calls: list[Path] = []
+
+    class FakeTrafficEyeClient:
+        def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+            pass
+
+        def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
+            calls.append(image_path)
+            return MMRResult(make="Toyota", model="Corolla", accepted=True)
+
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
+
+    store = DummyRunStore(tmp_path)
+    stale_crop = tmp_path / "outputs" / "run" / "crops" / "vehicle_000001.jpg"
+    relocated_crop = store.crops_dir / "vehicle_000001.jpg"
+    relocated_crop.write_bytes(b"fake image")
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(stale_crop, track_id=1, vehicle_index=1)],
+            ),
+        ],
+    )
+    config = AppConfig()
+    config.analysis.min_track_frames = 1
+
+    labels = classify_tracks(config=config, run_store=store)
+
+    assert calls == [relocated_crop]
+    assert labels[1].make == "Toyota"
 
 
 def test_classify_tracks_ignores_candidate_less_unqualified_tracks(

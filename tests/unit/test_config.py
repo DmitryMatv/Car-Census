@@ -55,7 +55,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.ffmpeg_path == "ffmpeg"
     assert config.render.nvenc_codec == "h264_nvenc"
     assert config.render.nvenc_preset == "p4"
-    assert config.render.nvenc_cq == 23
+    assert config.render.nvenc_cq == 20
     assert config.render.min_visible_track_observations == 10
     assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
@@ -82,6 +82,9 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.reject_short_excursions is True
     assert config.render.smoothing.max_excursion_observations == 2
     assert config.render.smoothing.excursion_center_ratio == 1.25
+    assert config.mmr.batch_size == 16
+    assert config.mmr.batch_grid_columns == 4
+    assert config.mmr.batch_cell_size_px == 512
     assert not hasattr(config.mmr, "max_attempts_per_track")
 
 

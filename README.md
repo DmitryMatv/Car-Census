@@ -41,7 +41,7 @@ pip install -e ".[tracking]"
 The default configuration expects a local YOLO26 ONNX detector at:
 
 ```text
-weights/yolo26n.onnx
+weights/yolo26s.onnx
 ```
 
 Use a YOLO26 detection model exported to ONNX. The default path is intentionally a local artifact so the pipeline can run offline after setup.
@@ -95,13 +95,16 @@ Set your API key in the environment:
 export TRAFFICEYE_API_KEY=your_key_here
 ```
 
-Classification sends one selected crop per vehicle to TrafficEye. The request
-uses only `DETECTION` and `MMR` with `requestedDetectionTypes: ["BOX"]` and
-`mmrPreference: "BOX"`, so OCR and plate detection are intentionally not
-requested. The full TrafficEye response is preserved under
-`mmr/labels.json[*].raw`; common MMR fields such as make, model, generation,
-color, tags, and the selected detection box are also promoted to typed label
-fields.
+Classification sends one selected crop per vehicle to TrafficEye. By default,
+crops are packed into 4x4 composite images (`mmr.batch_size: 16`) and sent with
+manual BOX detections for each grid cell, so batch requests use `MMR` without
+`DETECTION`. Set `mmr.batch_size: 1` to restore one API request per crop with
+`DETECTION` and `MMR`. OCR and plate detection are intentionally not requested.
+Each composite image is saved under `mmr/batch_grids/` with a JSON sidecar that
+maps source crop paths to grid cells. The full TrafficEye response is preserved
+under `mmr/labels.json[*].raw`; common MMR fields such as make, model,
+generation, color, tags, and the selected detection box are also promoted to
+typed label fields.
 
 ## Quick Start
 

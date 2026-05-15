@@ -56,6 +56,9 @@ mmr:
   requested_detection_types:
     - BOX
   mmr_preference: BOX
+  batch_size: 16
+  batch_grid_columns: 4
+  batch_cell_size_px: 512
 
 render:
   codec: mp4v
