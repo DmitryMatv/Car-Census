@@ -94,7 +94,7 @@ def _track(
         class_id=2,
         class_name="car",
         centroid=bbox.center,
-        bottom_center=((bbox.x1 + bbox.x2) / 2.0, bbox.y2),
+        bottom_center=bbox.bottom_center,
         inside_roi=True,
     )
 
@@ -114,7 +114,7 @@ def _render_track(
         class_id=2,
         class_name="car",
         centroid=bbox.center,
-        bottom_center=((bbox.x1 + bbox.x2) / 2.0, bbox.y2),
+        bottom_center=bbox.bottom_center,
         inside_roi=True,
     )
 
@@ -244,7 +244,7 @@ def test_render_uses_configured_video_fps_for_iteration_and_writer(
         for index in range(3):
             yield index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8)
 
-    def fake_build_frame_writer(**kwargs):
+    def fake_build_frame_writer(**kwargs) -> DummyWriter:
         writer_kwargs.update(kwargs)
         return writer
 
@@ -261,6 +261,66 @@ def test_render_uses_configured_video_fps_for_iteration_and_writer(
 
     assert iterated_fps == [30.0]
     assert writer_kwargs["fps"] == 30.0
+    assert len(writer.frames) == 3
+
+
+def test_render_uses_configured_output_fps_for_sampling_and_writer(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_frame_records(store.frames_path)
+    writer = DummyWriter()
+    sampled_kwargs = {}
+    writer_kwargs = {}
+
+    monkeypatch.setattr(
+        render_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(width=16, height=16, fps=30.0, frame_count=6),
+    )
+
+    def fake_iter_sampled_frames(video_path, source_fps, target_fps):
+        sampled_kwargs.update(
+            {
+                "video_path": video_path,
+                "source_fps": source_fps,
+                "target_fps": target_fps,
+            }
+        )
+        for index in [0, 2, 4]:
+            yield index, index / 30.0, np.zeros((16, 16, 3), dtype=np.uint8)
+
+    def fail_iter_video_frames(*_args, **_kwargs):
+        raise AssertionError("render should use sampled frames for lower output FPS")
+
+    def fake_build_frame_writer(**kwargs) -> DummyWriter:
+        writer_kwargs.update(kwargs)
+        return writer
+
+    monkeypatch.setattr(render_module, "iter_sampled_frames", fake_iter_sampled_frames)
+    monkeypatch.setattr(render_module, "iter_video_frames", fail_iter_video_frames)
+    monkeypatch.setattr(render_module, "build_frame_writer", fake_build_frame_writer)
+    monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "output_fps": 15.0,
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+    )
+
+    assert sampled_kwargs["source_fps"] == 30.0
+    assert sampled_kwargs["target_fps"] == 15.0
+    assert writer_kwargs["fps"] == 15.0
     assert len(writer.frames) == 3
 
 
@@ -284,7 +344,7 @@ def test_render_passes_encode_backend_to_frame_writer(tmp_path, monkeypatch) -> 
         ),
     )
 
-    def fake_build_frame_writer(**kwargs):
+    def fake_build_frame_writer(**kwargs) -> DummyWriter:
         writer_kwargs.update(kwargs)
         return writer
 
@@ -561,6 +621,201 @@ def test_render_can_restore_single_observation_track_visibility(
     assert DummyAnnotator.seen_track_ids == [[1, 2], [1, 2], [2]]
 
 
+def test_render_requires_crop_eligible_track_when_enabled(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, 0, 0.0, vehicle_index=None),
+                _track(2, 0, 0.0, vehicle_index=1),
+            ],
+        )
+    ]
+    _write_records(store.frames_path, records)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(make="No", model="Crop").model_dump(mode="json"),
+                "2": MMRResult(make="Has", model="Crop").model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=1)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "require_crop_eligible_track": True,
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[2]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {
+        1: "No Crop",
+        2: "Has Crop",
+    }
+
+
+def test_render_keeps_non_crop_eligible_track_when_requirement_disabled(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, 0, 0.0, vehicle_index=None),
+                _track(2, 0, 0.0, vehicle_index=1),
+            ],
+        )
+    ]
+    _write_records(store.frames_path, records)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(make="No", model="Crop").model_dump(mode="json"),
+                "2": MMRResult(make="Has", model="Crop").model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=1)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "require_crop_eligible_track": False,
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[1, 2]]
+
+
+def test_render_crop_eligible_requirement_still_applies_observation_filter(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, 0, 0.0, vehicle_index=1),
+                _track(2, 0, 0.0, vehicle_index=2),
+            ],
+        ),
+        FrameRecord(
+            frame_index=1,
+            timestamp_seconds=1 / 30,
+            tracks=[
+                _track(1, 1, 1 / 30, vehicle_index=1),
+                _track(2, 1, 1 / 30, vehicle_index=2),
+            ],
+        ),
+        FrameRecord(
+            frame_index=2,
+            timestamp_seconds=2 / 30,
+            tracks=[_track(2, 2, 2 / 30, vehicle_index=2)],
+        ),
+    ]
+    _write_records(store.frames_path, records)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(make="Short", model="Crop").model_dump(mode="json"),
+                "2": MMRResult(make="Stable", model="Crop").model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=3)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "require_crop_eligible_track": True,
+                    "min_visible_track_observations": 3,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[2], [2], [2]]
+
+
+def test_render_require_crop_eligible_track_allows_unclassified_eligible_tracks(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(2, 0, 0.0, vehicle_index=1)],
+        )
+    ]
+    _write_records(store.frames_path, records)
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=1)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "require_crop_eligible_track": True,
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[2]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {2: "1 | UNKNOWN"}
+
+
 def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     tmp_path, monkeypatch
 ) -> None:
@@ -780,7 +1035,7 @@ def test_video_annotator_places_label_above_and_left_aligned() -> None:
         class_id=2,
         class_name="car",
         centroid=bbox.center,
-        bottom_center=((bbox.x1 + bbox.x2) / 2.0, bbox.y2),
+        bottom_center=bbox.bottom_center,
         inside_roi=True,
     )
     bounds = label_box_bounds(

@@ -28,6 +28,10 @@ class BBox(BaseModel):
     def center(self) -> tuple[float, float]:
         return ((self.x1 + self.x2) / 2.0, (self.y1 + self.y2) / 2.0)
 
+    @property
+    def bottom_center(self) -> tuple[float, float]:
+        return ((self.x1 + self.x2) / 2.0, self.y2)
+
 
 class Detection(BaseModel):
     bbox: BBox

@@ -6,6 +6,7 @@ from typing import Protocol
 
 import numpy as np
 import supervision as sv
+from boxmot.trackers.botsort.botsort import BotSort
 
 from config import AppConfig
 from models import Detection
@@ -34,7 +35,7 @@ def _resolve_cmc_method(config: AppConfig) -> str | None:
     return cmc_method
 
 
-def _create_botsort_tracker(config: AppConfig, frame_rate: float | None):
+def _create_botsort_tracker(config: AppConfig, frame_rate: float | None) -> BotSort:
     try:
         from boxmot.trackers import BotSort
     except ImportError as exc:

@@ -1,16 +1,17 @@
+from pathlib import Path
+
 import orjson
 import pytest
 
 from config import AppConfig, build_full_frame_profile
+from models import BBox, FrameRecord, RunManifest, TrackedObject
 from pipeline.smooth import smooth_render_tracks
 from storage.run_store import RunStore
-from models import BBox, FrameRecord, RunManifest, TrackedObject
 
 
 def _track(
     track_id: int, frame_index: int, timestamp: float, bbox: BBox
 ) -> TrackedObject:
-    bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
     return TrackedObject(
         track_id=track_id,
         frame_index=frame_index,
@@ -20,7 +21,7 @@ def _track(
         class_id=2,
         class_name="car",
         centroid=bbox.center,
-        bottom_center=bottom_center,
+        bottom_center=bbox.bottom_center,
         inside_roi=True,
     )
 
@@ -33,7 +34,7 @@ def _record(frame_index: int, timestamp: float, tracks=None) -> FrameRecord:
     )
 
 
-def _write_jsonl(path, records) -> bytes:
+def _write_jsonl(path: Path, records: list[FrameRecord]) -> bytes:
     payload = b"".join(
         orjson.dumps(record.model_dump(mode="json")) + b"\n" for record in records
     )
@@ -65,7 +66,7 @@ def _store(
     return store
 
 
-def _read_records(path):
+def _read_records(path: Path) -> list[FrameRecord]:
     return [
         FrameRecord.model_validate(orjson.loads(line))
         for line in path.read_bytes().splitlines()

@@ -1,19 +1,20 @@
 import builtins
+from types import ModuleType
 
 import numpy as np
 import pytest
 
 from config import AppConfig
+from models import BBox, Detection
 from trackers.botsort import (
     BotSortAdapter,
     _create_botsort_tracker,
     _resolve_cmc_method,
 )
-from models import BBox, Detection
 
 
 class FakeTracker:
-    def __init__(self, tracks):
+    def __init__(self, tracks) -> None:
         self.tracks = tracks
         self.calls = []
 
@@ -81,7 +82,7 @@ def test_botsort_adapter_handles_missing_class_id() -> None:
 def test_create_botsort_tracker_raises_clear_install_error(monkeypatch) -> None:
     real_import = builtins.__import__
 
-    def fake_import(name, *args, **kwargs):
+    def fake_import(name, *args, **kwargs) -> ModuleType:
         if name == "boxmot.trackers":
             raise ImportError("missing")
         return real_import(name, *args, **kwargs)

@@ -124,12 +124,14 @@ class MMRConfig(StrictBaseModel):
 
 class RenderConfig(StrictBaseModel):
     codec: str = "mp4v"
+    output_fps: float | None = Field(default=None, gt=0.0)
     encode_backend: Literal["opencv", "auto-nvenc", "ffmpeg-nvenc"] = "opencv"
     ffmpeg_path: str = "ffmpeg"
     nvenc_codec: str = "h264_nvenc"
     nvenc_preset: str = "p4"
-    nvenc_cq: int = Field(default=20, ge=0, le=51)
+    nvenc_cq: int = Field(default=23, ge=0, le=51)
     min_visible_track_observations: int = Field(default=10, ge=1)
+    require_crop_eligible_track: bool = False
     box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0
     label_thickness: int = 1

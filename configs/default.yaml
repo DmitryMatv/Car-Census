@@ -10,7 +10,7 @@ video:
 analysis:
   fps: 10
   imgsz: 640
-  min_track_frames: 10
+  min_track_frames: 8
   min_box_height_px: 200
   crop_padding_ratio: 0.10
   crop_padding_px: 0
@@ -35,11 +35,11 @@ tracker:
   new_track_thresh: 0.50
   track_buffer: 30
   match_thresh: 0.90
-  minimum_consecutive_frames: 7
+  minimum_consecutive_frames: 5
   frame_rate: 0
   fuse_first_associate: true
   cmc_method: null
-  with_reid: false
+  with_reid: true
   proximity_thresh: 0.50
   appearance_thresh: 0.80
   ignore_edge_touches: true
@@ -62,7 +62,8 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 10
+  min_visible_track_observations: 8
+  require_crop_eligible_track: true
   box_color: "#FFFFFF"
   label_font_scale: 0.7
   label_thickness: 2
@@ -81,12 +82,12 @@ render:
   label_shadow_thickness_extra: 1
   label_smart_position: true
   label_max_offset_px: 48
-  glow_enabled: true
+  glow_enabled: false
   glow_color: "#FFFFFF"
   glow_radius_px: 9
   glow_alpha: 0.55
   label_glow_radius_px: 7
-  label_glow_alpha: 0.30
+  label_glow_alpha: 0.0
   corner_thickness: 4
   corner_length: 20
   unknown_label: Unknown

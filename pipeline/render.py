@@ -13,6 +13,7 @@ from render.annotators import VideoAnnotator
 from storage.run_store import RunStore
 from utils.video import (
     build_frame_writer,
+    iter_sampled_frames,
     iter_video_frames,
     read_video_metadata,
     validate_video_fps,
@@ -90,6 +91,15 @@ def visible_track_ids_by_observation_count(
     return {track_id for track_id, count in counts.items() if count >= min_observations}
 
 
+def crop_eligible_track_ids(frames_path: Path) -> set[int]:
+    eligible: set[int] = set()
+    for record in _iter_frame_records(frames_path):
+        for track in record.tracks:
+            if track.vehicle_index is not None:
+                eligible.add(track.track_id)
+    return eligible
+
+
 def render_video(
     config: AppConfig,
     profile: CameraProfile,
@@ -108,6 +118,8 @@ def render_video(
         run_store.frames_path,
         config.render.min_visible_track_observations,
     )
+    if config.render.require_crop_eligible_track:
+        visible_track_ids &= crop_eligible_track_ids(run_store.frames_path)
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
         if config.render.smoothing.enabled
@@ -125,9 +137,10 @@ def render_video(
     else:
         label_text = {}
     annotator = VideoAnnotator(config)
+    output_fps = min(config.render.output_fps or config.video.fps, config.video.fps)
     writer = build_frame_writer(
         output_path=run_store.output_video_path,
-        fps=config.video.fps,
+        fps=output_fps,
         width=metadata.width,
         height=metadata.height,
         codec=config.render.codec,
@@ -140,11 +153,18 @@ def render_video(
     record_iter = iter(_iter_frame_records(frames_path))
     current_record = next(record_iter, None)
     latest_tracks = []
+    frame_iter = (
+        iter_sampled_frames(
+            video_path,
+            source_fps=config.video.fps,
+            target_fps=output_fps,
+        )
+        if output_fps < config.video.fps
+        else iter_video_frames(video_path, config.video.fps)
+    )
 
     try:
-        for frame_index, _timestamp_seconds, frame in iter_video_frames(
-            video_path, config.video.fps
-        ):
+        for frame_index, _timestamp_seconds, frame in frame_iter:
             while (
                 current_record is not None and current_record.frame_index <= frame_index
             ):

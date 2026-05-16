@@ -229,7 +229,7 @@ def _save_candidate(
     cv2.imwrite(
         str(image_path),
         crop,
-        [int(cv2.IMWRITE_JPEG_QUALITY), config.analysis.crop_jpeg_quality],
+        [cv2.IMWRITE_JPEG_QUALITY, config.analysis.crop_jpeg_quality],
     )
     if current is not None and current.image_path.exists():
         current.image_path.unlink()
@@ -340,7 +340,7 @@ def analyze_video(
                     else:
                         finished_track_states.append(state)
                     continue
-            bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
+            bottom_center = bbox.bottom_center
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)
             confidence = float(confidences[index])
             class_id = int(class_ids[index]) if index < len(class_ids) else None
@@ -412,10 +412,7 @@ def analyze_video(
 
             render_bbox = _render_bbox_for_track(bbox, frame.shape, config)
             render_centroid = render_bbox.center
-            render_bottom_center = (
-                (render_bbox.x1 + render_bbox.x2) / 2.0,
-                render_bbox.y2,
-            )
+            render_bottom_center = render_bbox.bottom_center
 
             tracked_object = TrackedObject(
                 track_id=track_id,

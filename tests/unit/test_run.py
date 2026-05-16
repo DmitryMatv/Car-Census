@@ -22,19 +22,19 @@ def test_run_pipeline_orders_analyze_classify_render_report(
         lambda **kwargs: store,
     )
 
-    def fake_analyze_video(**kwargs):
+    def fake_analyze_video(**kwargs) -> None:
         calls.append("analyze")
         assert kwargs["run_store"] is store
 
-    def fake_classify_tracks(**kwargs):
+    def fake_classify_tracks(**kwargs) -> None:
         calls.append("classify")
         assert kwargs["run_store"] is store
 
-    def fake_render_video(**kwargs):
+    def fake_render_video(**kwargs) -> None:
         calls.append("render")
         render_kwargs.update(kwargs)
 
-    def fake_generate_reports(**kwargs):
+    def fake_generate_reports(**kwargs) -> None:
         calls.append("report")
         assert kwargs["run_store"] is store
 
@@ -70,18 +70,18 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
         lambda **kwargs: store,
     )
 
-    def fake_analyze_video(**kwargs):
+    def fake_analyze_video(**kwargs) -> None:
         calls.append("analyze")
         assert kwargs["run_store"] is store
 
-    def fake_classify_tracks(**kwargs):
+    def fake_classify_tracks(**kwargs) -> None:
         calls.append("classify")
 
-    def fake_render_video(**kwargs):
+    def fake_render_video(**kwargs) -> None:
         calls.append("render")
         render_kwargs.update(kwargs)
 
-    def fake_generate_reports(**kwargs):
+    def fake_generate_reports(**kwargs) -> None:
         calls.append("report")
         assert kwargs["run_store"] is store
 

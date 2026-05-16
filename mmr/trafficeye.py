@@ -427,7 +427,7 @@ class TrafficEyeClient:
         ok, encoded = cv2.imencode(
             ".jpg",
             canvas,
-            [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality],
+            [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
         )
         if not ok:
             raise RuntimeError("Could not encode MMR batch image")

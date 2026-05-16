@@ -6,16 +6,16 @@ import orjson
 import supervision as sv
 
 from config import AppConfig, CameraProfile, PolygonZoneConfig
+from models import BBox, Detection, FrameRecord
 from pipeline import analyze as analyze_module
 from pipeline.analyze import (
     MutableTrackState,
     _render_bbox_for_track,
-    analyze_video,
     _save_candidate,
+    analyze_video,
 )
 from pipeline.vehicles import staged_track_crop_dir
 from storage.run_store import RunStore
-from models import BBox, Detection, FrameRecord
 from utils.video import VideoMetadata
 
 
@@ -285,6 +285,34 @@ def test_analyze_filters_detection_touching_polygon_edge_before_tracker(
     )
 
     assert tracker.received_detections == [[]]
+
+
+def test_analyze_uses_bottom_center_for_roi_membership(tmp_path, monkeypatch) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(_single_track(BBox(x1=40, y1=20, x2=60, y2=80)))
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+    config = AppConfig.model_validate(
+        {
+            "analysis": {"crop_padding_ratio": 0, "crop_padding_px": 0},
+            "tracker": {"ignore_edge_touches": False},
+        }
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="lower-band",
+            polygon=PolygonZoneConfig(points=[[0, 60], [99, 60], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert records[0].tracks[0].centroid == (50.0, 50.0)
+    assert records[0].tracks[0].bottom_center == (50.0, 80.0)
+    assert records[0].tracks[0].inside_roi is True
 
 
 def test_analyze_discards_crops_and_vehicle_index_for_short_tracks(

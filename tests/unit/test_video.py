@@ -1,4 +1,5 @@
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import numpy as np
 import pytest
@@ -136,7 +137,7 @@ def test_build_frame_writer_uses_opencv_backend(tmp_path: Path) -> None:
 def test_has_ffmpeg_encoder_probe_uses_nvenc_supported_dimensions(monkeypatch) -> None:
     commands: list[list[str]] = []
 
-    def fake_run(command, **_kwargs):
+    def fake_run(command, **_kwargs) -> CompletedProcess[str]:
         commands.append(command)
         stdout = " V....D h264_nvenc           NVIDIA NVENC H.264 encoder"
         return video_module.subprocess.CompletedProcess(command, 0, stdout, "")

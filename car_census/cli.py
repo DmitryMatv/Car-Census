@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from config import (
     FULL_FRAME_CAMERA_ID,
+    CameraProfile,
     build_effective_config,
     build_full_frame_profile,
     camera_profile_path,
@@ -61,6 +62,9 @@ def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
             },
             "render": {
                 "encode_backend": "auto-nvenc",
+                "output_fps": 30.0,
+                "nvenc_preset": "p4",
+                "nvenc_cq": 23,
             },
         }
     if accelerator == "onnx-cuda":
@@ -112,7 +116,9 @@ def _load_config_with_device(
     return _load_config_with_accelerator(config_path, device)
 
 
-def _resolve_profile(project_root: Path, config, video: Path, camera_id: Optional[str]):
+def _resolve_profile(
+    project_root: Path, config: object, video: Path, camera_id: Optional[str]
+) -> CameraProfile:
     if camera_id:
         return load_camera_profile(config, camera_id, root=project_root)
     first_frame = read_first_frame(video)

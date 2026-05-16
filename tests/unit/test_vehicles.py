@@ -4,6 +4,7 @@ import numpy as np
 import orjson
 
 from config import AppConfig
+from models import BBox, FrameRecord, TrackedObject
 from pipeline.analyze import MutableTrackState, _save_candidate
 from pipeline.vehicles import (
     discard_track_artifacts,
@@ -13,7 +14,6 @@ from pipeline.vehicles import (
     track_summary_from_state,
     vehicle_crop_path,
 )
-from models import BBox, FrameRecord, TrackedObject
 
 
 class DummyRunStore:
@@ -34,7 +34,7 @@ def _track(track_id: int, vehicle_index: int | None = None) -> TrackedObject:
         class_id=2,
         class_name="car",
         centroid=bbox.center,
-        bottom_center=((bbox.x1 + bbox.x2) / 2.0, bbox.y2),
+        bottom_center=bbox.bottom_center,
         inside_roi=True,
     )
 

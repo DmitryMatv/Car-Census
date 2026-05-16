@@ -7,9 +7,9 @@ import numpy as np
 import orjson
 
 from config import AppConfig, CameraProfile
+from models import BBox, FrameRecord, RunManifest, TrackedObject
 from roi.geometry import point_in_polygon
 from storage.run_store import RunStore
-from models import BBox, FrameRecord, RunManifest, TrackedObject
 
 
 @dataclass(slots=True)
@@ -340,7 +340,7 @@ def _endpoint_hermite_slope(
         3.0 * first_delta
     ):
         return 3.0 * first_delta
-    return float(slope)
+    return slope
 
 
 def _monotone_hermite_slopes(
@@ -401,7 +401,7 @@ def _hermite_interpolate_vector(
         return None
 
     s = (timestamp_seconds - previous.timestamp_seconds) / segment_duration
-    s = max(0.0, min(1.0, float(s)))
+    s = max(0.0, min(1.0, s))
     s2 = s * s
     s3 = s2 * s
     h00 = (2.0 * s3) - (3.0 * s2) + 1.0
@@ -602,13 +602,10 @@ def _is_short_excursion(
         return False
 
     for point in segment[start_index : start_index + run_length]:
-        expected = _linear_interpolate_vector(
-            before, after, point.timestamp_seconds
-        )
+        expected = _linear_interpolate_vector(before, after, point.timestamp_seconds)
         distance = float(np.linalg.norm(point.vector[0:2] - expected[0:2]))
-        threshold = (
-            config.render.smoothing.excursion_center_ratio
-            * max(float(expected[2]), float(expected[3]), 1.0)
+        threshold = config.render.smoothing.excursion_center_ratio * max(
+            float(expected[2]), float(expected[3]), 1.0
         )
         if distance <= threshold:
             return False
@@ -650,9 +647,7 @@ def _reject_short_excursions(
 
             before = segment[index - 1]
             after = segment[index + accepted_length]
-            for offset, point in enumerate(
-                segment[index : index + accepted_length]
-            ):
+            for offset, point in enumerate(segment[index : index + accepted_length]):
                 expected = _linear_interpolate_vector(
                     before, after, point.timestamp_seconds
                 )
@@ -736,7 +731,7 @@ def _clamp_vector(
 def _window_size(config: AppConfig, analysis_fps: float) -> int:
     if analysis_fps <= 0:
         analysis_fps = 30.0
-    size = int(round(config.render.smoothing.window_seconds * analysis_fps))
+    size = round(config.render.smoothing.window_seconds * analysis_fps)
     size = max(3, size)
     if size % 2 == 0:
         size += 1
@@ -783,7 +778,7 @@ def _render_track_from_point(
     point: _TrackPoint, profile: CameraProfile
 ) -> TrackedObject:
     bbox = _vector_to_box(point.vector) or point.source.bbox
-    bottom_center = ((bbox.x1 + bbox.x2) / 2.0, bbox.y2)
+    bottom_center = bbox.bottom_center
     return point.source.model_copy(
         update={
             "frame_index": point.frame_index,

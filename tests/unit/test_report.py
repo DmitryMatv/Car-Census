@@ -7,7 +7,7 @@ from pipeline.report import generate_reports
 
 
 class DummyRunStore:
-    def __init__(self, root):
+    def __init__(self, root) -> None:
         self.labels_path = root / "labels.json"
         self.count_events_path = root / "count_events.jsonl"
         self.tracks_path = root / "tracks.jsonl"

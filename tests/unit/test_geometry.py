@@ -1,3 +1,4 @@
+from models import BBox
 from roi.geometry import (
     bbox_touches_frame_edge,
     bbox_touches_polygon_edge,
@@ -5,7 +6,13 @@ from roi.geometry import (
     line_crossing_direction,
     point_in_polygon,
 )
-from models import BBox
+
+
+def test_bbox_bottom_center_uses_lower_box_edge() -> None:
+    bbox = BBox(x1=10, y1=20, x2=30, y2=80)
+
+    assert bbox.bottom_center == (20.0, 80)
+    assert bbox.center == (20.0, 50.0)
 
 
 def test_point_in_polygon_detects_inside_point() -> None:

@@ -17,6 +17,9 @@ Use Virtual Environment `source .venv/bin/activate` because `pytest` and everyth
 - `analysis/tracks.jsonl` may contain absolute crop paths from the original run
   location. If a run directory is renamed or moved, classification should resolve
   crop filenames against the current run's `crops/` directory.
+- Keep `trackers/__init__.py` and pytest `pythonpath = ["."]`; otherwise the
+  `.venv` site-packages `trackers` package can shadow the local tracker adapters
+  during test collection.
 
 ## Project Snapshot
 

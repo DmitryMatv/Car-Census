@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Self
+
 import cv2
 import numpy as np
 import orjson
@@ -266,13 +270,15 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
         def __init__(self, timeout: float) -> None:
             captured["timeout"] = timeout
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, exc_type, exc_value, traceback) -> None:
             pass
 
-        def post(self, url, headers, files):
+        def post(
+            self, url, headers, files
+        ) -> test_traffic_eye_client_requests_box_detection_and_mmr_only.FakeResponse:
             captured["url"] = url
             captured["headers"] = headers
             captured["request"] = orjson.loads(files["request"][1])
@@ -352,13 +358,15 @@ def test_traffic_eye_client_batches_crops_with_manual_boxes(
         def __init__(self, timeout: float) -> None:
             captured["timeout"] = timeout
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, exc_type, exc_value, traceback) -> None:
             pass
 
-        def post(self, url, headers, files):
+        def post(
+            self, url, headers, files
+        ) -> test_traffic_eye_client_batches_crops_with_manual_boxes.FakeResponse:
             captured["url"] = url
             captured["headers"] = headers
             captured["filename"] = files["file"][0]
@@ -445,13 +453,15 @@ def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
         def __init__(self, timeout: float) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, exc_type, exc_value, traceback) -> None:
             pass
 
-        def post(self, url, headers, files):
+        def post(
+            self, url, headers, files
+        ) -> test_traffic_eye_client_matches_manual_batch_results_by_combination_order.FakeResponse:
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
@@ -509,13 +519,15 @@ def test_traffic_eye_client_does_not_reuse_ordered_batch_result_for_empty_slot(
         def __init__(self, timeout: float) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, exc_type, exc_value, traceback) -> None:
             pass
 
-        def post(self, url, headers, files):
+        def post(
+            self, url, headers, files
+        ) -> test_traffic_eye_client_does_not_reuse_ordered_batch_result_for_empty_slot.FakeResponse:
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)

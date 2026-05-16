@@ -48,15 +48,17 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
-    assert config.analysis.min_track_frames == 10
+    assert config.analysis.min_track_frames == 8
     assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
     assert config.detector.onnx_require_gpu is False
     assert config.render.encode_backend == "opencv"
+    assert config.render.output_fps is None
     assert config.render.ffmpeg_path == "ffmpeg"
     assert config.render.nvenc_codec == "h264_nvenc"
     assert config.render.nvenc_preset == "p4"
-    assert config.render.nvenc_cq == 20
-    assert config.render.min_visible_track_observations == 10
+    assert config.render.nvenc_cq == 23
+    assert config.render.min_visible_track_observations == 8
+    assert config.render.require_crop_eligible_track is True
     assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
     assert config.render.corner_length == 20
