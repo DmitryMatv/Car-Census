@@ -33,7 +33,7 @@ from roi.geometry import (
     point_in_polygon,
 )
 from storage.run_store import RunStore
-from trackers.botsort import BotSortAdapter
+from tracking_adapters.botsort import BotSortAdapter
 from utils.image_quality import laplacian_sharpness
 from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
 
@@ -321,6 +321,8 @@ def analyze_video(
 
         for index, xyxy in enumerate(tracked.xyxy.tolist()):
             track_id = int(tracker_ids[index])
+            if track_id < 0:
+                continue
             if track_id in suppressed_edge_track_ids:
                 continue
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])

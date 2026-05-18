@@ -46,6 +46,7 @@ class VideoConfig(StrictBaseModel):
 
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
+    batch_size: int = Field(default=16, ge=1)
     imgsz: int = 960
     min_track_frames: int = 10
     min_box_height_px: int = 80
@@ -73,22 +74,19 @@ class DetectorConfig(StrictBaseModel):
 
 
 class TrackerConfig(StrictBaseModel):
-    provider: str = "botsort"
-    track_high_thresh: float = 0.25
-    track_low_thresh: float = 0.10
-    new_track_thresh: float = 0.25
-    track_buffer: int = 30
-    match_thresh: float = 0.80
-    minimum_consecutive_frames: int = 3
+    provider: Literal["botsort"] = "botsort"
+    lost_track_buffer: int = 30
+    track_activation_threshold: float = 0.7
+    minimum_consecutive_frames: int = 2
+    minimum_iou_threshold_first_assoc: float = 0.2
+    minimum_iou_threshold_second_assoc: float = 0.5
+    minimum_iou_threshold_unconfirmed_assoc: float = 0.3
+    high_conf_det_threshold: float = 0.6
+    enable_cmc: bool = True
+    cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
+    cmc_downscale: int = 2
+    instant_first_frame_activation: bool = True
     frame_rate: int = 0
-    fuse_first_associate: bool = True
-    cmc_method: str | None = None
-    with_reid: bool = False
-    reid_weights: Path = Path("osnet_x0_25_msmt17.pt")
-    reid_device: str = "auto"
-    reid_half: bool = False
-    proximity_thresh: float = 0.50
-    appearance_thresh: float = 0.80
     ignore_edge_touches: bool = True
     edge_margin_px: int = 0
 

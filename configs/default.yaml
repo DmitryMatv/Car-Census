@@ -9,6 +9,7 @@ video:
 
 analysis:
   fps: 10
+  batch_size: 16
   imgsz: 640
   min_track_frames: 8
   min_box_height_px: 200
@@ -30,18 +31,18 @@ detector:
 
 tracker:
   provider: botsort
-  track_high_thresh: 0.35
-  track_low_thresh: 0.05
-  new_track_thresh: 0.50
-  track_buffer: 30
-  match_thresh: 0.90
-  minimum_consecutive_frames: 5
+  lost_track_buffer: 30
+  track_activation_threshold: 0.7
+  minimum_consecutive_frames: 4
+  minimum_iou_threshold_first_assoc: 0.2
+  minimum_iou_threshold_second_assoc: 0.5
+  minimum_iou_threshold_unconfirmed_assoc: 0.3
+  high_conf_det_threshold: 0.6
+  enable_cmc: false
+  cmc_method: sparseOptFlow
+  cmc_downscale: 2
+  instant_first_frame_activation: true
   frame_rate: 0
-  fuse_first_associate: true
-  cmc_method: null
-  with_reid: true
-  proximity_thresh: 0.50
-  appearance_thresh: 0.80
   ignore_edge_touches: true
   edge_margin_px: 0
 
@@ -56,8 +57,8 @@ mmr:
   requested_detection_types:
     - BOX
   mmr_preference: BOX
-  batch_size: 16
-  batch_grid_columns: 4
+  batch_size: 25
+  batch_grid_columns: 5
   batch_cell_size_px: 512
 
 render:

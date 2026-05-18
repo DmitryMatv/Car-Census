@@ -14,8 +14,6 @@ def test_colab_t4_accelerator_enables_cuda_onnx_and_auto_nvenc() -> None:
         "CPUExecutionProvider",
     ]
     assert overrides["detector"]["onnx_require_gpu"] is True
-    assert overrides["tracker"]["reid_device"] == "cuda:0"
-    assert overrides["tracker"]["reid_half"] is True
     assert overrides["render"]["encode_backend"] == "auto-nvenc"
     assert overrides["render"]["output_fps"] == 30.0
     assert overrides["render"]["nvenc_preset"] == "p4"

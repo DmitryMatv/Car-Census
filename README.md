@@ -4,7 +4,7 @@ Offline vehicle tracking and make/model census for roadside video.
 
 ## What It Does
 
-`car-census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
+`Car-Census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
 
 The pipeline is staged:
 
@@ -30,11 +30,8 @@ The legacy Ultralytics/PyTorch detector remains available as an optional extra:
 pip install -e ".[pytorch]"
 ```
 
-BoT-SORT tracking uses BoxMOT. BoxMOT currently supports Python versions below 3.13, so use a Python 3.12 environment for tracking runs:
-
-```bash
-pip install -e ".[tracking]"
-```
+BoT-SORT tracking uses Roboflow's `trackers` package, which is installed with
+the main project dependencies.
 
 ## Model Setup
 
@@ -51,7 +48,7 @@ For quick smoke testing with the optional PyTorch path, set `detector.provider` 
 Device selection is explicit:
 
 ```bash
-car-census run input_data/test_vid.MP4 --camera-id home-road --device cpu
+Car-Census run input_data/test_vid.MP4 --camera-id home-road --device cpu
 ```
 
 By default, the ONNX Runtime detector uses `CPUExecutionProvider`.
@@ -61,14 +58,13 @@ Ultralytics/PyTorch provider.
 
 ## Google Colab T4
 
-For Colab GPU runs, install the tracking extra and use the GPU ONNX Runtime
-package:
+For Colab GPU runs, install the project and use the GPU ONNX Runtime package:
 
 ```bash
 source .venv/bin/activate
-pip install -e ".[tracking]"
+pip install -e .
 pip install onnxruntime-gpu
-car-census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
+Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
 ```
 
 The `--accelerator colab-t4` preset keeps the existing ONNX weights path and
@@ -111,19 +107,19 @@ typed label fields.
 Create an ROI profile:
 
 ```bash
-car-census roi edit input_data/test_vid.MP4 --camera-id home-road --device cuda
+Car-Census roi edit input_data/test_vid.MP4 --camera-id home-road --device cuda
 ```
 
 Run the full pipeline:
 
 ```bash
-car-census run input_data/test_vid.MP4 --camera-id home-road --device cuda
+Car-Census run input_data/test_vid.MP4 --camera-id home-road --device cuda
 ```
 
 Run without make/model API calls:
 
 ```bash
-car-census run input_data/test_vid.MP4 --skip-classify
+Car-Census run input_data/test_vid.MP4 --skip-classify
 ```
 
 Artifacts are written to `output/<run-id>/`.
@@ -155,7 +151,7 @@ output/<run-id>/
 - By default, `tracker.ignore_edge_touches: true` ignores detections and tracker outputs whose boxes touch the source-frame edge or selected camera crop edge. Increase `tracker.edge_margin_px` to ignore boxes that are near, but not exactly on, the edge.
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
 - `render.smoothing.interpolate` controls whether source-frame annotations are generated between analyzed frames. `render.smoothing.interpolation_method: hermite` is the default and uses monotone cubic Hermite interpolation through tracked keyframes to reduce overshoot. `linear` uses straight-line fills, while `polynomial` uses an arbitrary local polynomial fit and is mainly experimental. `polynomial_order` affects only polynomial interpolation and linear keyframe smoothing. `max_center_offset_ratio` and `max_size_delta_ratio` clamp generated boxes against the linear reference path. The `polynomial` and `hermite` methods preserve actual tracked keyframes exactly.
-- For static cameras, leave `tracker.cmc_method` as `null` to disable camera motion compensation. Supported BoxMOT CMC values are `ecc`, `orb`, `sift`, and `sof`.
+- Tracking uses Roboflow `trackers` BoT-SORT. Camera motion compensation is enabled by default with `tracker.cmc_method: sparseOptFlow`. Supported CMC methods are `sparseOptFlow`, `orb`, `sift`, and `ecc`. Set `tracker.enable_cmc: false` for static-camera runs where CMC hurts stability or performance.
 - Rendering shows make, model, generation, and variation when available.
 - `reports/report.csv` contains one row per identified vehicle. It preserves the
   detailed MMR fields and affirmative tags as boolean columns with matching

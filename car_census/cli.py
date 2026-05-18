@@ -56,10 +56,6 @@ def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
                 ],
                 "onnx_require_gpu": True,
             },
-            "tracker": {
-                "reid_device": "cuda:0",
-                "reid_half": True,
-            },
             "render": {
                 "encode_backend": "auto-nvenc",
                 "output_fps": 30.0,

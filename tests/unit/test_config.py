@@ -35,11 +35,50 @@ def test_edge_touch_filtering_is_enabled_by_default() -> None:
     assert config.tracker.edge_margin_px == 0
 
 
+def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
+    config = AppConfig()
+
+    assert config.tracker.provider == "botsort"
+    assert config.tracker.lost_track_buffer == 30
+    assert config.tracker.track_activation_threshold == 0.7
+    assert config.tracker.minimum_consecutive_frames == 2
+    assert config.tracker.minimum_iou_threshold_first_assoc == 0.2
+    assert config.tracker.minimum_iou_threshold_second_assoc == 0.5
+    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.3
+    assert config.tracker.high_conf_det_threshold == 0.6
+    assert config.tracker.enable_cmc is True
+    assert config.tracker.cmc_method == "sparseOptFlow"
+    assert config.tracker.cmc_downscale == 2
+    assert config.tracker.instant_first_frame_activation is True
+
+
+def test_tracker_config_accepts_supported_cmc_methods() -> None:
+    for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
+        config = AppConfig.model_validate({"tracker": {"cmc_method": cmc_method}})
+        assert config.tracker.cmc_method == cmc_method
+
+
+def test_tracker_config_rejects_null_cmc_method() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"tracker": {"cmc_method": None}})
+
+
+def test_tracker_config_rejects_legacy_tracker_fields() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"tracker": {"reid_half": True}})
+
+
 def test_video_config_accepts_fixed_fps() -> None:
     config = AppConfig.model_validate({"video": {"fps": 30.0}})
 
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
+
+
+def test_analysis_config_defaults_to_batched_detection() -> None:
+    config = AppConfig()
+
+    assert config.analysis.batch_size == 16
 
 
 def test_render_config_accepts_visual_defaults() -> None:
@@ -48,6 +87,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
+    assert config.analysis.batch_size == 16
     assert config.analysis.min_track_frames == 8
     assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
     assert config.detector.onnx_require_gpu is False
@@ -73,10 +113,10 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_shadow_thickness_extra == 1
     assert config.render.label_smart_position is True
     assert config.render.label_max_offset_px == 48
-    assert config.render.glow_enabled is True
+    assert config.render.glow_enabled is False
     assert config.render.glow_color == "#FFFFFF"
     assert config.render.glow_radius_px == 9
-    assert config.render.label_glow_alpha == 0.30
+    assert config.render.label_glow_alpha == 0.0
     assert config.render.label_glow_alpha < config.render.glow_alpha
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.interpolation_method == "hermite"
@@ -84,8 +124,8 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.reject_short_excursions is True
     assert config.render.smoothing.max_excursion_observations == 2
     assert config.render.smoothing.excursion_center_ratio == 1.25
-    assert config.mmr.batch_size == 16
-    assert config.mmr.batch_grid_columns == 4
+    assert config.mmr.batch_size == 25
+    assert config.mmr.batch_grid_columns == 5
     assert config.mmr.batch_cell_size_px == 512
     assert not hasattr(config.mmr, "max_attempts_per_track")
 

@@ -1,46 +1,54 @@
-import builtins
-from types import ModuleType
-
 import numpy as np
 import pytest
+import supervision as sv
+from trackers import BoTSORTTracker
 
 from config import AppConfig
 from models import BBox, Detection
-from trackers.botsort import (
+from tracking_adapters.botsort import (
     BotSortAdapter,
     _create_botsort_tracker,
-    _resolve_cmc_method,
+    _effective_frame_rate,
 )
 
 
 class FakeTracker:
-    def __init__(self, tracks) -> None:
+    def __init__(self, tracks: sv.Detections) -> None:
         self.tracks = tracks
         self.calls = []
 
-    def update(self, detections, frame):
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections:
         self.calls.append((detections, frame))
         return self.tracks
 
 
+def _empty_tracks() -> sv.Detections:
+    tracks = sv.Detections.empty()
+    tracks.tracker_id = np.empty((0,), dtype=np.int32)
+    return tracks
+
+
 def test_botsort_adapter_calls_tracker_for_empty_detections() -> None:
     frame = np.zeros((10, 20, 3), dtype=np.uint8)
-    fake_tracker = FakeTracker(np.empty((0, 8), dtype=np.float32))
+    fake_tracker = FakeTracker(_empty_tracks())
     adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
 
     tracked = adapter.update([], frame)
 
-    assert fake_tracker.calls[0][0].shape == (0, 6)
+    sent_detections = fake_tracker.calls[0][0]
+    assert len(sent_detections) == 0
+    assert sent_detections.xyxy.shape == (0, 4)
+    assert sent_detections.confidence is not None
+    assert sent_detections.class_id is not None
+    assert sent_detections.data["class_name"].tolist() == []
     assert fake_tracker.calls[0][1] is frame
     assert len(tracked) == 0
     assert tracked.tracker_id is not None
 
 
-def test_botsort_adapter_converts_detections_and_tracks() -> None:
+def test_botsort_adapter_converts_detections_to_supervision() -> None:
     frame = np.zeros((10, 20, 3), dtype=np.uint8)
-    fake_tracker = FakeTracker(
-        np.array([[1, 2, 11, 12, 42, 0.91, 2, 0]], dtype=np.float32)
-    )
+    fake_tracker = FakeTracker(_empty_tracks())
     adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
     detections = [
         Detection(
@@ -51,21 +59,21 @@ def test_botsort_adapter_converts_detections_and_tracks() -> None:
         )
     ]
 
-    tracked = adapter.update(detections, frame)
+    adapter.update(detections, frame)
 
+    sent_detections = fake_tracker.calls[0][0]
     np.testing.assert_allclose(
-        fake_tracker.calls[0][0],
-        np.array([[1, 2, 11, 12, 0.88, 2]], dtype=np.float32),
+        sent_detections.xyxy,
+        np.array([[1, 2, 11, 12]], dtype=np.float32),
     )
-    assert tracked.tracker_id.tolist() == [42]
-    assert tracked.confidence.tolist() == pytest.approx([0.91])
-    assert tracked.class_id.tolist() == [2]
-    assert tracked.data["class_name"].tolist() == ["car"]
+    assert sent_detections.confidence.tolist() == pytest.approx([0.88])
+    assert sent_detections.class_id.tolist() == [2]
+    assert sent_detections.data["class_name"].tolist() == ["car"]
 
 
-def test_botsort_adapter_handles_missing_class_id() -> None:
+def test_botsort_adapter_handles_missing_class_id_and_class_name() -> None:
     frame = np.zeros((10, 20, 3), dtype=np.uint8)
-    fake_tracker = FakeTracker(np.empty((0, 8), dtype=np.float32))
+    fake_tracker = FakeTracker(_empty_tracks())
     adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
     detections = [
         Detection(
@@ -76,30 +84,37 @@ def test_botsort_adapter_handles_missing_class_id() -> None:
 
     adapter.update(detections, frame)
 
-    assert fake_tracker.calls[0][0][0, 5] == -1
+    sent_detections = fake_tracker.calls[0][0]
+    assert sent_detections.class_id.tolist() == [-1]
+    assert sent_detections.data["class_name"].tolist() == [""]
 
 
-def test_create_botsort_tracker_raises_clear_install_error(monkeypatch) -> None:
-    real_import = builtins.__import__
+def test_create_botsort_tracker_uses_analysis_frame_rate() -> None:
+    tracker = _create_botsort_tracker(AppConfig(), frame_rate=10)
 
-    def fake_import(name, *args, **kwargs) -> ModuleType:
-        if name == "boxmot.trackers":
-            raise ImportError("missing")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    with pytest.raises(RuntimeError, match="BoT-SORT tracking requires BoxMOT"):
-        _create_botsort_tracker(AppConfig(), frame_rate=30)
+    assert isinstance(tracker, BoTSORTTracker)
+    assert _effective_frame_rate(AppConfig(), frame_rate=10) == 10.0
+    assert tracker.maximum_frames_without_update == 10
 
 
-def test_resolve_cmc_method_disables_none_string_for_older_configs() -> None:
-    config = AppConfig.model_validate({"tracker": {"cmc_method": "none"}})
+def test_create_botsort_tracker_allows_configured_frame_rate_override() -> None:
+    config = AppConfig.model_validate({"tracker": {"frame_rate": 15}})
+    tracker = _create_botsort_tracker(config, frame_rate=10)
 
-    assert _resolve_cmc_method(config) is None
+    assert _effective_frame_rate(config, frame_rate=10) == 15.0
+    assert tracker.maximum_frames_without_update == 15
 
 
-def test_resolve_cmc_method_keeps_supported_method() -> None:
-    config = AppConfig.model_validate({"tracker": {"cmc_method": "ecc"}})
+def test_create_botsort_tracker_enables_cmc_by_default() -> None:
+    tracker = _create_botsort_tracker(AppConfig(), frame_rate=30)
 
-    assert _resolve_cmc_method(config) == "ecc"
+    assert tracker.enable_cmc is True
+    assert tracker.cmc is not None
+
+
+def test_create_botsort_tracker_can_disable_cmc() -> None:
+    config = AppConfig.model_validate({"tracker": {"enable_cmc": False}})
+    tracker = _create_botsort_tracker(config, frame_rate=30)
+
+    assert tracker.enable_cmc is False
+    assert tracker.cmc is None

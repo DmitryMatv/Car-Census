@@ -236,6 +236,34 @@ def _read_frame_records(path: Path) -> list[FrameRecord]:
     ]
 
 
+def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
+    detector = FakeDetector([])
+    tracked = sv.Detections(
+        xyxy=np.array([[10, 10, 20, 20], [30, 30, 50, 50]], dtype=np.float32),
+        confidence=np.array([0.9, 0.8], dtype=np.float32),
+        class_id=np.array([2, 2], dtype=np.int32),
+        tracker_id=np.array([-1, 7], dtype=np.int32),
+        data={"class_name": np.array(["car", "car"], dtype=object)},
+    )
+    tracker = FakeTrackerAdapter(tracked)
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+    config = AppConfig.model_validate({"tracker": {"ignore_edge_touches": False}})
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [track.track_id for track in records[0].tracks] == [7]
+
+
 def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     tmp_path, monkeypatch
 ) -> None:
