@@ -3,15 +3,17 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterator
 
 import cv2
 
 from config import AppConfig, CameraProfile
-from detectors.base import create_detector
+from detectors.base import Detector, create_detector
 from models import (
     BBox,
     CountEvent,
     CropCandidate,
+    Detection,
     FrameRecord,
     RunManifest,
     TrackedObject,
@@ -54,6 +56,69 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
+
+
+@dataclass(slots=True)
+class _SampledFrame:
+    frame_index: int
+    timestamp_seconds: float
+    frame: cv2.typing.MatLike
+    roi_frame: cv2.typing.MatLike
+    offset: tuple[int, int]
+
+
+def _iter_sampled_frame_batches(
+    *,
+    video_path: Path,
+    source_fps: float,
+    target_fps: float,
+    profile: CameraProfile,
+    batch_size: int,
+) -> Iterator[list[_SampledFrame]]:
+    batch: list[_SampledFrame] = []
+    for frame_index, timestamp_seconds, frame in iter_sampled_frames(
+        video_path, source_fps=source_fps, target_fps=target_fps
+    ):
+        roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
+        batch.append(
+            _SampledFrame(
+                frame_index=frame_index,
+                timestamp_seconds=timestamp_seconds,
+                frame=frame,
+                roi_frame=roi_frame,
+                offset=offset,
+            )
+        )
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _iter_detected_sampled_frames(
+    *,
+    detector: Detector,
+    video_path: Path,
+    source_fps: float,
+    target_fps: float,
+    profile: CameraProfile,
+    batch_size: int,
+) -> Iterator[tuple[_SampledFrame, list[Detection]]]:
+    for batch in _iter_sampled_frame_batches(
+        video_path=video_path,
+        source_fps=source_fps,
+        target_fps=target_fps,
+        profile=profile,
+        batch_size=batch_size,
+    ):
+        batch_detections = detector.detect_batch([item.roi_frame for item in batch])
+        if len(batch_detections) != len(batch):
+            raise RuntimeError(
+                f"Detector returned {len(batch_detections)} detection sets for "
+                f"{len(batch)} frames"
+            )
+        yield from zip(batch, batch_detections, strict=True)
 
 
 def _score_candidate(
@@ -280,11 +345,19 @@ def analyze_video(
         line_start = tuple(count_line.start)
         line_end = tuple(count_line.end)
 
-    for frame_index, timestamp_seconds, frame in iter_sampled_frames(
-        video_path, source_fps=config.video.fps, target_fps=analysis_fps
+    for sampled_frame, detections in _iter_detected_sampled_frames(
+        detector=detector,
+        video_path=video_path,
+        source_fps=config.video.fps,
+        target_fps=analysis_fps,
+        profile=profile,
+        batch_size=config.analysis.batch_size,
     ):
-        roi_frame, offset = crop_to_polygon(frame, profile.polygon.points)
-        detections = detector.detect(roi_frame)
+        frame_index = sampled_frame.frame_index
+        timestamp_seconds = sampled_frame.timestamp_seconds
+        frame = sampled_frame.frame
+        roi_frame = sampled_frame.roi_frame
+        offset = sampled_frame.offset
         global_detections = []
         for detection in detections:
             if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(

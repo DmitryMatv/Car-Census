@@ -148,10 +148,15 @@ def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
 class FakeDetector:
     def __init__(self, detections: list[Detection]) -> None:
         self.detections = detections
+        self.received_batch_sizes: list[int] = []
 
     def detect(self, frame) -> list[Detection]:
         _ = frame
         return self.detections
+
+    def detect_batch(self, frames) -> list[list[Detection]]:
+        self.received_batch_sizes.append(len(frames))
+        return [self.detect(frame) for frame in frames]
 
 
 class FakeTrackerAdapter:
@@ -262,6 +267,89 @@ def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
 
     records = _read_frame_records(store.frames_path)
     assert [track.track_id for track in records[0].tracks] == [7]
+
+
+def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
+    tmp_path, monkeypatch
+) -> None:
+    frames = [np.full((100, 100, 3), value, dtype=np.uint8) for value in [40, 80, 120]]
+    detector = FakeDetector(
+        [
+            Detection(
+                bbox=BBox(x1=20, y1=20, x2=80, y2=80),
+                confidence=0.9,
+                class_id=2,
+                class_name="car",
+            )
+        ]
+    )
+
+    class OrderedTracker(FakeTrackerAdapter):
+        def update(self, detections: list[Detection], frame) -> sv.Detections:
+            self.received_detections.append(detections)
+            frame_value = int(frame[0, 0, 0])
+            track_id = {40: 1, 80: 2, 120: 3}[frame_value]
+            return sv.Detections(
+                xyxy=np.array([[20, 20, 80, 80]], dtype=np.float32),
+                confidence=np.array([0.9], dtype=np.float32),
+                class_id=np.array([2], dtype=np.int32),
+                tracker_id=np.array([track_id], dtype=np.int32),
+                data={"class_name": np.array(["car"], dtype=object)},
+            )
+
+    tracker = OrderedTracker(_empty_tracks())
+    store = RunStore(tmp_path / "run")
+    store.ensure_directories()
+    monkeypatch.setattr(
+        analyze_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(
+            width=100, height=100, fps=30.0, frame_count=3
+        ),
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "iter_sampled_frames",
+        lambda video_path, source_fps, target_fps: iter(
+            [
+                (0, 0.0, frames[0]),
+                (1, 1 / 30, frames[1]),
+                (2, 2 / 30, frames[2]),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        analyze_module, "create_detector", lambda config, project_root: detector
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "BotSortAdapter",
+        lambda config, frame_rate: (
+            setattr(tracker, "frame_rate", frame_rate) or tracker
+        ),
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"batch_size": 2, "min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert detector.received_batch_sizes == [2, 1]
+    assert [record.frame_index for record in records] == [0, 1, 2]
+    assert [record.tracks[0].track_id for record in records] == [1, 2, 3]
+    assert len(tracker.received_detections) == 3
 
 
 def test_analyze_suppresses_tracker_output_touching_polygon_edge(

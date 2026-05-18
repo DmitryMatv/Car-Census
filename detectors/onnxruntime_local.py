@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import cv2
 import numpy as np
@@ -15,6 +15,24 @@ from models import BBox, Detection
 logger = logging.getLogger(__name__)
 
 GPU_EXECUTION_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
+
+
+def _is_dynamic_batch_dim(batch_dim: Any) -> bool:
+    if batch_dim is None:
+        return True
+    if isinstance(batch_dim, str):
+        return True
+    if isinstance(batch_dim, int):
+        return batch_dim < 0
+    return False
+
+
+def _fixed_batch_size(batch_dim: Any) -> int | None:
+    if _is_dynamic_batch_dim(batch_dim):
+        return None
+    if isinstance(batch_dim, int) and batch_dim > 0:
+        return batch_dim
+    return None
 
 
 def _letterbox(
@@ -160,7 +178,12 @@ class OnnxRuntimeLocalDetector(Detector):
             sess_options=options,
             providers=providers,
         )
-        self.input_name = self.session.get_inputs()[0].name
+        input_info = self.session.get_inputs()[0]
+        self.input_name = input_info.name
+        input_shape = list(input_info.shape)
+        self.input_batch_dim = input_shape[0] if input_shape else None
+        self.dynamic_batch = _is_dynamic_batch_dim(self.input_batch_dim)
+        self.fixed_batch_size = _fixed_batch_size(self.input_batch_dim)
         metadata = self.session.get_modelmeta().custom_metadata_map
         self.class_names = {
             int(class_id): name.lower()
@@ -183,14 +206,91 @@ class OnnxRuntimeLocalDetector(Detector):
             available_providers,
             active_providers,
         )
+        logger.info(
+            "ONNX batch support: dynamic=%s input_batch=%s configured_batch_size=%s",
+            self.dynamic_batch,
+            self.input_batch_dim,
+            config.analysis.batch_size,
+        )
+        if (
+            config.analysis.batch_size > 1
+            and self.fixed_batch_size == 1
+            and not self.dynamic_batch
+        ):
+            logger.warning(
+                "analysis.batch_size=%s requested, but ONNX model input batch is "
+                "fixed to 1; falling back to single-frame inference. Re-export ONNX "
+                "with dynamic=True to enable batching.",
+                config.analysis.batch_size,
+            )
 
     def detect(self, image: np.ndarray) -> list[Detection]:
+        tensor, scale, pad_x, pad_y, image_shape = self._preprocess(image)
+        outputs = self.session.run(
+            None,
+            {self.input_name: np.expand_dims(tensor, axis=0)},
+        )
+        return self._parse_single_output(outputs[0], image_shape, scale, pad_x, pad_y)
+
+    def detect_batch(self, images: Sequence[np.ndarray]) -> list[list[Detection]]:
+        if not images:
+            return []
+        if len(images) == 1 or (self.fixed_batch_size == 1 and not self.dynamic_batch):
+            return [self.detect(image) for image in images]
+
+        preprocessed = [self._preprocess(image) for image in images]
+        tensors = [item[0] for item in preprocessed]
+        requested_count = len(tensors)
+        run_count = requested_count
+        if self.fixed_batch_size is not None:
+            run_count = self.fixed_batch_size
+            if requested_count > run_count:
+                results: list[list[Detection]] = []
+                for start in range(0, requested_count, run_count):
+                    results.extend(self.detect_batch(images[start : start + run_count]))
+                return results
+            if requested_count < run_count:
+                pad_tensor = np.zeros_like(tensors[0])
+                tensors.extend([pad_tensor] * (run_count - requested_count))
+
+        batch_tensor = np.stack(tensors, axis=0)
+        outputs = self.session.run(None, {self.input_name: batch_tensor})
+        output = np.asarray(outputs[0])
+        if output.ndim < 3 or output.shape[0] < requested_count:
+            raise ValueError(f"Unsupported batched ONNX output shape: {output.shape}")
+
+        detections_by_image: list[list[Detection]] = []
+        for index, (_tensor, scale, pad_x, pad_y, image_shape) in enumerate(
+            preprocessed
+        ):
+            detections_by_image.append(
+                self._parse_single_output(
+                    output[index],
+                    image_shape,
+                    scale,
+                    pad_x,
+                    pad_y,
+                )
+            )
+        return detections_by_image
+
+    def _preprocess(
+        self, image: np.ndarray
+    ) -> tuple[np.ndarray, float, float, float, tuple[int, ...]]:
         input_size = self.config.analysis.imgsz
         frame, scale, (pad_x, pad_y) = _letterbox(image, input_size)
         tensor = frame[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
-        tensor = np.expand_dims(tensor, axis=0)
-        outputs = self.session.run(None, {self.input_name: tensor})
-        return self._parse_outputs(outputs, image.shape, scale, pad_x, pad_y)
+        return tensor, scale, float(pad_x), float(pad_y), image.shape
+
+    def _parse_single_output(
+        self,
+        output: Any,
+        image_shape: tuple[int, ...],
+        scale: float,
+        pad_x: float,
+        pad_y: float,
+    ) -> list[Detection]:
+        return self._parse_outputs([output], image_shape, scale, pad_x, pad_y)
 
     def _parse_outputs(
         self,
