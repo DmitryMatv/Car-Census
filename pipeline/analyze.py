@@ -308,6 +308,20 @@ def _render_bbox_for_track(
     return clip_bbox_to_frame(_expand_crop_bbox(bbox, config), frame_shape) or bbox
 
 
+def _track_touches_suppression_edge(
+    *,
+    bbox: BBox,
+    frame_shape: tuple[int, int, int],
+    profile: CameraProfile,
+    config: AppConfig,
+) -> bool:
+    return bbox_touches_frame_edge(
+        bbox, frame_shape, config.tracker.edge_margin_px
+    ) or bbox_touches_polygon_edge(
+        bbox, profile.polygon.points, config.tracker.edge_margin_px
+    )
+
+
 def analyze_video(
     project_root: Path,
     config: AppConfig,
@@ -403,19 +417,19 @@ def analyze_video(
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
             state = track_states.get(track_id)
             if config.tracker.ignore_edge_touches:
-                touches_source_edge = bbox_touches_frame_edge(
-                    bbox, frame.shape, config.tracker.edge_margin_px
-                )
-                touches_roi_edge = bbox_touches_polygon_edge(
-                    bbox, profile.polygon.points, config.tracker.edge_margin_px
-                )
-                if touches_source_edge or touches_roi_edge:
+                if _track_touches_suppression_edge(
+                    bbox=bbox,
+                    frame_shape=frame.shape,
+                    profile=profile,
+                    config=config,
+                ):
                     suppressed_edge_track_ids.add(track_id)
                     state = track_states.pop(track_id, None)
                     if state is None or state.frames_seen == 0:
                         discard_track_artifacts(state, run_store.crops_dir)
                     else:
                         finished_track_states.append(state)
+                    tracker.drop_tracks({track_id})
                     continue
             bottom_center = bbox.bottom_center
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)

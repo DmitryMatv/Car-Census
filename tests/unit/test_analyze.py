@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from pathlib import Path
 
 import cv2
@@ -164,11 +165,29 @@ class FakeTrackerAdapter:
         self.tracks = tracks
         self.received_detections: list[list[Detection]] = []
         self.frame_rate: float | None = None
+        self.drop_calls: list[set[int]] = []
 
     def update(self, detections: list[Detection], frame) -> sv.Detections:
         _ = frame
         self.received_detections.append(detections)
         return self.tracks
+
+    def drop_tracks(self, track_ids: Collection[int]) -> None:
+        self.drop_calls.append(set(track_ids))
+
+
+class SequenceFakeTrackerAdapter(FakeTrackerAdapter):
+    def __init__(self, tracks_by_frame: list[sv.Detections]) -> None:
+        super().__init__(_empty_tracks())
+        self.tracks_by_frame = tracks_by_frame
+
+    def update(self, detections: list[Detection], frame) -> sv.Detections:
+        _ = frame
+        self.received_detections.append(detections)
+        index = len(self.received_detections) - 1
+        if index >= len(self.tracks_by_frame):
+            return _empty_tracks()
+        return self.tracks_by_frame[index]
 
 
 def _empty_tracks() -> sv.Detections:
@@ -204,32 +223,53 @@ def _prepare_analyze_test(
     detector: FakeDetector,
     tracker: FakeTrackerAdapter,
 ) -> RunStore:
+    return _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8)],
+    )
+
+
+def _prepare_analyze_frames_test(
+    tmp_path,
+    monkeypatch,
+    detector: FakeDetector,
+    tracker: FakeTrackerAdapter,
+    frames: list[np.ndarray],
+) -> RunStore:
     store = RunStore(tmp_path / "run")
     store.ensure_directories()
-    frame = np.full((100, 100, 3), 255, dtype=np.uint8)
+    frame_count = len(frames)
 
     monkeypatch.setattr(
         analyze_module,
         "read_video_metadata",
         lambda video_path: VideoMetadata(
-            width=100, height=100, fps=30.0, frame_count=1
+            width=100, height=100, fps=30.0, frame_count=frame_count
         ),
     )
     monkeypatch.setattr(
         analyze_module,
         "iter_sampled_frames",
-        lambda video_path, source_fps, target_fps: iter([(0, 0.0, frame)]),
+        lambda video_path, source_fps, target_fps: iter(
+            [
+                (frame_index, frame_index / 30.0, frame)
+                for frame_index, frame in enumerate(frames)
+            ]
+        ),
     )
     monkeypatch.setattr(
         analyze_module, "create_detector", lambda config, project_root: detector
     )
-    monkeypatch.setattr(
-        analyze_module,
-        "BotSortAdapter",
-        lambda config, frame_rate: (
-            setattr(tracker, "frame_rate", frame_rate) or tracker
-        ),
-    )
+
+    def create_tracker(config, frame_rate):
+        _ = config
+        tracker.frame_rate = frame_rate
+        return tracker
+
+    monkeypatch.setattr(analyze_module, "BotSortAdapter", create_tracker)
     return store
 
 
@@ -321,13 +361,13 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
     monkeypatch.setattr(
         analyze_module, "create_detector", lambda config, project_root: detector
     )
-    monkeypatch.setattr(
-        analyze_module,
-        "BotSortAdapter",
-        lambda config, frame_rate: (
-            setattr(tracker, "frame_rate", frame_rate) or tracker
-        ),
-    )
+
+    def create_tracker(config, frame_rate):
+        _ = config
+        tracker.frame_rate = frame_rate
+        return tracker
+
+    monkeypatch.setattr(analyze_module, "BotSortAdapter", create_tracker)
 
     analyze_video(
         project_root=tmp_path,
@@ -374,6 +414,174 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     assert tracker.frame_rate == 10.0
     assert manifest.source_fps == 30.0
     assert manifest.analysis_fps == 10.0
+
+
+def test_analyze_hard_kills_tracker_output_touching_source_edge(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _single_track(BBox(x1=20, y1=20, x2=60, y2=60)),
+            _single_track(BBox(x1=0, y1=20, x2=60, y2=60)),
+            _single_track(BBox(x1=30, y1=20, x2=70, y2=60)),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [],
+    ]
+    assert tracker.drop_calls == [{7}]
+
+
+def test_analyze_hard_kills_tracker_output_touching_polygon_edge(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _single_track(BBox(x1=50, y1=40, x2=60, y2=50)),
+            _single_track(BBox(x1=48, y1=18, x2=56, y2=28)),
+            _single_track(BBox(x1=60, y1=40, x2=70, y2=50)),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        profile=_profile_with_slanted_polygon(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [],
+    ]
+    assert tracker.drop_calls == [{7}]
+
+
+def test_analyze_allows_new_track_after_edge_kill(tmp_path, monkeypatch) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _single_track(BBox(x1=20, y1=20, x2=60, y2=60)),
+            _single_track(BBox(x1=0, y1=20, x2=60, y2=60)),
+            sv.Detections(
+                xyxy=np.array([[30, 20, 70, 60]], dtype=np.float32),
+                confidence=np.array([0.9], dtype=np.float32),
+                class_id=np.array([2], dtype=np.int32),
+                tracker_id=np.array([8], dtype=np.int32),
+                data={"class_name": np.array(["car"], dtype=object)},
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [8],
+    ]
+    assert tracker.drop_calls == [{7}]
+
+
+def test_edge_killed_track_does_not_save_crop_on_kill_frame(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _single_track(BBox(x1=20, y1=20, x2=70, y2=70)),
+            _single_track(BBox(x1=0, y1=0, x2=99, y2=99)),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
+    )
+    config = AppConfig.model_validate(
+        {
+            "analysis": {
+                "min_track_frames": 1,
+                "min_box_height_px": 1,
+                "crop_padding_ratio": 0,
+                "crop_padding_px": 0,
+                "crop_min_spacing_seconds": 0,
+            }
+        }
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    assert len(summaries) == 1
+    assert [candidate["frame_index"] for candidate in summaries[0]["candidates"]] == [0]
+    assert tracker.drop_calls == [{7}]
 
 
 def test_analyze_filters_detection_touching_polygon_edge_before_tracker(

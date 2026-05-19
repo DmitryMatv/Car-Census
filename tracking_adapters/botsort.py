@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Protocol
 
 import numpy as np
@@ -14,6 +15,8 @@ class TrackerAdapter(Protocol):
     def update(
         self, detections: list[Detection], frame: np.ndarray
     ) -> sv.Detections: ...
+
+    def drop_tracks(self, track_ids: Collection[int]) -> None: ...
 
 
 class _BoTSortLike(Protocol):
@@ -58,6 +61,20 @@ class BotSortAdapter:
     def update(self, detections: list[Detection], frame: np.ndarray) -> sv.Detections:
         sv_detections = self._to_supervision_detections(detections)
         return self.tracker.update(sv_detections, frame=frame)
+
+    def drop_tracks(self, track_ids: Collection[int]) -> None:
+        if not track_ids:
+            return
+        tracks = getattr(self.tracker, "tracks", None)
+        if not isinstance(tracks, list):
+            return
+        suppressed_ids = set(track_ids)
+        filtered_tracks = [
+            track
+            for track in tracks
+            if getattr(track, "tracker_id", None) not in suppressed_ids
+        ]
+        setattr(self.tracker, "tracks", filtered_tracks)
 
     @staticmethod
     def _to_supervision_detections(detections: list[Detection]) -> sv.Detections:

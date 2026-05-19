@@ -15,11 +15,29 @@ from tracking_adapters.botsort import (
 class FakeTracker:
     def __init__(self, tracks: sv.Detections) -> None:
         self.tracks = tracks
-        self.calls = []
+        self.calls: list[tuple[sv.Detections, np.ndarray]] = []
 
     def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections:
         self.calls.append((detections, frame))
         return self.tracks
+
+
+class FakeInternalTrack:
+    def __init__(self, tracker_id: int) -> None:
+        self.tracker_id = tracker_id
+
+
+class FakeTrackListTracker:
+    def __init__(self) -> None:
+        self.tracks = [
+            FakeInternalTrack(1),
+            FakeInternalTrack(2),
+            FakeInternalTrack(-1),
+        ]
+
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections:
+        _ = detections, frame
+        return _empty_tracks()
 
 
 def _empty_tracks() -> sv.Detections:
@@ -87,6 +105,24 @@ def test_botsort_adapter_handles_missing_class_id_and_class_name() -> None:
     sent_detections = fake_tracker.calls[0][0]
     assert sent_detections.class_id.tolist() == [-1]
     assert sent_detections.data["class_name"].tolist() == [""]
+
+
+def test_botsort_adapter_drop_tracks_removes_matching_internal_tracklets() -> None:
+    tracker = FakeTrackListTracker()
+    adapter = BotSortAdapter(AppConfig(), tracker=tracker)
+
+    adapter.drop_tracks({2})
+
+    assert [track.tracker_id for track in tracker.tracks] == [1, -1]
+
+
+def test_botsort_adapter_drop_tracks_ignores_wrappers_without_track_list() -> None:
+    fake_tracker = FakeTracker(_empty_tracks())
+    adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
+
+    adapter.drop_tracks({2})
+
+    assert fake_tracker.tracks is not None
 
 
 def test_create_botsort_tracker_uses_analysis_frame_rate() -> None:

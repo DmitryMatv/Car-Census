@@ -691,6 +691,30 @@ def test_smooth_render_tracks_does_not_extrapolate_track_absent_at_final_keyfram
     assert smoothed[9].tracks == []
 
 
+def test_smoothing_does_not_render_edge_killed_track_after_absence(tmp_path) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=6, frame_count=8)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"min_observations": 2}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(5, 5 / 30, []),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    tracks_by_frame = {
+        record.frame_index: [track.track_id for track in record.tracks]
+        for record in smoothed
+    }
+    assert tracks_by_frame[3] == [1]
+    assert all(1 not in tracks_by_frame[index] for index in range(5, 8))
+
+
 def test_smooth_render_tracks_does_not_interpolate_large_gap(tmp_path) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
