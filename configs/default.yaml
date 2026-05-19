@@ -9,7 +9,7 @@ video:
 
 analysis:
   fps: 10
-  batch_size: 16
+  batch_size: 32
   imgsz: 640
   min_track_frames: 8
   min_box_height_px: 200

@@ -46,7 +46,7 @@ def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
     assert config.tracker.minimum_iou_threshold_second_assoc == 0.5
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.3
     assert config.tracker.high_conf_det_threshold == 0.6
-    assert config.tracker.enable_cmc is True
+    assert config.tracker.enable_cmc is False
     assert config.tracker.cmc_method == "sparseOptFlow"
     assert config.tracker.cmc_downscale == 2
     assert config.tracker.instant_first_frame_activation is True
@@ -87,7 +87,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
-    assert config.analysis.batch_size == 16
+    assert config.analysis.batch_size == 32
     assert config.analysis.min_track_frames == 8
     assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
     assert config.detector.onnx_require_gpu is False

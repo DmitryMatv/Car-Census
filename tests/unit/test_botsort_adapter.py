@@ -105,16 +105,25 @@ def test_create_botsort_tracker_allows_configured_frame_rate_override() -> None:
     assert tracker.maximum_frames_without_update == 15
 
 
-def test_create_botsort_tracker_enables_cmc_by_default() -> None:
+def test_create_botsort_tracker_disables_cmc_by_default() -> None:
     tracker = _create_botsort_tracker(AppConfig(), frame_rate=30)
+
+    assert tracker.enable_cmc is False
+    assert tracker.cmc is None
+
+
+def test_create_botsort_tracker_can_enable_cmc() -> None:
+    config = AppConfig.model_validate({"tracker": {"enable_cmc": True}})
+    tracker = _create_botsort_tracker(config, frame_rate=30)
 
     assert tracker.enable_cmc is True
     assert tracker.cmc is not None
 
 
-def test_create_botsort_tracker_can_disable_cmc() -> None:
-    config = AppConfig.model_validate({"tracker": {"enable_cmc": False}})
+def test_create_botsort_tracker_passes_instant_first_frame_activation() -> None:
+    config = AppConfig.model_validate(
+        {"tracker": {"instant_first_frame_activation": False}}
+    )
     tracker = _create_botsort_tracker(config, frame_rate=30)
 
-    assert tracker.enable_cmc is False
-    assert tracker.cmc is None
+    assert tracker.instant_first_frame_activation is False

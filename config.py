@@ -82,7 +82,7 @@ class TrackerConfig(StrictBaseModel):
     minimum_iou_threshold_second_assoc: float = 0.5
     minimum_iou_threshold_unconfirmed_assoc: float = 0.3
     high_conf_det_threshold: float = 0.6
-    enable_cmc: bool = True
+    enable_cmc: bool = False
     cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
     cmc_downscale: int = 2
     instant_first_frame_activation: bool = True

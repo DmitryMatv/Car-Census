@@ -163,3 +163,45 @@ def test_detect_batch_falls_back_for_fixed_batch_one_model() -> None:
     assert detector.detect_batch(images) == [[], []]
     assert calls[0] is images[0]
     assert calls[1] is images[1]
+
+
+def test_detect_batch_pads_fixed_batch_with_letterbox_background() -> None:
+    detector = OnnxRuntimeLocalDetector.__new__(OnnxRuntimeLocalDetector)
+    detector.fixed_batch_size = 4
+    detector.dynamic_batch = False
+    detector.input_name = "images"
+    captured_inputs = []
+
+    class FakeSession:
+        def run(self, output_names, input_feed):
+            captured_inputs.append(input_feed["images"])
+            return [np.zeros((4, 1, 6), dtype=np.float32)]
+
+    detector.session = FakeSession()
+    tensors = [
+        np.full((3, 8, 8), 0.1, dtype=np.float32),
+        np.full((3, 8, 8), 0.2, dtype=np.float32),
+    ]
+
+    def fake_preprocess(image):
+        index = len(captured_preprocesses)
+        captured_preprocesses.append(image)
+        return tensors[index], 1.0, 0, 0, image.shape
+
+    def fake_parse_single_output(output, image_shape, scale, pad_x, pad_y):
+        return []
+
+    captured_preprocesses = []
+    detector._preprocess = fake_preprocess
+    detector._parse_single_output = fake_parse_single_output
+    images = [
+        np.zeros((10, 10, 3), dtype=np.uint8),
+        np.zeros((20, 20, 3), dtype=np.uint8),
+    ]
+
+    assert detector.detect_batch(images) == [[], []]
+    assert len(captured_preprocesses) == 2
+    assert captured_inputs[0].shape == (4, 3, 8, 8)
+    np.testing.assert_allclose(captured_inputs[0][0], tensors[0])
+    np.testing.assert_allclose(captured_inputs[0][1], tensors[1])
+    np.testing.assert_allclose(captured_inputs[0][2:], 114.0 / 255.0)

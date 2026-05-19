@@ -341,9 +341,11 @@ def analyze_video(
     finished_track_states: list[MutableTrackState] = []
     suppressed_edge_track_ids: set[int] = set()
     count_line = profile.count_line
+    line_start: tuple[float, float] | None = None
+    line_end: tuple[float, float] | None = None
     if count_line is not None:
-        line_start = tuple(count_line.start)
-        line_end = tuple(count_line.end)
+        line_start = (float(count_line.start[0]), float(count_line.start[1]))
+        line_end = (float(count_line.end[0]), float(count_line.end[1]))
 
     for sampled_frame, detections in _iter_detected_sampled_frames(
         detector=detector,
@@ -434,6 +436,8 @@ def analyze_video(
                 if inside_roi and not state.counted:
                     state.counted = True
             elif state.previous_bottom_center is not None:
+                assert line_start is not None
+                assert line_end is not None
                 crossed_direction = line_crossing_direction(
                     previous_point=state.previous_bottom_center,
                     current_point=bottom_center,
@@ -443,7 +447,8 @@ def analyze_video(
 
             crossed_line = False
             if (
-                crossed_direction is not None
+                count_line is not None
+                and crossed_direction is not None
                 and (
                     count_line.direction == "BOTH"
                     or crossed_direction == count_line.direction

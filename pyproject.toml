@@ -32,7 +32,7 @@ pytorch = [
 ]
 
 [project.scripts]
-Car-Census = "car_census.cli:app"
+Car-Census = "cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "."}
@@ -41,7 +41,6 @@ py-modules = ["cli", "config", "models"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
-  "car_census*",
   "detectors*",
   "mmr*",
   "pipeline*",
@@ -54,8 +53,86 @@ include = [
 ]
 namespaces = true
 
+
+[tool.mypy]
+files = [
+  "cli.py",
+  "config.py",
+  "models.py",
+  "detectors",
+  "mmr",
+  "pipeline",
+  "render",
+  "roi",
+  "stats",
+  "storage",
+  "tracking_adapters",
+  "utils",
+]
+explicit_package_bases = true
+namespace_packages = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+  "cv2",
+  "onnxruntime",
+  "supervision",
+  "trackers.*",
+  "ultralytics.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "detectors.ultralytics_local"
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+module = "render.annotators"
+disable_error_code = ["assignment"]
+
+[[tool.mypy.overrides]]
+module = "tracking_adapters.botsort"
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+module = "utils.video"
+disable_error_code = ["attr-defined"]
+
+
 [tool.pyrefly]
 project-includes = [
-    "**/*.py*",
-    "**/*.ipynb",
+    "cli.py",
+    "config.py",
+    "models.py",
+    "detectors/**/*.py",
+    "mmr/**/*.py",
+    "pipeline/**/*.py",
+    "render/**/*.py",
+    "roi/**/*.py",
+    "stats/**/*.py",
+    "storage/**/*.py",
+    "tracking_adapters/**/*.py",
+]
+project-excludes = [
+    "**/__pycache__/**",
+    ".venv/**",
+    ".mypy_cache/**",
+    ".pytest_cache/**",
+    "output/**",
+    "input_data/**",
+    "tests/**",
+]
+replace-imports-with-any = [
+    "cv2",
+    "onnxruntime",
+    "supervision",
+    "trackers",
+    "ultralytics",
 ]

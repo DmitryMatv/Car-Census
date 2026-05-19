@@ -6,6 +6,16 @@ Never use `unittest` for backend testing. Always use Python's built-in `pytest` 
 
 Use Virtual Environment `source .venv/bin/activate` because `pytest` and everything else needed is installed there already probably.
 
+## Type Safety
+
+Maintain a strict type-safety direction for the project.
+
+- `mypy` and `pyrefly check` should pass before considering type-related work complete.
+- Prefer improving annotations, protocols, and narrow type guards over adding broad ignores.
+- If an ignore or checker override is needed for dynamic third-party libraries, keep it as narrow and documented as practical.
+- Do not expand Pyrefly or mypy exclusions just to hide ordinary source errors.
+- Tests may be excluded from default type checking for now, but production source should keep moving toward stricter typing.
+
 ## Environment & Setup
 
 - ONNX model expected at `weights/yolo26s.onnx` (local offline use)

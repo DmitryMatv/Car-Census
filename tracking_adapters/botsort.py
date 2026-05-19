@@ -16,6 +16,10 @@ class TrackerAdapter(Protocol):
     ) -> sv.Detections: ...
 
 
+class _BoTSortLike(Protocol):
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections: ...
+
+
 def _effective_frame_rate(config: AppConfig, frame_rate: float | None) -> float:
     return float(config.tracker.frame_rate or frame_rate or 30.0)
 
@@ -45,9 +49,11 @@ class BotSortAdapter:
         self,
         config: AppConfig,
         frame_rate: float | None = None,
-        tracker: object | None = None,
+        tracker: _BoTSortLike | None = None,
     ) -> None:
-        self.tracker = tracker or _create_botsort_tracker(config, frame_rate)
+        self.tracker: _BoTSortLike = tracker or _create_botsort_tracker(
+            config, frame_rate
+        )
 
     def update(self, detections: list[Detection], frame: np.ndarray) -> sv.Detections:
         sv_detections = self._to_supervision_detections(detections)

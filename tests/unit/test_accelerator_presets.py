@@ -1,4 +1,4 @@
-from car_census.cli import _accelerator_overrides
+from cli import _accelerator_overrides
 
 
 def test_default_accelerator_preserves_device_choice() -> None:

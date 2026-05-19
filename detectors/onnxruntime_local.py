@@ -250,7 +250,7 @@ class OnnxRuntimeLocalDetector(Detector):
                     results.extend(self.detect_batch(images[start : start + run_count]))
                 return results
             if requested_count < run_count:
-                pad_tensor = np.zeros_like(tensors[0])
+                pad_tensor = np.full_like(tensors[0], 114.0 / 255.0)
                 tensors.extend([pad_tensor] * (run_count - requested_count))
 
         batch_tensor = np.stack(tensors, axis=0)
