@@ -32,11 +32,11 @@ pytorch = [
 ]
 
 [project.scripts]
-Car-Census = "cli:app"
+Car-Census = "car_census_cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "."}
-py-modules = ["cli", "config", "models"]
+py-modules = ["car_census_cli", "config", "models"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -56,7 +56,7 @@ namespaces = true
 
 [tool.mypy]
 files = [
-  "cli.py",
+  "car_census_cli.py",
   "config.py",
   "models.py",
   "detectors",
@@ -108,7 +108,7 @@ disable_error_code = ["attr-defined"]
 
 [tool.pyrefly]
 project-includes = [
-    "cli.py",
+    "car_census_cli.py",
     "config.py",
     "models.py",
     "detectors/**/*.py",
