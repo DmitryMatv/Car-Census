@@ -22,7 +22,7 @@ analysis:
 
 detector:
   provider: onnxruntime_local
-  weights: weights/yolo26s_fp16.onnx
+  weights: weights/yolo26m_fp16.onnx
   confidence: 0.35
   iou: 0.45
   allowed_class_names:
@@ -48,7 +48,7 @@ tracker:
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 0
+  edge_margin_px: 5
 
 mmr:
   api_url: https://trafficeye.ai/recognition

@@ -45,6 +45,12 @@ def test_bbox_touches_frame_edge_respects_margin() -> None:
     )
 
 
+def test_bbox_touches_frame_edge_detects_invalid_and_outside_boxes() -> None:
+    assert bbox_touches_frame_edge(BBox(x1=-20, y1=10, x2=-1, y2=30), (100, 100, 3))
+    assert bbox_touches_frame_edge(BBox(x1=101, y1=10, x2=120, y2=30), (100, 100, 3))
+    assert bbox_touches_frame_edge(BBox(x1=40, y1=10, x2=40, y2=30), (100, 100, 3))
+
+
 def test_bbox_touches_rect_edge_detects_offset_crop_edge() -> None:
     assert bbox_touches_rect_edge(
         BBox(x1=50, y1=25, x2=100, y2=75),
@@ -92,3 +98,9 @@ def test_bbox_touches_polygon_edge_respects_margin() -> None:
 
     assert not bbox_touches_polygon_edge(bbox, polygon)
     assert bbox_touches_polygon_edge(bbox, polygon, margin_px=3)
+
+
+def test_bbox_touches_polygon_edge_detects_box_already_outside_polygon() -> None:
+    polygon = [[10, 10], [90, 30], [90, 90], [10, 90]]
+
+    assert bbox_touches_polygon_edge(BBox(x1=45, y1=2, x2=55, y2=8), polygon)

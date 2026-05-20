@@ -256,6 +256,45 @@ class DetectionDrivenTrackerAdapter(FakeTrackerAdapter):
         self.dropped_track_ids.update(track_ids)
 
 
+class UnconfirmedThenConfirmedTrackerAdapter(FakeTrackerAdapter):
+    def __init__(self) -> None:
+        super().__init__(_empty_tracks())
+        self.unconfirmed_dropped = False
+
+    def update(self, detections: list[Detection], frame) -> sv.Detections:
+        _ = frame
+        self.received_detections.append(detections)
+        if self.unconfirmed_dropped or not detections:
+            return _empty_tracks()
+        detection = detections[0]
+        update_index = len(self.received_detections) - 1
+        return sv.Detections(
+            xyxy=np.array(
+                [
+                    [
+                        detection.bbox.x1,
+                        detection.bbox.y1,
+                        detection.bbox.x2,
+                        detection.bbox.y2,
+                    ]
+                ],
+                dtype=np.float32,
+            ),
+            confidence=np.array([detection.confidence], dtype=np.float32),
+            class_id=np.array(
+                [detection.class_id if detection.class_id is not None else -1],
+                dtype=np.int32,
+            ),
+            tracker_id=np.array([-1 if update_index == 0 else 7], dtype=np.int32),
+            data={"class_name": np.array([detection.class_name or ""], dtype=object)},
+        )
+
+    def drop_tracks(self, track_ids: Collection[int]) -> None:
+        super().drop_tracks(track_ids)
+        if -1 in track_ids:
+            self.unconfirmed_dropped = True
+
+
 def _empty_tracks() -> sv.Detections:
     return sv.Detections(
         xyxy=np.empty((0, 4), dtype=np.float32),
@@ -547,6 +586,120 @@ def test_analyze_passes_edge_detection_to_tracker_then_kills_source_edge_track(
     assert [detection.bbox for detection in tracker.received_detections[1]] == [
         BBox(x1=0, y1=20, x2=60, y2=60)
     ]
+
+
+def test_analyze_kills_track_when_edge_detection_matches_inset_tracker_output(
+    tmp_path, monkeypatch
+) -> None:
+    detector = SequenceFakeDetector(
+        [
+            [
+                Detection(
+                    bbox=BBox(x1=20, y1=20, x2=60, y2=60),
+                    confidence=0.9,
+                    class_id=2,
+                    class_name="car",
+                )
+            ],
+            [
+                Detection(
+                    bbox=BBox(x1=0, y1=20, x2=60, y2=60),
+                    confidence=0.9,
+                    class_id=2,
+                    class_name="car",
+                )
+            ],
+            [
+                Detection(
+                    bbox=BBox(x1=30, y1=20, x2=70, y2=60),
+                    confidence=0.9,
+                    class_id=2,
+                    class_name="car",
+                )
+            ],
+        ]
+    )
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _single_track(BBox(x1=20, y1=20, x2=60, y2=60)),
+            _single_track(BBox(x1=3, y1=20, x2=63, y2=60)),
+            _single_track(BBox(x1=30, y1=20, x2=70, y2=60)),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [],
+    ]
+    assert tracker.drop_calls[0] == {7}
+
+
+def test_analyze_drops_edge_touching_unconfirmed_track_before_it_gets_id(
+    tmp_path, monkeypatch
+) -> None:
+    detector = SequenceFakeDetector(
+        [
+            [
+                Detection(
+                    bbox=BBox(x1=0, y1=20, x2=60, y2=60),
+                    confidence=0.9,
+                    class_id=2,
+                    class_name="car",
+                )
+            ],
+            [
+                Detection(
+                    bbox=BBox(x1=20, y1=20, x2=80, y2=80),
+                    confidence=0.9,
+                    class_id=2,
+                    class_name="car",
+                )
+            ],
+        ]
+    )
+    tracker = UnconfirmedThenConfirmedTrackerAdapter()
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [record.tracks for record in records] == [[], []]
+    assert tracker.drop_calls == [{-1}]
 
 
 def test_analyze_passes_edge_detection_to_tracker_then_kills_roi_crop_edge_track(

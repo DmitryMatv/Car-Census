@@ -61,6 +61,12 @@ def bbox_touches_rect_edge(
     margin_px: int = 0,
 ) -> bool:
     margin = max(0, margin_px)
+    if (
+        not all(math.isfinite(value) for value in [bbox.x1, bbox.y1, bbox.x2, bbox.y2])
+        or bbox.x2 <= bbox.x1
+        or bbox.y2 <= bbox.y1
+    ):
+        return True
     return (
         math.floor(bbox.x1) <= left + margin
         or math.floor(bbox.y1) <= top + margin
@@ -149,6 +155,12 @@ def bbox_touches_polygon_edge(
     bbox: BBox, polygon: list[list[int]], margin_px: int = 0
 ) -> bool:
     margin = max(0, margin_px)
+    if (
+        not all(math.isfinite(value) for value in [bbox.x1, bbox.y1, bbox.x2, bbox.y2])
+        or bbox.x2 <= bbox.x1
+        or bbox.y2 <= bbox.y1
+    ):
+        return True
     left = math.floor(bbox.x1) - margin
     top = math.floor(bbox.y1) - margin
     right = math.ceil(bbox.x2) + margin
@@ -173,8 +185,11 @@ def bbox_touches_polygon_edge(
         (float(math.ceil(bbox.x2)), float(math.ceil(bbox.y2))),
         (float(math.floor(bbox.x1)), float(math.ceil(bbox.y2))),
     ]
-    return any(
-        abs(cv2.pointPolygonTest(contour, corner, True)) <= margin for corner in corners
+    corner_distances = [
+        cv2.pointPolygonTest(contour, corner, True) for corner in corners
+    ]
+    return any(distance < 0 for distance in corner_distances) or any(
+        abs(distance) <= margin for distance in corner_distances
     )
 
 

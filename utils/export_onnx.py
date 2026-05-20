@@ -6,14 +6,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ultralytics import YOLO
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 if sys.path and Path(sys.path[0]).resolve() == SCRIPT_DIR:
     sys.path.pop(0)
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from ultralytics import YOLO
+from ultralytics.utils.downloads import attempt_download_asset, get_github_assets
 
 
 def _torch_cuda_supports_current_gpu(torch: Any) -> bool:
@@ -26,6 +27,19 @@ def _torch_cuda_supports_current_gpu(torch: Any) -> bool:
         return True
     major, minor = torch.cuda.get_device_capability(0)
     return f"sm_{major}{minor}" in supported_arches
+
+
+def _resolve_weights(weights: Path) -> Path:
+    weights_value = str(weights)
+    release = "latest"
+    if not weights.exists() and not weights_value.startswith(("http:/", "https:/")):
+        release, _assets = get_github_assets("ultralytics/assets", release)
+    resolved = Path(attempt_download_asset(weights, release=release))
+    if not resolved.exists():
+        raise FileNotFoundError(f"Could not resolve/download YOLO weights: {weights}")
+    if resolved.suffix != ".pt":
+        raise ValueError(f"Expected a .pt model file, got: {resolved}")
+    return resolved
 
 
 def _print_onnx_shapes(path: Path) -> None:
@@ -49,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--weights",
         type=Path,
-        default=Path("weights/yolo26s.pt"),
-        help="Source YOLO .pt weights.",
+        default=Path("weights/yolo26m.pt"),
+        help="Source YOLO .pt weights, Ultralytics asset name, or supported URL.",
     )
     parser.add_argument(
         "--imgsz",
@@ -61,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch",
         type=int,
-        default=16,
+        default=32,
         help="Nominal export batch size for dynamic ONNX.",
     )
     parser.add_argument(
@@ -73,7 +87,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--half",
         action="store_true",
-        help="Export FP16 ONNX weights.",
+        default=True,
+        help="Export FP16 ONNX weights. This is the default.",
+    )
+    parser.add_argument(
+        "--no-half",
+        action="store_false",
+        dest="half",
+        help="Export FP32 ONNX weights instead of the default FP16.",
     )
     parser.add_argument(
         "--device",
@@ -92,6 +113,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     export_device = args.device
+    weights = _resolve_weights(args.weights)
+    print(f"Resolved YOLO weights: {weights}")
+
     if args.half:
         try:
             import torch
@@ -104,16 +128,15 @@ def main() -> None:
                 "exporting FP16 ONNX on CPU."
             )
 
-    model = YOLO(str(args.weights))
+    model = YOLO(str(weights))
     export_kwargs = {
         "format": "onnx",
         "imgsz": args.imgsz,
         "dynamic": True,
         "batch": args.batch,
         "simplify": True,
+        "half": args.half,
     }
-    if args.half:
-        export_kwargs["half"] = True
     if export_device is not None:
         export_kwargs["device"] = export_device
     if args.opset is not None:

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence as SequenceABC
+from collections.abc import Mapping
+from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
@@ -88,9 +89,7 @@ def _histogram(
     counts = [0 for _ in range(max(0, len(bins) - 1))]
     for value in values:
         for index, (lower, upper) in enumerate(zip(bins, bins[1:], strict=True)):
-            if lower <= value < upper or (
-                index == len(counts) - 1 and value == upper
-            ):
+            if lower <= value < upper or (index == len(counts) - 1 and value == upper):
                 counts[index] += 1
                 break
     return [
@@ -427,6 +426,40 @@ def _render_bbox_for_track(
     return clip_bbox_to_frame(_expand_crop_bbox(bbox, config), frame_shape) or bbox
 
 
+def _bbox_intersection_area(left: BBox, right: BBox) -> float:
+    intersection_width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
+    intersection_height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
+    return intersection_width * intersection_height
+
+
+def _bbox_iou(left: BBox, right: BBox) -> float:
+    intersection_area = _bbox_intersection_area(left, right)
+    if intersection_area <= 0:
+        return 0.0
+    union_area = left.area + right.area - intersection_area
+    if union_area <= 0:
+        return 0.0
+    return intersection_area / union_area
+
+
+def _bbox_contains_point(bbox: BBox, point: tuple[float, float]) -> bool:
+    x, y = point
+    return bbox.x1 <= x <= bbox.x2 and bbox.y1 <= y <= bbox.y2
+
+
+def _track_matches_edge_detection(
+    track_bbox: BBox, edge_detection_bboxes: SequenceABC[BBox]
+) -> bool:
+    for detection_bbox in edge_detection_bboxes:
+        if _bbox_iou(track_bbox, detection_bbox) >= 0.05:
+            return True
+        if _bbox_contains_point(track_bbox, detection_bbox.center):
+            return True
+        if _bbox_contains_point(detection_bbox, track_bbox.center):
+            return True
+    return False
+
+
 def _track_touches_suppression_edge(
     *,
     bbox: BBox,
@@ -511,6 +544,22 @@ def analyze_video(
         for detection in detections:
             global_bbox = map_bbox_to_global(detection.bbox, offset)
             global_detections.append(detection.model_copy(update={"bbox": global_bbox}))
+        edge_detection_bboxes = (
+            [
+                detection.bbox
+                for detection in global_detections
+                if _track_touches_suppression_edge(
+                    bbox=detection.bbox,
+                    frame_shape=frame.shape,
+                    roi_shape=roi_frame.shape,
+                    roi_offset=offset,
+                    profile=profile,
+                    config=config,
+                )
+            ]
+            if config.tracker.ignore_edge_touches
+            else []
+        )
 
         diagnostics.detections_passed_to_tracker += len(global_detections)
         tracked = tracker.update(global_detections, frame)
@@ -535,32 +584,38 @@ def analyze_video(
         )
 
         for index, xyxy in enumerate(tracked.xyxy.tolist()):
-            track_id = int(tracker_ids[index])
-            if track_id < 0:
-                continue
-            if track_id in suppressed_edge_track_ids:
-                tracker.drop_tracks({track_id})
-                continue
+            track_id = int(tracker_ids[index]) if index < len(tracker_ids) else -1
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
-            state = track_states.get(track_id)
-            if config.tracker.ignore_edge_touches:
-                if _track_touches_suppression_edge(
+            touches_suppression_edge = config.tracker.ignore_edge_touches and (
+                _track_touches_suppression_edge(
                     bbox=bbox,
                     frame_shape=frame.shape,
                     roi_shape=roi_frame.shape,
                     roi_offset=offset,
                     profile=profile,
                     config=config,
-                ):
-                    suppressed_edge_track_ids.add(track_id)
-                    state = track_states.pop(track_id, None)
-                    if state is None or state.frames_seen == 0:
-                        discard_track_artifacts(state, run_store.crops_dir)
-                    else:
-                        finished_track_states.append(state)
+                )
+                or _track_matches_edge_detection(bbox, edge_detection_bboxes)
+            )
+            if track_id < 0:
+                if touches_suppression_edge:
                     diagnostics.tracks_discarded_edge_contact += 1
                     tracker.drop_tracks({track_id})
-                    continue
+                continue
+            if track_id in suppressed_edge_track_ids:
+                tracker.drop_tracks({track_id})
+                continue
+            state = track_states.get(track_id)
+            if touches_suppression_edge:
+                suppressed_edge_track_ids.add(track_id)
+                state = track_states.pop(track_id, None)
+                if state is None or state.frames_seen == 0:
+                    discard_track_artifacts(state, run_store.crops_dir)
+                else:
+                    finished_track_states.append(state)
+                diagnostics.tracks_discarded_edge_contact += 1
+                tracker.drop_tracks({track_id})
+                continue
             bottom_center = bbox.bottom_center
             diagnostics.tracker_box_height_values.append(bbox.height)
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)
