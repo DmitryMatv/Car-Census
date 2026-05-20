@@ -69,6 +69,10 @@ class RunStore:
         return self.analysis_dir / "tracks.jsonl"
 
     @property
+    def detection_stats_path(self) -> Path:
+        return self.analysis_dir / "detection_stats.json"
+
+    @property
     def count_events_path(self) -> Path:
         return self.analysis_dir / "count_events.jsonl"
 

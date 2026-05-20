@@ -77,6 +77,10 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
     def fake_classify_tracks(**kwargs) -> None:
         calls.append("classify")
 
+    def fake_write_skipped_classification_batch_grids(**kwargs) -> None:
+        calls.append("batch_grids")
+        assert kwargs["run_store"] is store
+
     def fake_render_video(**kwargs) -> None:
         calls.append("render")
         render_kwargs.update(kwargs)
@@ -87,6 +91,11 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
 
     monkeypatch.setattr(run_module, "analyze_video", fake_analyze_video)
     monkeypatch.setattr(run_module, "classify_tracks", fake_classify_tracks)
+    monkeypatch.setattr(
+        run_module,
+        "write_skipped_classification_batch_grids",
+        fake_write_skipped_classification_batch_grids,
+    )
     monkeypatch.setattr(run_module, "render_video", fake_render_video)
     monkeypatch.setattr(run_module, "generate_reports", fake_generate_reports)
 
@@ -99,6 +108,6 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
     )
 
     assert result is store
-    assert calls == ["analyze", "render", "report"]
+    assert calls == ["analyze", "batch_grids", "render", "report"]
     assert render_kwargs["run_store"] is store
     assert render_kwargs["allow_unclassified_annotations"] is True

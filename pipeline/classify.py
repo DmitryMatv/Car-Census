@@ -69,22 +69,9 @@ def _recognize_tasks(
     return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
 
 
-def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
-    if path.exists():
-        return path
-    relocated_path = run_store.crops_dir / path.name
-    if relocated_path.exists():
-        logger.warning(
-            "Using relocated crop %s for stale track path %s",
-            relocated_path,
-            path,
-        )
-        return relocated_path
-    return path
-
-
-def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
-    client = TrafficEyeClient(config=config, cache_dir=run_store.mmr_cache_dir)
+def _collect_classification_tasks(
+    config: AppConfig, run_store: RunStore
+) -> tuple[list[_ClassificationTask], dict[int, MMRResult]]:
     labels_by_track: dict[int, MMRResult] = {}
     classification_tasks: list[_ClassificationTask] = []
     summaries_by_vehicle: dict[int, list[TrackSummary]] = {}
@@ -159,6 +146,28 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 fallback_index=fallback_index,
             )
         )
+    return classification_tasks, labels_by_track
+
+
+def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
+    if path.exists():
+        return path
+    relocated_path = run_store.crops_dir / path.name
+    if relocated_path.exists():
+        logger.warning(
+            "Using relocated crop %s for stale track path %s",
+            relocated_path,
+            path,
+        )
+        return relocated_path
+    return path
+
+
+def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
+    client = TrafficEyeClient(config=config, cache_dir=run_store.mmr_cache_dir)
+    classification_tasks, labels_by_track = _collect_classification_tasks(
+        config=config, run_store=run_store
+    )
 
     for batch in _chunks(classification_tasks, config.mmr.batch_size):
         results = _recognize_tasks(client, batch, config.mmr.batch_size)
@@ -178,3 +187,27 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
     run_store.write_json(run_store.labels_path, serializable)
     logger.info("Classification complete for %s tracks", len(labels_by_track))
     return labels_by_track
+
+
+def write_skipped_classification_batch_grids(
+    config: AppConfig, run_store: RunStore
+) -> list[Path]:
+    client = TrafficEyeClient(
+        config=config,
+        cache_dir=run_store.mmr_cache_dir,
+        require_api_key=False,
+    )
+    classification_tasks, _labels_by_track = _collect_classification_tasks(
+        config=config, run_store=run_store
+    )
+    batch_grid_paths: list[Path] = []
+    for batch in _chunks(classification_tasks, config.mmr.batch_size):
+        batch_grid_path = client.write_vehicle_crop_grid(
+            [task.image_path for task in batch]
+        )
+        if batch_grid_path is not None:
+            batch_grid_paths.append(batch_grid_path)
+    logger.info(
+        "Wrote %s MMR batch grids without classification", len(batch_grid_paths)
+    )
+    return batch_grid_paths

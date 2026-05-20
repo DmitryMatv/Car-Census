@@ -60,7 +60,7 @@ class AnalysisConfig(StrictBaseModel):
 
 class DetectorConfig(StrictBaseModel):
     provider: str = "onnxruntime_local"
-    weights: str = "weights/yolo26s.onnx"
+    weights: str = "weights/yolo26s_fp16.onnx"
     confidence: float = 0.4
     iou: float = 0.4
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
@@ -71,6 +71,7 @@ class DetectorConfig(StrictBaseModel):
         default_factory=lambda: ["CPUExecutionProvider"]
     )
     onnx_require_gpu: bool = False
+    onnx_input_dtype: Literal["auto", "float32", "float16"] = "auto"
 
 
 class TrackerConfig(StrictBaseModel):
@@ -130,6 +131,7 @@ class RenderConfig(StrictBaseModel):
     nvenc_cq: int = Field(default=23, ge=0, le=51)
     min_visible_track_observations: int = Field(default=10, ge=1)
     require_crop_eligible_track: bool = False
+    show_unclassified_tracks: bool = False
     box_color: str = "#FFFFFF"
     label_font_scale: float = 1.0
     label_thickness: int = 1

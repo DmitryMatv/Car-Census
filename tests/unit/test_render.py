@@ -672,6 +672,43 @@ def test_render_requires_crop_eligible_track_when_enabled(
     }
 
 
+def test_render_show_unclassified_tracks_bypasses_crop_eligible_gate(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, 0, 0.0, vehicle_index=None)],
+        )
+    ]
+    _write_records(store.frames_path, records)
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer, frame_count=1)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "render": {
+                    "require_crop_eligible_track": True,
+                    "show_unclassified_tracks": True,
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                }
+            }
+        ),
+        profile=build_full_frame_profile(width=16, height=16),
+        video_path=store.manifest.video_path,
+        run_store=store,
+    )
+
+    assert DummyAnnotator.seen_track_ids == [[1]]
+    assert DummyAnnotator.seen_labels_by_track[0] == {1: "1 | UNKNOWN"}
+
+
 def test_render_keeps_non_crop_eligible_track_when_requirement_disabled(
     tmp_path, monkeypatch
 ) -> None:

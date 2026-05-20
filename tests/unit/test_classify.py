@@ -1,10 +1,12 @@
 from pathlib import Path
 
+import cv2
+import numpy as np
 import orjson
 
 from config import AppConfig
 from models import BBox, CropCandidate, MMRResult, TrackSummary
-from pipeline.classify import classify_tracks
+from pipeline.classify import classify_tracks, write_skipped_classification_batch_grids
 
 
 class DummyRunStore:
@@ -13,10 +15,12 @@ class DummyRunStore:
         self.tracks_path = root / "analysis" / "tracks.jsonl"
         self.labels_path = root / "mmr" / "labels.json"
         self.mmr_cache_dir = root / "mmr" / "cache"
+        self.mmr_batch_grids_dir = root / "mmr" / "batch_grids"
         self.crops_dir.mkdir(parents=True)
         self.tracks_path.parent.mkdir(parents=True)
         self.labels_path.parent.mkdir(parents=True)
         self.mmr_cache_dir.mkdir(parents=True)
+        self.mmr_batch_grids_dir.mkdir(parents=True)
 
     def write_json(self, path: Path, payload: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -466,3 +470,73 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
     assert set(labels) == {20}
     payload = orjson.loads(store.labels_path.read_bytes())
     assert set(payload) == {"20"}
+
+
+def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.delenv("TRAFFICEYE_API_KEY", raising=False)
+    store = DummyRunStore(tmp_path)
+    crops = []
+    for index in range(3):
+        crop = tmp_path / f"crop-{index}.jpg"
+        cv2.imwrite(str(crop), np.full((40, 80, 3), index, dtype=np.uint8))
+        crops.append(crop)
+
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(crops[0], track_id=1, vehicle_index=1)],
+            ),
+            TrackSummary(
+                track_id=2,
+                vehicle_index=2,
+                first_frame_index=11,
+                last_frame_index=20,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(crops[1], track_id=2, vehicle_index=2)],
+            ),
+            TrackSummary(
+                track_id=3,
+                vehicle_index=3,
+                first_frame_index=21,
+                last_frame_index=30,
+                frames_seen=10,
+                max_box_height_px=100,
+                candidates=[_candidate(crops[2], track_id=3, vehicle_index=3)],
+            ),
+        ],
+    )
+    config = AppConfig.model_validate(
+        {"mmr": {"batch_size": 2, "batch_grid_columns": 2, "batch_cell_size_px": 100}}
+    )
+    config.analysis.min_track_frames = 1
+
+    grid_paths = write_skipped_classification_batch_grids(
+        config=config, run_store=store
+    )
+
+    assert len(grid_paths) == 2
+    assert sorted(path.suffix for path in grid_paths) == [".jpg", ".jpg"]
+    assert sorted(path.parent for path in grid_paths) == [
+        store.mmr_batch_grids_dir,
+        store.mmr_batch_grids_dir,
+    ]
+    manifests = [path.with_suffix(".json") for path in grid_paths]
+    assert all(path.exists() for path in manifests)
+    first_manifest = orjson.loads(manifests[0].read_bytes())
+    second_manifest = orjson.loads(manifests[1].read_bytes())
+    manifest_sources = [
+        [cell["source_image"] for cell in manifest["cells"]]
+        for manifest in [first_manifest, second_manifest]
+    ]
+    assert manifest_sources == [[str(crops[0]), str(crops[1])], [str(crops[2])]]
+    assert not store.labels_path.exists()

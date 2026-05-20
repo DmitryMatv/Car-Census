@@ -4,7 +4,7 @@ from pathlib import Path
 
 from config import AppConfig, CameraProfile
 from pipeline.analyze import analyze_video
-from pipeline.classify import classify_tracks
+from pipeline.classify import classify_tracks, write_skipped_classification_batch_grids
 from pipeline.render import render_video
 from pipeline.report import generate_reports
 from storage.run_store import RunStore
@@ -29,7 +29,9 @@ def run_pipeline(
         video_path=video_path,
         run_store=run_store,
     )
-    if not skip_classification:
+    if skip_classification:
+        write_skipped_classification_batch_grids(config=config, run_store=run_store)
+    else:
         classify_tracks(config=config, run_store=run_store)
     render_video(
         config=config,

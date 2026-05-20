@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence as SequenceABC
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 import cv2
 
@@ -28,6 +29,7 @@ from pipeline.vehicles import (
 from roi.geometry import (
     bbox_touches_frame_edge,
     bbox_touches_polygon_edge,
+    bbox_touches_rect_edge,
     clip_bbox_to_frame,
     crop_to_polygon,
     line_crossing_direction,
@@ -65,6 +67,123 @@ class _SampledFrame:
     frame: cv2.typing.MatLike
     roi_frame: cv2.typing.MatLike
     offset: tuple[int, int]
+
+
+@dataclass(slots=True)
+class AnalysisDiagnostics:
+    total_sampled_frames: int = 0
+    detections_passed_to_tracker: int = 0
+    tracker_outputs: int = 0
+    tracks_discarded_edge_contact: int = 0
+    tracks_discarded_min_track_frames: int = 0
+    tracks_without_crop_candidates: int = 0
+    tracks_hidden_from_render_crop_eligibility: int = 0
+    tracker_confidence_values: list[float] = field(default_factory=list)
+    tracker_box_height_values: list[float] = field(default_factory=list)
+
+
+def _histogram(
+    values: SequenceABC[float], bins: SequenceABC[float]
+) -> list[dict[str, Any]]:
+    counts = [0 for _ in range(max(0, len(bins) - 1))]
+    for value in values:
+        for index, (lower, upper) in enumerate(zip(bins, bins[1:], strict=True)):
+            if lower <= value < upper or (
+                index == len(counts) - 1 and value == upper
+            ):
+                counts[index] += 1
+                break
+    return [
+        {
+            "min": lower,
+            "max": upper if upper != float("inf") else None,
+            "count": count,
+        }
+        for lower, upper, count in zip(bins[:-1], bins[1:], counts, strict=True)
+    ]
+
+
+def _detector_diagnostics(detector: Detector) -> dict[str, Any]:
+    snapshot = getattr(detector, "detection_diagnostics", None)
+    if not callable(snapshot):
+        return {}
+    raw = snapshot()
+    return raw if isinstance(raw, dict) else {}
+
+
+def _diagnostic_count(
+    detector_counts: Mapping[str, object], key: str, fallback: int
+) -> int:
+    value = detector_counts.get(key)
+    return int(value) if isinstance(value, int | float) else fallback
+
+
+def _diagnostic_float_values(value: object) -> list[float]:
+    if not isinstance(value, list):
+        return []
+    return [float(item) for item in value if isinstance(item, int | float)]
+
+
+def _analysis_diagnostics_payload(
+    diagnostics: AnalysisDiagnostics, detector: Detector
+) -> dict[str, Any]:
+    detector_snapshot = _detector_diagnostics(detector)
+    detector_counts_raw = detector_snapshot.get("counts", {})
+    detector_counts = (
+        detector_counts_raw if isinstance(detector_counts_raw, Mapping) else {}
+    )
+    detector_confidences = _diagnostic_float_values(
+        detector_snapshot.get("confidence_values")
+    )
+    confidence_values = detector_confidences or diagnostics.tracker_confidence_values
+
+    return {
+        "total_sampled_frames": diagnostics.total_sampled_frames,
+        "raw_detections_before_class_filtering": _diagnostic_count(
+            detector_counts,
+            "raw_candidate_rows",
+            diagnostics.detections_passed_to_tracker,
+        ),
+        "detections_after_confidence_filtering": _diagnostic_count(
+            detector_counts,
+            "detections_after_confidence_filtering",
+            diagnostics.detections_passed_to_tracker,
+        ),
+        "detections_after_class_filtering": _diagnostic_count(
+            detector_counts,
+            "detections_after_class_filtering",
+            diagnostics.detections_passed_to_tracker,
+        ),
+        "detections_passed_to_tracker": diagnostics.detections_passed_to_tracker,
+        "tracker_outputs": diagnostics.tracker_outputs,
+        "tracks_discarded_edge_contact": diagnostics.tracks_discarded_edge_contact,
+        "tracks_discarded_min_track_frames": diagnostics.tracks_discarded_min_track_frames,
+        "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,
+        "tracks_hidden_from_render_due_to_crop_eligibility": (
+            diagnostics.tracks_hidden_from_render_crop_eligibility
+        ),
+        "confidence_histogram": _histogram(
+            confidence_values,
+            [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01],
+        ),
+        "box_height_histogram": _histogram(
+            diagnostics.tracker_box_height_values,
+            [
+                0.0,
+                40.0,
+                80.0,
+                120.0,
+                160.0,
+                200.0,
+                300.0,
+                400.0,
+                600.0,
+                800.0,
+                float("inf"),
+            ],
+        ),
+        "detector": detector_snapshot,
+    }
 
 
 def _iter_sampled_frame_batches(
@@ -312,13 +431,25 @@ def _track_touches_suppression_edge(
     *,
     bbox: BBox,
     frame_shape: tuple[int, int, int],
+    roi_shape: tuple[int, int, int],
+    roi_offset: tuple[int, int],
     profile: CameraProfile,
     config: AppConfig,
 ) -> bool:
-    return bbox_touches_frame_edge(
-        bbox, frame_shape, config.tracker.edge_margin_px
-    ) or bbox_touches_polygon_edge(
-        bbox, profile.polygon.points, config.tracker.edge_margin_px
+    roi_height, roi_width = roi_shape[:2]
+    roi_left, roi_top = roi_offset
+    margin = config.tracker.edge_margin_px
+    return (
+        bbox_touches_frame_edge(bbox, frame_shape, margin)
+        or bbox_touches_rect_edge(
+            bbox=bbox,
+            left=float(roi_left),
+            top=float(roi_top),
+            right=float(roi_left + roi_width),
+            bottom=float(roi_top + roi_height),
+            margin_px=margin,
+        )
+        or bbox_touches_polygon_edge(bbox, profile.polygon.points, margin)
     )
 
 
@@ -351,6 +482,7 @@ def analyze_video(
 
     detector = create_detector(config, project_root=project_root)
     tracker = BotSortAdapter(config, frame_rate=analysis_fps)
+    diagnostics = AnalysisDiagnostics()
     track_states: dict[int, MutableTrackState] = {}
     finished_track_states: list[MutableTrackState] = []
     suppressed_edge_track_ids: set[int] = set()
@@ -369,6 +501,7 @@ def analyze_video(
         profile=profile,
         batch_size=config.analysis.batch_size,
     ):
+        diagnostics.total_sampled_frames += 1
         frame_index = sampled_frame.frame_index
         timestamp_seconds = sampled_frame.timestamp_seconds
         frame = sampled_frame.frame
@@ -376,22 +509,12 @@ def analyze_video(
         offset = sampled_frame.offset
         global_detections = []
         for detection in detections:
-            if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(
-                detection.bbox, roi_frame.shape, config.tracker.edge_margin_px
-            ):
-                continue
             global_bbox = map_bbox_to_global(detection.bbox, offset)
-            if config.tracker.ignore_edge_touches and bbox_touches_frame_edge(
-                global_bbox, frame.shape, config.tracker.edge_margin_px
-            ):
-                continue
-            if config.tracker.ignore_edge_touches and bbox_touches_polygon_edge(
-                global_bbox, profile.polygon.points, config.tracker.edge_margin_px
-            ):
-                continue
             global_detections.append(detection.model_copy(update={"bbox": global_bbox}))
 
+        diagnostics.detections_passed_to_tracker += len(global_detections)
         tracked = tracker.update(global_detections, frame)
+        diagnostics.tracker_outputs += len(tracked.xyxy)
         frame_tracks: list[TrackedObject] = []
         tracker_ids = (
             tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
@@ -407,12 +530,16 @@ def analyze_video(
             if tracked.confidence is not None
             else [0.0] * len(tracked.xyxy)
         )
+        diagnostics.tracker_confidence_values.extend(
+            float(value) for value in confidences
+        )
 
         for index, xyxy in enumerate(tracked.xyxy.tolist()):
             track_id = int(tracker_ids[index])
             if track_id < 0:
                 continue
             if track_id in suppressed_edge_track_ids:
+                tracker.drop_tracks({track_id})
                 continue
             bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
             state = track_states.get(track_id)
@@ -420,6 +547,8 @@ def analyze_video(
                 if _track_touches_suppression_edge(
                     bbox=bbox,
                     frame_shape=frame.shape,
+                    roi_shape=roi_frame.shape,
+                    roi_offset=offset,
                     profile=profile,
                     config=config,
                 ):
@@ -429,9 +558,11 @@ def analyze_video(
                         discard_track_artifacts(state, run_store.crops_dir)
                     else:
                         finished_track_states.append(state)
+                    diagnostics.tracks_discarded_edge_contact += 1
                     tracker.drop_tracks({track_id})
                     continue
             bottom_center = bbox.bottom_center
+            diagnostics.tracker_box_height_values.append(bbox.height)
             inside_roi = point_in_polygon(bottom_center, profile.polygon.points)
             confidence = float(confidences[index])
             class_id = int(class_ids[index]) if index < len(class_ids) else None
@@ -536,9 +667,20 @@ def analyze_video(
 
     all_track_states = [*finished_track_states, *track_states.values()]
     all_track_states.sort(key=lambda item: (item.first_frame_index, item.track_id))
+    diagnostics.tracks_without_crop_candidates = sum(
+        1 for state in all_track_states if not state.candidates
+    )
+    if config.render.require_crop_eligible_track:
+        diagnostics.tracks_hidden_from_render_crop_eligibility = sum(
+            1
+            for state in all_track_states
+            if not state.candidates
+            and state.frames_seen >= config.render.min_visible_track_observations
+        )
     if config.analysis.min_track_frames > 0:
         for state in all_track_states:
             if state.frames_seen < config.analysis.min_track_frames:
+                diagnostics.tracks_discarded_min_track_frames += 1
                 discard_track_artifacts(state, run_store.crops_dir)
                 state.candidates = []
     vehicle_index_by_track = finalize_vehicle_identities(run_store, all_track_states)
@@ -546,6 +688,10 @@ def analyze_video(
     for state in all_track_states:
         summary = track_summary_from_state(state)
         run_store.write_jsonl(run_store.tracks_path, summary.model_dump(mode="json"))
+    run_store.write_json(
+        run_store.detection_stats_path,
+        _analysis_diagnostics_payload(diagnostics, detector),
+    )
 
     logger.info("Analysis complete. Run directory: %s", run_store.root)
     return run_store

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -15,6 +16,10 @@ from models import BBox, Detection
 logger = logging.getLogger(__name__)
 
 GPU_EXECUTION_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
+ONNX_INPUT_DTYPES: dict[str, tuple[str, np.dtype[Any]]] = {
+    "tensor(float)": ("float32", np.dtype(np.float32)),
+    "tensor(float16)": ("float16", np.dtype(np.float16)),
+}
 
 
 def _is_dynamic_batch_dim(batch_dim: Any) -> bool:
@@ -33,6 +38,31 @@ def _fixed_batch_size(batch_dim: Any) -> int | None:
     if isinstance(batch_dim, int) and batch_dim > 0:
         return batch_dim
     return None
+
+
+def _input_dtype_from_onnx_type(onnx_type: str) -> tuple[np.dtype[Any], str]:
+    dtype_info = ONNX_INPUT_DTYPES.get(onnx_type)
+    if dtype_info is None:
+        supported = ", ".join(sorted(ONNX_INPUT_DTYPES))
+        raise ValueError(
+            "Unsupported ONNX model input dtype "
+            f"{onnx_type!r}. Supported input types: {supported}."
+        )
+    dtype_name, dtype = dtype_info
+    return dtype, dtype_name
+
+
+def _validate_onnx_input_dtype(
+    *, configured: str, inferred: str, onnx_type: str
+) -> None:
+    if configured == "auto" or configured == inferred:
+        return
+    raise ValueError(
+        "detector.onnx_input_dtype="
+        f"{configured!r} does not match ONNX model input type {onnx_type!r} "
+        f"({inferred}). Re-export the model with the requested precision or set "
+        "detector.onnx_input_dtype to 'auto'."
+    )
 
 
 def _letterbox(
@@ -64,6 +94,17 @@ def _metadata_names(raw: str | None) -> dict[int, str]:
     if isinstance(value, list):
         return {index: str(name).lower() for index, name in enumerate(value)}
     return {}
+
+
+def _allowed_class_names(
+    configured_names: Sequence[str], class_names: dict[int, str]
+) -> set[str]:
+    configured_allowed_names = {name.lower() for name in configured_names}
+    model_class_names = {name.lower() for name in class_names.values()}
+    discovered_vehicle_names = {"van", "pickup", "crossover"} & set(
+        model_class_names
+    )
+    return configured_allowed_names | discovered_vehicle_names
 
 
 def _xywh_to_xyxy(boxes: np.ndarray) -> np.ndarray:
@@ -180,6 +221,14 @@ class OnnxRuntimeLocalDetector(Detector):
         )
         input_info = self.session.get_inputs()[0]
         self.input_name = input_info.name
+        self.input_dtype, self.input_dtype_name = _input_dtype_from_onnx_type(
+            input_info.type
+        )
+        _validate_onnx_input_dtype(
+            configured=config.detector.onnx_input_dtype,
+            inferred=self.input_dtype_name,
+            onnx_type=input_info.type,
+        )
         input_shape = list(input_info.shape)
         self.input_batch_dim = input_shape[0] if input_shape else None
         self.dynamic_batch = _is_dynamic_batch_dim(self.input_batch_dim)
@@ -190,17 +239,27 @@ class OnnxRuntimeLocalDetector(Detector):
             for class_id, name in config.detector.class_names.items()
         }
         self.class_names.update(_metadata_names(metadata.get("names")))
-        self.allowed_names = {
+        configured_allowed_names = {
             name.lower() for name in config.detector.allowed_class_names
         }
+        discovered_vehicle_names = {"van", "pickup", "crossover"} & set(
+            self.class_names.values()
+        )
+        self.allowed_names = _allowed_class_names(
+            config.detector.allowed_class_names,
+            self.class_names,
+        )
         self.allowed_ids = config.detector.allowed_class_ids
+        self.diagnostic_counts: Counter[str] = Counter()
+        self.diagnostic_confidences: list[float] = []
         active_providers = list(self.session.get_providers())
         logger.info(
-            "Device active: %s | provider=onnxruntime | threads=%s | "
+            "Device active: %s | provider=onnxruntime | dtype=%s | threads=%s | "
             "requested_providers=%s | available_providers=%s | active_providers=%s",
             "gpu"
             if any(provider in GPU_EXECUTION_PROVIDERS for provider in active_providers)
             else "cpu",
+            self.input_dtype_name,
             options.intra_op_num_threads,
             requested_providers,
             available_providers,
@@ -212,6 +271,12 @@ class OnnxRuntimeLocalDetector(Detector):
             self.input_batch_dim,
             config.analysis.batch_size,
         )
+        logger.info("ONNX model class names: %s", self.class_names)
+        if discovered_vehicle_names:
+            logger.info(
+                "Added discovered vehicle classes to detector allow-list: %s",
+                sorted(discovered_vehicle_names),
+            )
         if (
             config.analysis.batch_size > 1
             and self.fixed_batch_size == 1
@@ -279,7 +344,8 @@ class OnnxRuntimeLocalDetector(Detector):
     ) -> tuple[np.ndarray, float, float, float, tuple[int, ...]]:
         input_size = self.config.analysis.imgsz
         frame, scale, (pad_x, pad_y) = _letterbox(image, input_size)
-        tensor = frame[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        tensor = frame[:, :, ::-1].transpose(2, 0, 1).astype(self.input_dtype)
+        tensor /= np.asarray(255.0, dtype=self.input_dtype)
         return tensor, scale, float(pad_x), float(pad_y), image.shape
 
     def _parse_single_output(
@@ -300,7 +366,7 @@ class OnnxRuntimeLocalDetector(Detector):
         pad_x: float,
         pad_y: float,
     ) -> list[Detection]:
-        raw = np.asarray(outputs[0])
+        raw = np.asarray(outputs[0], dtype=np.float32)
         if raw.ndim == 3:
             raw = raw[0]
         if raw.ndim != 2:
@@ -339,6 +405,16 @@ class OnnxRuntimeLocalDetector(Detector):
                 continue
             if self.allowed_names and class_name not in self.allowed_names:
                 continue
+            diagnostic_counts = getattr(self, "diagnostic_counts", None)
+            if diagnostic_counts is None:
+                diagnostic_counts = Counter()
+                self.diagnostic_counts = diagnostic_counts
+            diagnostic_counts["detections_after_class_filtering"] += 1
+            diagnostic_confidences = getattr(self, "diagnostic_confidences", None)
+            if diagnostic_confidences is None:
+                diagnostic_confidences = []
+                self.diagnostic_confidences = diagnostic_confidences
+            diagnostic_confidences.append(float(scores[index]))
             box = boxes[index].copy()
             box[[0, 2]] = (box[[0, 2]] - pad_x) / scale
             box[[1, 3]] = (box[[1, 3]] - pad_y) / scale
@@ -363,8 +439,16 @@ class OnnxRuntimeLocalDetector(Detector):
 
     def _candidate_rows(self, raw: np.ndarray) -> np.ndarray:
         confidence = self.config.detector.confidence
+        diagnostic_counts = getattr(self, "diagnostic_counts", None)
+        if diagnostic_counts is None:
+            diagnostic_counts = Counter()
+            self.diagnostic_counts = diagnostic_counts
+        diagnostic_counts["raw_candidate_rows"] += int(raw.shape[0])
         if raw.shape[1] == 6:
             rows = raw[raw[:, 4] >= confidence].copy()
+            diagnostic_counts["detections_after_confidence_filtering"] += int(
+                len(rows)
+            )
             return rows[:, [0, 1, 2, 3, 4, 5]]
 
         if raw.shape[1] < 5:
@@ -378,4 +462,13 @@ class OnnxRuntimeLocalDetector(Detector):
         class_ids = class_scores.argmax(axis=1)
         scores = class_scores[np.arange(len(raw)), class_ids]
         keep = scores >= confidence
+        diagnostic_counts["detections_after_confidence_filtering"] += int(
+            np.count_nonzero(keep)
+        )
         return np.column_stack((raw[keep, :4], scores[keep], class_ids[keep]))
+
+    def detection_diagnostics(self) -> dict[str, object]:
+        return {
+            "counts": dict(self.diagnostic_counts),
+            "confidence_values": list(self.diagnostic_confidences),
+        }

@@ -88,17 +88,25 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
-    assert config.analysis.min_track_frames == 8
+    assert config.analysis.min_track_frames == 6
+    assert config.detector.confidence == 0.35
+    assert config.detector.iou == 0.45
     assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
     assert config.detector.onnx_require_gpu is False
+    assert config.tracker.track_activation_threshold == 0.45
+    assert config.tracker.minimum_consecutive_frames == 2
+    assert config.tracker.minimum_iou_threshold_first_assoc == 0.15
+    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.2
+    assert config.tracker.high_conf_det_threshold == 0.45
     assert config.render.encode_backend == "opencv"
     assert config.render.output_fps is None
     assert config.render.ffmpeg_path == "ffmpeg"
     assert config.render.nvenc_codec == "h264_nvenc"
     assert config.render.nvenc_preset == "p4"
     assert config.render.nvenc_cq == 23
-    assert config.render.min_visible_track_observations == 8
+    assert config.render.min_visible_track_observations == 6
     assert config.render.require_crop_eligible_track is True
+    assert config.render.show_unclassified_tracks is False
     assert config.render.box_color == "#FFFFFF"
     assert config.render.corner_thickness == 4
     assert config.render.corner_length == 20
@@ -153,6 +161,24 @@ def test_detector_config_accepts_onnx_execution_provider_options() -> None:
         "CPUExecutionProvider",
     ]
     assert config.detector.onnx_require_gpu is True
+
+
+def test_detector_config_defaults_to_auto_onnx_input_dtype() -> None:
+    config = AppConfig()
+
+    assert config.detector.onnx_input_dtype == "auto"
+
+
+def test_detector_config_accepts_onnx_input_dtype_options() -> None:
+    for dtype in ["auto", "float32", "float16"]:
+        config = AppConfig.model_validate({"detector": {"onnx_input_dtype": dtype}})
+
+        assert config.detector.onnx_input_dtype == dtype
+
+
+def test_detector_config_rejects_unknown_onnx_input_dtype() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"onnx_input_dtype": "bfloat16"}})
 
 
 def test_render_config_accepts_nvenc_backend() -> None:

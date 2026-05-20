@@ -278,14 +278,16 @@ def _result_rank(result: MMRResult) -> tuple[float, float, float, float]:
 
 
 class TrafficEyeClient:
-    def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+    def __init__(
+        self, config: AppConfig, cache_dir: Path, require_api_key: bool = True
+    ) -> None:
         api_key = os.getenv(config.mmr.api_key_env)
-        if not api_key:
+        if require_api_key and not api_key:
             raise RuntimeError(
                 f"Missing TrafficEye API key. Set environment variable {config.mmr.api_key_env}."
             )
         self.api_url = config.mmr.api_url
-        self.api_key = api_key
+        self.api_key = api_key or ""
         self.timeout = config.mmr.timeout_seconds
         self.cache_dir = cache_dir
         self.accept_model_confidence = config.mmr.accept_model_confidence
@@ -522,6 +524,19 @@ class TrafficEyeClient:
                 orjson.dumps(manifest, option=orjson.OPT_INDENT_2)
             )
         return batch_image_path
+
+    def write_vehicle_crop_grid(self, image_paths: list[Path]) -> Path | None:
+        if not image_paths:
+            return None
+        image_bytes, cells = self._build_batch_image(image_paths)
+        request_payload = self._batch_request_payload(cells)
+        cache_key = _hash_request(image_bytes, request_payload)
+        return self._write_batch_debug_artifacts(
+            cache_key=cache_key,
+            image_bytes=image_bytes,
+            cells=cells,
+            request_payload=request_payload,
+        )
 
     def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
         image_bytes = image_path.read_bytes()

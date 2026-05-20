@@ -118,7 +118,10 @@ def render_video(
         run_store.frames_path,
         config.render.min_visible_track_observations,
     )
-    if config.render.require_crop_eligible_track:
+    if (
+        config.render.require_crop_eligible_track
+        and not config.render.show_unclassified_tracks
+    ):
         visible_track_ids &= crop_eligible_track_ids(run_store.frames_path)
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
@@ -130,7 +133,7 @@ def render_video(
             track_id: format_label_text(result, config.render.unknown_label)
             for track_id, result in labels.items()
         }
-    elif allow_unclassified_annotations:
+    elif allow_unclassified_annotations or config.render.show_unclassified_tracks:
         label_text = visible_track_label_text_by_track(
             frames_path, config.render.unknown_label
         )
