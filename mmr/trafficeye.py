@@ -109,6 +109,21 @@ def _iter_road_users(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return road_users
 
 
+def _road_user_box_area_rank(
+    road_user: dict[str, Any],
+) -> tuple[float, float, float, float]:
+    position = _road_user_box_position(road_user)
+    box = _coerce_box(position)
+    mmr = road_user.get("mmr")
+    assert isinstance(mmr, dict)
+    return (
+        box.area if box is not None else 0.0,
+        _coerce_confidence(position) or 0.0,
+        _coerce_confidence(mmr.get("model")) or 0.0,
+        _coerce_confidence(mmr.get("make")) or 0.0,
+    )
+
+
 def _selected_road_user(payload: dict[str, Any]) -> dict[str, Any] | None:
     candidates = [
         road_user
@@ -118,19 +133,7 @@ def _selected_road_user(payload: dict[str, Any]) -> dict[str, Any] | None:
     if not candidates:
         return None
 
-    def rank(road_user: dict[str, Any]) -> tuple[float, float, float, float]:
-        position = _road_user_box_position(road_user)
-        box = _coerce_box(position)
-        mmr = road_user.get("mmr")
-        assert isinstance(mmr, dict)
-        return (
-            box.area if box is not None else 0.0,
-            _coerce_confidence(mmr.get("model")) or 0.0,
-            _coerce_confidence(mmr.get("make")) or 0.0,
-            _coerce_confidence(position) or 0.0,
-        )
-
-    return max(candidates, key=rank)
+    return max(candidates, key=_road_user_box_area_rank)
 
 
 def _ranked_road_user(road_users: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -140,19 +143,7 @@ def _ranked_road_user(road_users: list[dict[str, Any]]) -> dict[str, Any] | None
     if not candidates:
         return None
 
-    def rank(road_user: dict[str, Any]) -> tuple[float, float, float, float]:
-        position = _road_user_box_position(road_user)
-        box = _coerce_box(position)
-        mmr = road_user.get("mmr")
-        assert isinstance(mmr, dict)
-        return (
-            _coerce_confidence(mmr.get("model")) or 0.0,
-            _coerce_confidence(mmr.get("make")) or 0.0,
-            _coerce_confidence(position) or 0.0,
-            box.area if box is not None else 0.0,
-        )
-
-    return max(candidates, key=rank)
+    return max(candidates, key=_road_user_box_area_rank)
 
 
 def _mmr_result_from_road_user(
@@ -270,10 +261,10 @@ def _matched_cell_index(result: MMRResult, cells: list[_BatchCell]) -> int | Non
 
 def _result_rank(result: MMRResult) -> tuple[float, float, float, float]:
     return (
+        result.detection_box.area if result.detection_box is not None else 0.0,
+        result.detection_confidence or 0.0,
         result.model_confidence or 0.0,
         result.make_confidence or 0.0,
-        result.detection_confidence or 0.0,
-        result.detection_box.area if result.detection_box is not None else 0.0,
     )
 
 

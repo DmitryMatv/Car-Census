@@ -251,6 +251,56 @@ def test_parse_mmr_results_by_combination_preserves_empty_slots() -> None:
     ]
 
 
+def test_parse_mmr_results_by_combination_uses_largest_box_per_slot() -> None:
+    payload = {
+        "combinations": [
+            {
+                "roadUsers": [
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 0,
+                                "topLeftRow": 0,
+                                "bottomRightCol": 20,
+                                "bottomRightRow": 20,
+                                "score": 0.99,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Audi", "score": 0.99},
+                            "model": {"value": "A4", "score": 0.99},
+                        },
+                    },
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 10,
+                                "topLeftRow": 10,
+                                "bottomRightCol": 110,
+                                "bottomRightRow": 70,
+                                "score": 0.70,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Toyota", "score": 0.65},
+                            "model": {"value": "Corolla", "score": 0.60},
+                        },
+                    },
+                ]
+            }
+        ]
+    }
+
+    results = parse_mmr_results_by_combination(payload)
+
+    assert len(results) == 1
+    result = results[0]
+    assert result is not None
+    assert result.make == "Toyota"
+    assert result.model == "Corolla"
+    assert result.detection_box == BBox(x1=10, y1=10, x2=110, y2=70)
+
+
 def test_traffic_eye_client_requests_box_detection_and_mmr_only(
     tmp_path, monkeypatch
 ) -> None:
@@ -406,6 +456,89 @@ def test_traffic_eye_client_batches_crops_with_manual_boxes(
         str(first_crop),
         str(second_crop),
     ]
+
+
+def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
+    crop = tmp_path / "crop.jpg"
+    cv2.imwrite(str(crop), np.full((80, 80, 3), 100, dtype=np.uint8))
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, object]:
+            return {
+                "combinations": [
+                    {
+                        "roadUsers": [
+                            {
+                                "box": {
+                                    "position": {
+                                        "topLeftCol": 10,
+                                        "topLeftRow": 10,
+                                        "bottomRightCol": 30,
+                                        "bottomRightRow": 30,
+                                        "score": 0.99,
+                                    }
+                                },
+                                "mmr": {
+                                    "make": {"value": "Audi", "score": 0.99},
+                                    "model": {"value": "A4", "score": 0.99},
+                                },
+                            },
+                            {
+                                "box": {
+                                    "position": {
+                                        "topLeftCol": 5,
+                                        "topLeftRow": 5,
+                                        "bottomRightCol": 75,
+                                        "bottomRightRow": 70,
+                                        "score": 0.70,
+                                    }
+                                },
+                                "mmr": {
+                                    "make": {"value": "Toyota", "score": 0.65},
+                                    "model": {"value": "Corolla", "score": 0.61},
+                                },
+                            },
+                        ]
+                    }
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self, timeout: float) -> None:
+            pass
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            pass
+
+        def post(
+            self, url, headers, files
+        ) -> test_traffic_eye_client_batch_cell_uses_largest_returned_box.FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
+    config = AppConfig.model_validate(
+        {"mmr": {"batch_grid_columns": 1, "batch_cell_size_px": 100}}
+    )
+
+    client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
+    results = client.recognize_vehicle_crops([crop])
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.make == "Toyota"
+    assert result.model == "Corolla"
+    assert result.source_image == crop
+    assert result.raw["batch_cell_index"] == 0
+    assert result.detection_box == BBox(x1=5, y1=5, x2=75, y2=70)
 
 
 def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
