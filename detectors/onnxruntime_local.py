@@ -76,8 +76,8 @@ def _letterbox(
     pad_x = (size - new_width) / 2
     pad_y = (size - new_height) / 2
     canvas = np.full((size, size, 3), 114, dtype=np.uint8)
-    top = int(round(pad_y - 0.1))
-    left = int(round(pad_x - 0.1))
+    top = round(pad_y - 0.1)
+    left = round(pad_x - 0.1)
     canvas[top : top + new_height, left : left + new_width] = resized
     return canvas, scale, (left, top)
 
@@ -101,9 +101,7 @@ def _allowed_class_names(
 ) -> set[str]:
     configured_allowed_names = {name.lower() for name in configured_names}
     model_class_names = {name.lower() for name in class_names.values()}
-    discovered_vehicle_names = {"van", "pickup", "crossover"} & set(
-        model_class_names
-    )
+    discovered_vehicle_names = {"van", "pickup", "crossover"} & set(model_class_names)
     return configured_allowed_names | discovered_vehicle_names
 
 
@@ -235,13 +233,10 @@ class OnnxRuntimeLocalDetector(Detector):
         self.fixed_batch_size = _fixed_batch_size(self.input_batch_dim)
         metadata = self.session.get_modelmeta().custom_metadata_map
         self.class_names = {
-            int(class_id): name.lower()
+            class_id: name.lower()
             for class_id, name in config.detector.class_names.items()
         }
         self.class_names.update(_metadata_names(metadata.get("names")))
-        configured_allowed_names = {
-            name.lower() for name in config.detector.allowed_class_names
-        }
         discovered_vehicle_names = {"van", "pickup", "crossover"} & set(
             self.class_names.values()
         )
@@ -302,7 +297,6 @@ class OnnxRuntimeLocalDetector(Detector):
             return []
         if len(images) == 1 or (self.fixed_batch_size == 1 and not self.dynamic_batch):
             return [self.detect(image) for image in images]
-
         preprocessed = [self._preprocess(image) for image in images]
         tensors = [item[0] for item in preprocessed]
         requested_count = len(tensors)
@@ -346,7 +340,7 @@ class OnnxRuntimeLocalDetector(Detector):
         frame, scale, (pad_x, pad_y) = _letterbox(image, input_size)
         tensor = frame[:, :, ::-1].transpose(2, 0, 1).astype(self.input_dtype)
         tensor /= np.asarray(255.0, dtype=self.input_dtype)
-        return tensor, scale, float(pad_x), float(pad_y), image.shape
+        return tensor, scale, pad_x, pad_y, image.shape
 
     def _parse_single_output(
         self,
@@ -446,9 +440,7 @@ class OnnxRuntimeLocalDetector(Detector):
         diagnostic_counts["raw_candidate_rows"] += int(raw.shape[0])
         if raw.shape[1] == 6:
             rows = raw[raw[:, 4] >= confidence].copy()
-            diagnostic_counts["detections_after_confidence_filtering"] += int(
-                len(rows)
-            )
+            diagnostic_counts["detections_after_confidence_filtering"] += len(rows)
             return rows[:, [0, 1, 2, 3, 4, 5]]
 
         if raw.shape[1] < 5:
@@ -468,7 +460,9 @@ class OnnxRuntimeLocalDetector(Detector):
         return np.column_stack((raw[keep, :4], scores[keep], class_ids[keep]))
 
     def detection_diagnostics(self) -> dict[str, object]:
+        diagnostic_counts = getattr(self, "diagnostic_counts", Counter())
+        diagnostic_confidences = getattr(self, "diagnostic_confidences", [])
         return {
-            "counts": dict(self.diagnostic_counts),
-            "confidence_values": list(self.diagnostic_confidences),
+            "counts": dict(diagnostic_counts),
+            "confidence_values": list(diagnostic_confidences),
         }

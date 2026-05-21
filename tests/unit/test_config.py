@@ -40,12 +40,12 @@ def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
 
     assert config.tracker.provider == "botsort"
     assert config.tracker.lost_track_buffer == 30
-    assert config.tracker.track_activation_threshold == 0.7
+    assert config.tracker.track_activation_threshold == 0.35
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_first_assoc == 0.2
     assert config.tracker.minimum_iou_threshold_second_assoc == 0.5
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.3
-    assert config.tracker.high_conf_det_threshold == 0.6
+    assert config.tracker.high_conf_det_threshold == 0.35
     assert config.tracker.enable_cmc is False
     assert config.tracker.cmc_method == "sparseOptFlow"
     assert config.tracker.cmc_downscale == 2
@@ -78,7 +78,9 @@ def test_video_config_accepts_fixed_fps() -> None:
 def test_analysis_config_defaults_to_batched_detection() -> None:
     config = AppConfig()
 
+    assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 16
+    assert config.analysis.min_box_height_px == 160
 
 
 def test_render_config_accepts_visual_defaults() -> None:
@@ -89,15 +91,17 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
     assert config.analysis.min_track_frames == 6
-    assert config.detector.confidence == 0.35
+    assert config.analysis.min_box_height_px == 160
+    assert config.detector.confidence == 0.30
     assert config.detector.iou == 0.45
     assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
     assert config.detector.onnx_require_gpu is False
-    assert config.tracker.track_activation_threshold == 0.45
+    assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_first_assoc == 0.15
-    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.2
-    assert config.tracker.high_conf_det_threshold == 0.45
+    assert config.tracker.minimum_iou_threshold_first_assoc == 0.08
+    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.10
+    assert config.tracker.high_conf_det_threshold == 0.30
+    assert config.tracker.edge_margin_px == 10
     assert config.render.encode_backend == "opencv"
     assert config.render.output_fps is None
     assert config.render.ffmpeg_path == "ffmpeg"

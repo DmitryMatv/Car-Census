@@ -12,7 +12,7 @@ analysis:
   batch_size: 32
   imgsz: 640
   min_track_frames: 6
-  min_box_height_px: 200
+  min_box_height_px: 160
   crop_padding_ratio: 0.10
   crop_padding_px: 0
   crop_limit_per_track: 1
@@ -23,7 +23,7 @@ analysis:
 detector:
   provider: onnxruntime_local
   weights: weights/yolo26m_fp16.onnx
-  confidence: 0.35
+  confidence: 0.30
   iou: 0.45
   allowed_class_names:
     - car
@@ -35,20 +35,20 @@ detector:
 
 tracker:
   provider: botsort
-  lost_track_buffer: 30
-  track_activation_threshold: 0.45
+  lost_track_buffer: 45
+  track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.15
+  minimum_iou_threshold_first_assoc: 0.08
   minimum_iou_threshold_second_assoc: 0.5
-  minimum_iou_threshold_unconfirmed_assoc: 0.2
-  high_conf_det_threshold: 0.45
+  minimum_iou_threshold_unconfirmed_assoc: 0.10
+  high_conf_det_threshold: 0.30
   enable_cmc: false
   cmc_method: sparseOptFlow
   cmc_downscale: 2
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 5
+  edge_margin_px: 10
 
 mmr:
   api_url: https://trafficeye.ai/recognition

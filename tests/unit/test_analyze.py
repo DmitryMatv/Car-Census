@@ -525,7 +525,7 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     assert manifest.analysis_fps == 10.0
 
 
-def test_analyze_passes_edge_detection_to_tracker_then_kills_source_edge_track(
+def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observation(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -580,15 +580,16 @@ def test_analyze_passes_edge_detection_to_tracker_then_kills_source_edge_track(
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [7],
         [],
-        [],
+        [7],
     ]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
     assert [detection.bbox for detection in tracker.received_detections[1]] == [
         BBox(x1=0, y1=20, x2=60, y2=60)
     ]
+    assert _read_detection_stats(store)["edge_observations_skipped"] == 1
 
 
-def test_analyze_kills_track_when_edge_detection_matches_inset_tracker_output(
+def test_analyze_skips_track_when_edge_detection_matches_inset_tracker_output(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -649,12 +650,12 @@ def test_analyze_kills_track_when_edge_detection_matches_inset_tracker_output(
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [7],
         [],
-        [],
+        [7],
     ]
-    assert tracker.drop_calls[0] == {7}
+    assert tracker.drop_calls == []
 
 
-def test_analyze_drops_edge_touching_unconfirmed_track_before_it_gets_id(
+def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -698,11 +699,14 @@ def test_analyze_drops_edge_touching_unconfirmed_track_before_it_gets_id(
     )
 
     records = _read_frame_records(store.frames_path)
-    assert [record.tracks for record in records] == [[], []]
-    assert tracker.drop_calls == [{-1}]
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [],
+        [7],
+    ]
+    assert tracker.drop_calls == []
 
 
-def test_analyze_passes_edge_detection_to_tracker_then_kills_roi_crop_edge_track(
+def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_observation(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -757,15 +761,15 @@ def test_analyze_passes_edge_detection_to_tracker_then_kills_roi_crop_edge_track
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [7],
         [],
-        [],
+        [7],
     ]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
     assert [detection.bbox for detection in tracker.received_detections[1]] == [
         BBox(x1=10, y1=30, x2=60, y2=60)
     ]
 
 
-def test_analyze_passes_edge_detection_to_tracker_then_kills_polygon_edge_track(
+def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observation(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -817,15 +821,15 @@ def test_analyze_passes_edge_detection_to_tracker_then_kills_polygon_edge_track(
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [7],
         [],
-        [],
+        [7],
     ]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
     assert [detection.bbox for detection in tracker.received_detections[1]] == [
         BBox(x1=48, y1=18, x2=56, y2=28)
     ]
 
 
-def test_analyze_allows_new_track_id_after_edge_kill(tmp_path, monkeypatch) -> None:
+def test_analyze_allows_new_track_id_after_edge_skip(tmp_path, monkeypatch) -> None:
     detector = SequenceFakeDetector(
         [
             [
@@ -880,10 +884,10 @@ def test_analyze_allows_new_track_id_after_edge_kill(tmp_path, monkeypatch) -> N
         [],
         [8],
     ]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
 
 
-def test_edge_killed_track_does_not_save_crop_on_kill_frame(
+def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
     tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
@@ -944,7 +948,50 @@ def test_edge_killed_track_does_not_save_crop_on_kill_frame(
     ]
     assert len(summaries) == 1
     assert [candidate["frame_index"] for candidate in summaries[0]["candidates"]] == [0]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
+
+
+def test_track_between_160_and_199_px_gets_crop_candidate(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(_single_track(BBox(x1=20, y1=10, x2=80, y2=180)))
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((200, 100, 3), 255, dtype=np.uint8)],
+    )
+    config = AppConfig.model_validate(
+        {
+            "analysis": {
+                "min_track_frames": 1,
+                "crop_padding_ratio": 0,
+                "crop_padding_px": 0,
+            },
+            "tracker": {"ignore_edge_touches": False},
+        }
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 199], [0, 199]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    assert summaries[0]["max_box_height_px"] == 170.0
+    assert [candidate["frame_index"] for candidate in summaries[0]["candidates"]] == [0]
 
 
 def test_analyze_no_longer_filters_edge_detections_before_tracker(
@@ -978,7 +1025,7 @@ def test_analyze_no_longer_filters_edge_detections_before_tracker(
     assert [detection.bbox for detection in tracker.received_detections[0]] == [
         BBox(x1=48, y1=18, x2=56, y2=28)
     ]
-    assert tracker.drop_calls == [{7}]
+    assert tracker.drop_calls == []
 
 
 def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) -> None:
@@ -1028,8 +1075,11 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
     assert stats["detections_passed_to_tracker"] == 1
     assert stats["tracker_outputs"] == 1
     assert stats["tracks_discarded_edge_contact"] == 0
+    assert stats["edge_observations_skipped"] == 0
     assert stats["tracks_discarded_min_track_frames"] == 0
     assert stats["tracks_without_crop_candidates"] == 0
+    assert stats["tracks_without_crop_due_to_height"] == 0
+    assert stats["tracks_without_crop_due_to_short_lifetime"] == 0
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 0
     assert sum(bucket["count"] for bucket in stats["confidence_histogram"]) == 2
     assert sum(bucket["count"] for bucket in stats["box_height_histogram"]) == 1
@@ -1096,8 +1146,11 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
 
     stats = _read_detection_stats(store)
     assert stats["tracks_discarded_edge_contact"] == 1
+    assert stats["edge_observations_skipped"] == 1
     assert stats["tracks_discarded_min_track_frames"] == 2
     assert stats["tracks_without_crop_candidates"] == 2
+    assert stats["tracks_without_crop_due_to_height"] == 2
+    assert stats["tracks_without_crop_due_to_short_lifetime"] == 2
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 2
 
 

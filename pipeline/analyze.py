@@ -76,8 +76,11 @@ class AnalysisDiagnostics:
     detections_passed_to_tracker: int = 0
     tracker_outputs: int = 0
     tracks_discarded_edge_contact: int = 0
+    edge_observations_skipped: int = 0
     tracks_discarded_min_track_frames: int = 0
     tracks_without_crop_candidates: int = 0
+    tracks_without_crop_due_to_height: int = 0
+    tracks_without_crop_due_to_short_lifetime: int = 0
     tracks_hidden_from_render_crop_eligibility: int = 0
     tracker_confidence_values: list[float] = field(default_factory=list)
     tracker_box_height_values: list[float] = field(default_factory=list)
@@ -156,8 +159,15 @@ def _analysis_diagnostics_payload(
         "detections_passed_to_tracker": diagnostics.detections_passed_to_tracker,
         "tracker_outputs": diagnostics.tracker_outputs,
         "tracks_discarded_edge_contact": diagnostics.tracks_discarded_edge_contact,
+        "edge_observations_skipped": diagnostics.edge_observations_skipped,
         "tracks_discarded_min_track_frames": diagnostics.tracks_discarded_min_track_frames,
         "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,
+        "tracks_without_crop_due_to_height": (
+            diagnostics.tracks_without_crop_due_to_height
+        ),
+        "tracks_without_crop_due_to_short_lifetime": (
+            diagnostics.tracks_without_crop_due_to_short_lifetime
+        ),
         "tracks_hidden_from_render_due_to_crop_eligibility": (
             diagnostics.tracks_hidden_from_render_crop_eligibility
         ),
@@ -518,7 +528,6 @@ def analyze_video(
     diagnostics = AnalysisDiagnostics()
     track_states: dict[int, MutableTrackState] = {}
     finished_track_states: list[MutableTrackState] = []
-    suppressed_edge_track_ids: set[int] = set()
     count_line = profile.count_line
     line_start: tuple[float, float] | None = None
     line_end: tuple[float, float] | None = None
@@ -599,22 +608,13 @@ def analyze_video(
             )
             if track_id < 0:
                 if touches_suppression_edge:
+                    diagnostics.edge_observations_skipped += 1
                     diagnostics.tracks_discarded_edge_contact += 1
-                    tracker.drop_tracks({track_id})
-                continue
-            if track_id in suppressed_edge_track_ids:
-                tracker.drop_tracks({track_id})
                 continue
             state = track_states.get(track_id)
             if touches_suppression_edge:
-                suppressed_edge_track_ids.add(track_id)
-                state = track_states.pop(track_id, None)
-                if state is None or state.frames_seen == 0:
-                    discard_track_artifacts(state, run_store.crops_dir)
-                else:
-                    finished_track_states.append(state)
+                diagnostics.edge_observations_skipped += 1
                 diagnostics.tracks_discarded_edge_contact += 1
-                tracker.drop_tracks({track_id})
                 continue
             bottom_center = bbox.bottom_center
             diagnostics.tracker_box_height_values.append(bbox.height)
@@ -724,6 +724,18 @@ def analyze_video(
     all_track_states.sort(key=lambda item: (item.first_frame_index, item.track_id))
     diagnostics.tracks_without_crop_candidates = sum(
         1 for state in all_track_states if not state.candidates
+    )
+    diagnostics.tracks_without_crop_due_to_height = sum(
+        1
+        for state in all_track_states
+        if not state.candidates
+        and state.max_box_height_px < config.analysis.min_box_height_px
+    )
+    diagnostics.tracks_without_crop_due_to_short_lifetime = sum(
+        1
+        for state in all_track_states
+        if config.analysis.min_track_frames > 0
+        and state.frames_seen < config.analysis.min_track_frames
     )
     if config.render.require_crop_eligible_track:
         diagnostics.tracks_hidden_from_render_crop_eligibility = sum(

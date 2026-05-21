@@ -49,7 +49,7 @@ class AnalysisConfig(StrictBaseModel):
     batch_size: int = Field(default=16, ge=1)
     imgsz: int = 960
     min_track_frames: int = 10
-    min_box_height_px: int = 80
+    min_box_height_px: int = 160
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
     crop_padding_px: int = Field(default=0, ge=0)
     crop_limit_per_track: int = 1
@@ -61,7 +61,7 @@ class AnalysisConfig(StrictBaseModel):
 class DetectorConfig(StrictBaseModel):
     provider: str = "onnxruntime_local"
     weights: str = "weights/yolo26s_fp16.onnx"
-    confidence: float = 0.4
+    confidence: float = 0.30
     iou: float = 0.4
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
     allowed_class_ids: list[int] | None = None
@@ -77,12 +77,12 @@ class DetectorConfig(StrictBaseModel):
 class TrackerConfig(StrictBaseModel):
     provider: Literal["botsort"] = "botsort"
     lost_track_buffer: int = 30
-    track_activation_threshold: float = 0.7
+    track_activation_threshold: float = 0.35
     minimum_consecutive_frames: int = 2
     minimum_iou_threshold_first_assoc: float = 0.2
     minimum_iou_threshold_second_assoc: float = 0.5
     minimum_iou_threshold_unconfirmed_assoc: float = 0.3
-    high_conf_det_threshold: float = 0.6
+    high_conf_det_threshold: float = 0.35
     enable_cmc: bool = False
     cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
     cmc_downscale: int = 2
