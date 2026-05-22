@@ -1,7 +1,5 @@
 import csv
 
-import orjson
-
 from models import MMRResult
 from pipeline.report import generate_reports
 
@@ -11,53 +9,48 @@ class DummyRunStore:
         self.labels_path = root / "labels.json"
         self.count_events_path = root / "count_events.jsonl"
         self.tracks_path = root / "tracks.jsonl"
-        self.report_csv_path = root / "reports" / "report.csv"
-        self.counts_json_path = root / "counts.json"
-        self.counts_csv_path = root / "counts.csv"
+        self.report_csv_path = root / "report.csv"
+        self.labels: dict[int, MMRResult] = {}
+
+    def read_labels(self) -> dict[int, MMRResult]:
+        return self.labels
 
 
 def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     store = DummyRunStore(tmp_path)
-    store.labels_path.write_bytes(
-        orjson.dumps(
-            {
-                "7": MMRResult(
-                    make="Toyota",
-                    model="Corolla",
-                    generation="E210 (2018)",
-                    variation="Hybrid Touring Sports",
-                    color="white",
-                    accepted=True,
-                    vehicle_index=1,
-                    api_classification_index=1,
-                    model_confidence=0.91,
-                    tags=[
-                        {"name": "taxi", "value": "yes", "score": 0.9},
-                        {"name": "damaged", "value": "no", "score": 0.8},
-                    ],
-                ).model_dump(mode="json"),
-                "8": MMRResult(
-                    make="Toyota",
-                    model="Corolla",
-                    vehicle_index=1,
-                    api_classification_index=1,
-                    tags=[{"name": "taxi", "value": "yes"}],
-                ).model_dump(mode="json"),
-                "9": MMRResult(
-                    make="Audi",
-                    model="A4",
-                    generation="B9",
-                    variation="Avant",
-                    vehicle_index=2,
-                    api_classification_index=2,
-                    tags=[{"name": "Police Car", "value": True, "score": 0.72}],
-                ).model_dump(mode="json"),
-            }
-        )
-    )
-    store.counts_json_path.write_text("old json", encoding="utf-8")
-    store.counts_csv_path.write_text("old csv", encoding="utf-8")
-
+    store.labels = {
+        7: MMRResult(
+            make="Toyota",
+            model="Corolla",
+            generation="E210 (2018)",
+            variation="Hybrid Touring Sports",
+            color="white",
+            accepted=True,
+            vehicle_index=1,
+            api_classification_index=1,
+            model_confidence=0.91,
+            tags=[
+                {"name": "taxi", "value": "yes", "score": 0.9},
+                {"name": "damaged", "value": "no", "score": 0.8},
+            ],
+        ),
+        8: MMRResult(
+            make="Toyota",
+            model="Corolla",
+            vehicle_index=1,
+            api_classification_index=1,
+            tags=[{"name": "taxi", "value": "yes"}],
+        ),
+        9: MMRResult(
+            make="Audi",
+            model="A4",
+            generation="B9",
+            variation="Avant",
+            vehicle_index=2,
+            api_classification_index=2,
+            tags=[{"name": "Police Car", "value": True, "score": 0.72}],
+        ),
+    }
     payload = generate_reports(store)
 
     assert payload == {
@@ -65,8 +58,6 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
         "rows": 2,
     }
     assert store.report_csv_path.exists()
-    assert not store.counts_json_path.exists()
-    assert not store.counts_csv_path.exists()
 
     with store.report_csv_path.open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))

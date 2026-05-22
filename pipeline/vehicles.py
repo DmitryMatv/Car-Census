@@ -4,10 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Protocol, Sequence
 
-import orjson
-
+from models import CountEvent, CropCandidate, TrackSummary
 from storage.run_store import RunStore
-from models import CountEvent, CropCandidate, FrameRecord, TrackSummary
 
 
 class TrackStateProtocol(Protocol):
@@ -56,30 +54,6 @@ def track_summary_from_state(state: TrackStateProtocol) -> TrackSummary:
         count_event=state.count_event,
         candidates=state.candidates,
     )
-
-
-def rewrite_frame_vehicle_indices(
-    frames_path: Path, vehicle_index_by_track: dict[int, int]
-) -> None:
-    temp_path = frames_path.with_suffix(f"{frames_path.suffix}.tmp")
-    with frames_path.open("rb") as source, temp_path.open("wb") as target:
-        for line in source:
-            if not line.strip():
-                continue
-            record = FrameRecord.model_validate(orjson.loads(line))
-            tracks = [
-                track.model_copy(
-                    update={"vehicle_index": vehicle_index_by_track.get(track.track_id)}
-                )
-                for track in record.tracks
-            ]
-            target.write(
-                orjson.dumps(
-                    record.model_copy(update={"tracks": tracks}).model_dump(mode="json")
-                )
-            )
-            target.write(b"\n")
-    temp_path.replace(frames_path)
 
 
 def finalize_vehicle_identities(

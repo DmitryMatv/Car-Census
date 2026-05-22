@@ -191,7 +191,7 @@ class OnnxRuntimeLocalDetector(Detector):
             import onnxruntime as ort
         except ImportError as exc:
             raise RuntimeError(
-                "onnxruntime is required for detector.provider=onnxruntime_local. "
+                "onnxruntime is required for local ONNX detection. "
                 "Install the project with `pip install -e .`."
             ) from exc
 

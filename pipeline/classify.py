@@ -4,8 +4,6 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-import orjson
-
 from config import AppConfig
 from mmr.trafficeye import TrafficEyeClient
 from models import MMRResult, TrackSummary
@@ -18,35 +16,14 @@ logger = logging.getLogger(__name__)
 class _ClassificationTask:
     image_path: Path
     summaries: list[TrackSummary]
-    vehicle_index: int | None
-    fallback_index: int | None
+    vehicle_index: int
 
 
-def _load_track_summaries(path: Path) -> list[TrackSummary]:
-    summaries: list[TrackSummary] = []
-    if not path.exists():
-        return summaries
-    with path.open("rb") as handle:
-        for line in handle:
-            if line.strip():
-                summaries.append(TrackSummary.model_validate(orjson.loads(line)))
-    return summaries
-
-
-def _summary_vehicle_key(summary: TrackSummary) -> int:
-    return summary.vehicle_index or summary.track_id
-
-
-def _apply_identity(
-    result: MMRResult,
-    vehicle_index: int | None,
-    fallback_index: int | None,
-) -> MMRResult:
-    label_index = vehicle_index or fallback_index
+def _apply_identity(result: MMRResult, vehicle_index: int) -> MMRResult:
     return result.model_copy(
         update={
             "vehicle_index": vehicle_index,
-            "api_classification_index": label_index,
+            "api_classification_index": vehicle_index,
         }
     )
 
@@ -75,14 +52,11 @@ def _collect_classification_tasks(
     labels_by_track: dict[int, MMRResult] = {}
     classification_tasks: list[_ClassificationTask] = []
     summaries_by_vehicle: dict[int, list[TrackSummary]] = {}
-    for summary in _load_track_summaries(run_store.tracks_path):
-        if summary.vehicle_index is None and not summary.candidates:
+    for summary in run_store.iter_track_summaries():
+        if summary.vehicle_index is None:
             continue
-        summaries_by_vehicle.setdefault(_summary_vehicle_key(summary), []).append(
-            summary
-        )
+        summaries_by_vehicle.setdefault(summary.vehicle_index, []).append(summary)
 
-    legacy_vehicle_index_count = 0
     grouped_summaries = sorted(
         summaries_by_vehicle.values(),
         key=lambda items: (
@@ -91,11 +65,8 @@ def _collect_classification_tasks(
         ),
     )
     for summaries in grouped_summaries:
-        vehicle_index = next(
-            (summary.vehicle_index for summary in summaries if summary.vehicle_index),
-            None,
-        )
-        fallback_index = None
+        vehicle_index = summaries[0].vehicle_index
+        assert vehicle_index is not None
         frames_seen = sum(summary.frames_seen for summary in summaries)
         if (
             config.analysis.min_track_frames > 0
@@ -108,9 +79,6 @@ def _collect_classification_tasks(
                 config.analysis.min_track_frames,
             )
             continue
-        if vehicle_index is None:
-            legacy_vehicle_index_count += 1
-            fallback_index = legacy_vehicle_index_count
 
         candidates = [
             candidate for summary in summaries for candidate in summary.candidates
@@ -130,7 +98,6 @@ def _collect_classification_tasks(
                     },
                 ),
                 vehicle_index,
-                fallback_index,
             )
             for summary in summaries:
                 labels_by_track[summary.track_id] = result
@@ -143,7 +110,6 @@ def _collect_classification_tasks(
                 ),
                 summaries=summaries,
                 vehicle_index=vehicle_index,
-                fallback_index=fallback_index,
             )
         )
     return classification_tasks, labels_by_track
@@ -176,15 +142,11 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 f"TrafficEye returned {len(results)} MMR results for {len(batch)} crops"
             )
         for task, result in zip(batch, results, strict=True):
-            result = _apply_identity(result, task.vehicle_index, task.fallback_index)
+            result = _apply_identity(result, task.vehicle_index)
             for summary in task.summaries:
                 labels_by_track[summary.track_id] = result
 
-    serializable = {
-        str(track_id): result.model_dump(mode="json")
-        for track_id, result in labels_by_track.items()
-    }
-    run_store.write_json(run_store.labels_path, serializable)
+    run_store.write_labels(labels_by_track)
     logger.info("Classification complete for %s tracks", len(labels_by_track))
     return labels_by_track
 

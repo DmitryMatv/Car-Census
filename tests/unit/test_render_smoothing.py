@@ -93,39 +93,6 @@ def test_smooth_render_tracks_creates_render_artifact_and_preserves_raw(
     assert store.frames_path.read_bytes() == raw_payload
 
 
-def test_smooth_render_tracks_reduces_single_frame_jitter(tmp_path) -> None:
-    store = _store(tmp_path)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "linear",
-                    "window_seconds": 0.5,
-                    "max_center_offset_ratio": 10,
-                    "max_size_delta_ratio": 10,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(1, 0.1, [_track(1, 1, 0.1, BBox(x1=18, y1=10, x2=38, y2=30))]),
-        _record(2, 0.2, [_track(1, 2, 0.2, BBox(x1=20, y1=10, x2=40, y2=30))]),
-        _record(3, 0.3, [_track(1, 3, 0.3, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(4, 0.4, [_track(1, 4, 0.4, BBox(x1=40, y1=10, x2=60, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    raw_center = records[1].tracks[0].bbox.center[0]
-    smoothed_center = smoothed[1].tracks[0].bbox.center[0]
-    expected_center = 20.0
-    assert abs(smoothed_center - expected_center) < abs(raw_center - expected_center)
-
-
 def test_smooth_render_tracks_interpolates_short_missing_gap(tmp_path) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
@@ -170,20 +137,13 @@ def test_smooth_render_tracks_interpolates_between_downsampled_analysis_frames(
     assert smoothed[5].tracks[0].bbox.x1 == pytest.approx(50)
 
 
-def test_smooth_render_tracks_can_interpolate_without_keyframe_smoothing(
+def test_smooth_render_tracks_preserves_observed_keyframes(
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
     config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "linear",
-                    "smooth_keyframes": False,
-                }
-            }
-        }
+        {"render": {"smoothing": {"interpolation_method": "linear"}}}
     )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
@@ -217,18 +177,11 @@ def test_smooth_render_tracks_can_disable_interpolation(tmp_path) -> None:
     assert [record.frame_index for record in smoothed] == [0, 3, 6]
 
 
-def test_polynomial_interpolation_preserves_keyframes(tmp_path) -> None:
+def test_pchip_interpolation_preserves_keyframes(tmp_path) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
     config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 2,
-                }
-            }
-        }
+        {"render": {"smoothing": {"interpolation_method": "pchip"}}}
     )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
@@ -246,260 +199,7 @@ def test_polynomial_interpolation_preserves_keyframes(tmp_path) -> None:
     assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
 
 
-def test_polynomial_interpolation_follows_curved_keyframes(tmp_path) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 2,
-                    "max_center_offset_ratio": 10,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=9, y1=10, x2=29, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=36, y1=10, x2=56, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(1)
-    assert smoothed[1].tracks[0].bbox.x1 != pytest.approx(3)
-
-
-def test_polynomial_order_three_is_accepted_and_preserves_keyframes(tmp_path) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 3,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
-        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=90, y1=10, x2=110, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert [record.frame_index for record in smoothed] == list(range(10))
-    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
-    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
-    assert smoothed[9].tracks[0].bbox == records[3].tracks[0].bbox
-
-
-def test_polynomial_order_three_falls_back_near_track_edges(tmp_path) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 3,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
-    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
-    assert smoothed[1].tracks[0].bbox.width > 0
-    assert smoothed[1].tracks[0].bbox.height > 0
-
-
-def test_polynomial_interpolation_does_not_fill_large_gap(tmp_path) -> None:
-    store = _store(tmp_path)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {"render": {"smoothing": {"interpolation_method": "polynomial"}}}
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(1, 0.5),
-        _record(2, 1.0, [_track(1, 2, 1.0, BBox(x1=20, y1=10, x2=40, y2=30))]),
-        _record(3, 1.1, [_track(1, 3, 1.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert smoothed[1].tracks == []
-
-
-def test_polynomial_interpolation_clamps_overshoot_to_linear_reference(
-    tmp_path,
-) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=2000, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 3,
-                    "max_center_offset_ratio": 0.1,
-                    "reject_short_excursions": False,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=990, y1=10, x2=1010, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=-1010, y1=10, x2=-990, y2=30))]),
-        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=0, y1=10, x2=20, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    linear_center_x = 10 + ((1000 - 10) / 3)
-    smoothed_center_x = smoothed[1].tracks[0].bbox.center[0]
-    assert abs(smoothed_center_x - linear_center_x) <= 2.000001
-    assert smoothed[1].tracks[0].bbox.width > 0
-    assert smoothed[1].tracks[0].bbox.height > 0
-
-
-def test_polynomial_interpolation_does_not_extrapolate_after_track_ends(
-    tmp_path,
-) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {"render": {"smoothing": {"interpolation_method": "polynomial"}}}
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
-        _record(9, 0.3),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert [record.frame_index for record in smoothed] == list(range(10))
-    assert [track.track_id for track in smoothed[5].tracks] == [1]
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
-    assert smoothed[7].tracks == []
-    assert smoothed[8].tracks == []
-    assert smoothed[9].tracks == []
-
-
-def test_polynomial_interpolation_clamps_final_gap_and_preserves_last_keyframe(
-    tmp_path,
-) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "polynomial",
-                    "polynomial_order": 3,
-                    "max_center_offset_ratio": 0.1,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=10, y1=10, x2=30, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=110, y1=10, x2=130, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=20, y1=10, x2=40, y2=30))]),
-        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=190, y1=10, x2=210, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    linear_center_x = 30 + ((200 - 30) / 3)
-    smoothed_center_x = smoothed[7].tracks[0].bbox.center[0]
-    assert abs(smoothed_center_x - linear_center_x) <= 2.000001
-    assert smoothed[9].tracks[0].bbox == records[3].tracks[0].bbox
-
-
-def test_hermite_interpolation_preserves_keyframes(tmp_path) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {"render": {"smoothing": {"interpolation_method": "hermite"}}}
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert [record.frame_index for record in smoothed] == list(range(7))
-    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
-    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
-
-
-def test_hermite_interpolation_does_not_extrapolate_after_track_ends(
-    tmp_path,
-) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {"render": {"smoothing": {"interpolation_method": "hermite"}}}
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
-        _record(9, 0.3),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    assert [record.frame_index for record in smoothed] == list(range(10))
-    assert [track.track_id for track in smoothed[5].tracks] == [1]
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
-    assert smoothed[7].tracks == []
-    assert smoothed[8].tracks == []
-    assert smoothed[9].tracks == []
-
-
-def test_hermite_interpolation_reduces_overshoot_on_turning_motion(
+def test_pchip_interpolation_uses_curve_not_linear_for_accelerating_motion(
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -508,38 +208,7 @@ def test_hermite_interpolation_reduces_overshoot_on_turning_motion(
         {
             "render": {
                 "smoothing": {
-                    "interpolation_method": "hermite",
-                    "max_center_offset_ratio": 10,
-                    "reject_short_excursions": False,
-                }
-            }
-        }
-    )
-    records = [
-        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
-        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=90, y1=10, x2=110, y2=30))]),
-        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=10, y1=10, x2=30, y2=30))]),
-        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=30, y1=10, x2=50, y2=30))]),
-    ]
-    _write_jsonl(store.frames_path, records)
-
-    smooth_render_tracks(config, profile, store)
-
-    smoothed = _read_records(store.render_frames_path)
-    hermite_x1 = smoothed[4].tracks[0].bbox.x1
-    assert 10 <= hermite_x1 <= 90
-
-
-def test_hermite_uses_smooth_curve_not_linear_for_accelerating_motion(
-    tmp_path,
-) -> None:
-    store = _store(tmp_path, source_fps=30, analysis_fps=10)
-    profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "hermite",
+                    "interpolation_method": "pchip",
                     "max_center_offset_ratio": 10,
                 }
             }
@@ -560,11 +229,11 @@ def test_hermite_uses_smooth_curve_not_linear_for_accelerating_motion(
     assert smoothed[1].tracks[0].bbox.height > 0
 
 
-def test_hermite_interpolation_respects_max_gap_seconds(tmp_path) -> None:
+def test_pchip_interpolation_respects_max_gap_seconds(tmp_path) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     config = AppConfig.model_validate(
-        {"render": {"smoothing": {"interpolation_method": "hermite"}}}
+        {"render": {"smoothing": {"interpolation_method": "pchip"}}}
     )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
@@ -580,14 +249,42 @@ def test_hermite_interpolation_respects_max_gap_seconds(tmp_path) -> None:
     assert smoothed[1].tracks == []
 
 
-def test_hermite_interpolation_clamps_box_size_and_center(tmp_path) -> None:
+def test_pchip_interpolation_falls_back_to_linear_for_two_keyframes(tmp_path) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "interpolation_method": "pchip",
+                    "min_observations": 2,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+
+
+def test_pchip_interpolation_clamps_extreme_curve_to_linear_reference(
+    tmp_path,
+) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=2000, height=2000)
     config = AppConfig.model_validate(
         {
             "render": {
                 "smoothing": {
-                    "interpolation_method": "hermite",
+                    "interpolation_method": "pchip",
                     "max_center_offset_ratio": 0.1,
                     "max_size_delta_ratio": 0.1,
                     "reject_short_excursions": False,
@@ -613,30 +310,31 @@ def test_hermite_interpolation_clamps_box_size_and_center(tmp_path) -> None:
     assert smoothed_bbox.height > 0
 
 
-def test_hermite_handles_two_keyframes_as_linear_like_curve(tmp_path) -> None:
+def test_pchip_interpolation_does_not_extrapolate_after_track_ends(
+    tmp_path,
+) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
     config = AppConfig.model_validate(
-        {
-            "render": {
-                "smoothing": {
-                    "interpolation_method": "hermite",
-                    "min_observations": 2,
-                }
-            }
-        }
+        {"render": {"smoothing": {"interpolation_method": "pchip"}}}
     )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+        _record(9, 0.3),
     ]
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(config, profile, store)
 
     smoothed = _read_records(store.render_frames_path)
-    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
-    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+    assert [record.frame_index for record in smoothed] == list(range(10))
+    assert [track.track_id for track in smoothed[5].tracks] == [1]
+    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
+    assert smoothed[7].tracks == []
+    assert smoothed[8].tracks == []
+    assert smoothed[9].tracks == []
 
 
 def test_smooth_render_tracks_extrapolates_final_partial_interval(tmp_path) -> None:

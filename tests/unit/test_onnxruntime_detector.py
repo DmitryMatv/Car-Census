@@ -16,7 +16,7 @@ from detectors.onnxruntime_local import (
 from models import Detection
 
 
-def test_metadata_names_accepts_ultralytics_mapping() -> None:
+def test_metadata_names_accepts_python_mapping() -> None:
     assert _metadata_names("{0: 'person', 2: 'car'}") == {
         0: "person",
         2: "car",
@@ -39,7 +39,7 @@ def test_letterbox_preserves_aspect_ratio() -> None:
     assert padding == (0, 160)
 
 
-def test_parse_ultralytics_detection_output_filters_allowed_car() -> None:
+def test_parse_yolo_detection_output_filters_allowed_car() -> None:
     config = AppConfig()
     detector = OnnxRuntimeLocalDetector.__new__(OnnxRuntimeLocalDetector)
     detector.config = config
@@ -284,6 +284,7 @@ def test_preprocess_uses_configured_model_input_dtype() -> None:
 
 def test_parse_outputs_converts_model_output_to_float32_before_postprocessing() -> None:
     config = AppConfig()
+
     class CapturingDetector(OnnxRuntimeLocalDetector):
         captured_dtype: object = None
 

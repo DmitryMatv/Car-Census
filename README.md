@@ -18,16 +18,10 @@ If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as th
 
 ## Environment
 
-This project targets local CPU inference with ONNX Runtime by default. Install project dependencies:
+This project uses local ONNX Runtime inference. Install project dependencies:
 
 ```bash
 pip install -e .
-```
-
-The legacy Ultralytics/PyTorch detector remains available as an optional extra:
-
-```bash
-pip install -e ".[pytorch]"
 ```
 
 BoT-SORT tracking uses Roboflow's `trackers` package, which is installed with
@@ -38,23 +32,14 @@ the main project dependencies.
 The default configuration expects a local YOLO26 ONNX detector at:
 
 ```text
-weights/yolo26s.onnx
+weights/yolo26s_fp16.onnx
 ```
 
 Use a YOLO26 detection model exported to ONNX. The default path is intentionally a local artifact so the pipeline can run offline after setup.
 
-For quick smoke testing with the optional PyTorch path, set `detector.provider` to `ultralytics_local` and `detector.weights` to a local `.pt` model or an Ultralytics model name.
-
-Device selection is explicit:
-
-```bash
-Car-Census run input_data/test_vid.MP4 --camera-id home-road --device cpu
-```
-
 By default, the ONNX Runtime detector uses `CPUExecutionProvider`.
 `--accelerator colab-t4`, `--accelerator onnx-cuda`, or a config override can
-request CUDA/TensorRT providers. `project.device` still affects the optional
-Ultralytics/PyTorch provider.
+request CUDA/TensorRT providers.
 
 ## Google Colab T4
 
@@ -69,10 +54,8 @@ Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t
 
 The `--accelerator colab-t4` preset keeps the existing ONNX weights path and
 requests ONNX Runtime CUDA execution with CPU fallback registered. ONNX is not
-required for GPU inference in general, but it is the cleanest GPU path for this
-project because the default detector is already ONNX-based. PyTorch CUDA remains
-available through `detector.provider: ultralytics_local` and a local `.pt`
-model or Ultralytics model name.
+required for GPU inference in general, but it is the detector path used by this
+project.
 
 If the runtime still has the CPU-only `onnxruntime` package, replace it with
 `onnxruntime-gpu`. TensorRT can be requested explicitly with
@@ -107,13 +90,13 @@ typed label fields.
 Create an ROI profile:
 
 ```bash
-Car-Census roi edit input_data/test_vid.MP4 --camera-id home-road --device cuda
+Car-Census roi edit input_data/test_vid.MP4 --camera-id home-road
 ```
 
 Run the full pipeline:
 
 ```bash
-Car-Census run input_data/test_vid.MP4 --camera-id home-road --device cuda
+Car-Census run input_data/test_vid.MP4 --camera-id home-road
 ```
 
 Run without make/model API calls:
@@ -139,8 +122,7 @@ output/<run-id>/
     labels.json
     cache/
   annotated.mp4
-  reports/
-    report.csv
+  report.csv
 ```
 
 ## Notes
@@ -150,9 +132,9 @@ output/<run-id>/
 - Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
 - By default, `tracker.ignore_edge_touches: true` ignores detections and tracker outputs whose boxes touch the source-frame edge or selected camera crop edge. Increase `tracker.edge_margin_px` to ignore boxes that are near, but not exactly on, the edge.
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
-- `render.smoothing.interpolate` controls whether source-frame annotations are generated between analyzed frames. `render.smoothing.interpolation_method: hermite` is the default and uses monotone cubic Hermite interpolation through tracked keyframes to reduce overshoot. `linear` uses straight-line fills, while `polynomial` uses an arbitrary local polynomial fit and is mainly experimental. `polynomial_order` affects only polynomial interpolation and linear keyframe smoothing. `max_center_offset_ratio` and `max_size_delta_ratio` clamp generated boxes against the linear reference path. The `polynomial` and `hermite` methods preserve actual tracked keyframes exactly.
+- `render.smoothing.interpolate` controls whether source-frame annotations are generated between analyzed frames. `render.smoothing.interpolation_method: pchip` is the default and uses SciPy shape-preserving cubic interpolation through observed tracker boxes. `linear` uses straight-line fills. Observed keyframes are preserved exactly, large gaps beyond `max_gap_seconds` are not filled, and generated boxes are clamped against the linear reference path with `max_center_offset_ratio` and `max_size_delta_ratio`. Legacy `polynomial` and `hermite` values are invalid.
 - Tracking uses Roboflow `trackers` BoT-SORT. Camera motion compensation is disabled by default because the expected camera setup is static. For moving cameras, set `tracker.enable_cmc: true` and choose a `tracker.cmc_method`; supported CMC methods are `sparseOptFlow`, `orb`, `sift`, and `ecc`.
 - Rendering shows make, model, generation, and variation when available.
-- `reports/report.csv` contains one row per identified vehicle. It preserves the
+- `report.csv` contains one row per identified vehicle. It preserves the
   detailed MMR fields and affirmative tags as boolean columns with matching
   confidence columns so downstream analytics can aggregate the CSV as needed.

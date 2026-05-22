@@ -39,13 +39,7 @@ def _report_sort_key(item: tuple[int, MMRResult]) -> tuple[int, int, int, int]:
             label.api_classification_index or 0,
             track_id,
         )
-    return (1, label.api_classification_index or 0, track_id, track_id)
-
-
-def _identity_key(track_id: int, label: MMRResult) -> tuple[str, int]:
-    if label.vehicle_index is not None:
-        return ("vehicle", label.vehicle_index)
-    return ("track", track_id)
+    return (1, 0, track_id, track_id)
 
 
 def _normalize_tag_name(name: object) -> str:
@@ -100,10 +94,12 @@ def build_vehicle_report_rows(
     labels_by_track: dict[int, MMRResult],
 ) -> list[dict[str, Any]]:
     rows_with_tags: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    seen_keys: set[tuple[str, int]] = set()
+    seen_keys: set[int] = set()
 
     for track_id, label in sorted(labels_by_track.items(), key=_report_sort_key):
-        identity_key = _identity_key(track_id, label)
+        if label.vehicle_index is None:
+            continue
+        identity_key = label.vehicle_index
         if identity_key in seen_keys:
             continue
         seen_keys.add(identity_key)

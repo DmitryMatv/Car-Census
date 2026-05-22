@@ -35,7 +35,6 @@ class StrictBaseModel(BaseModel):
 
 class ProjectConfig(StrictBaseModel):
     output_root: Path = Path("output")
-    device: str = "auto"
     camera_profiles_dir: Path = Path("configs/cameras")
 
 
@@ -46,20 +45,18 @@ class VideoConfig(StrictBaseModel):
 
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
-    batch_size: int = Field(default=16, ge=1)
+    batch_size: int = Field(default=32, ge=1)
     imgsz: int = 960
     min_track_frames: int = 10
     min_box_height_px: int = 160
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
     crop_padding_px: int = Field(default=0, ge=0)
-    crop_limit_per_track: int = 1
     crop_target_box_range_ratio: float = Field(default=0.70, ge=0.0, le=1.0)
     crop_min_spacing_seconds: float = 0.5
     crop_jpeg_quality: int = 95
 
 
 class DetectorConfig(StrictBaseModel):
-    provider: str = "onnxruntime_local"
     weights: str = "weights/yolo26s_fp16.onnx"
     confidence: float = 0.30
     iou: float = 0.4
@@ -75,7 +72,6 @@ class DetectorConfig(StrictBaseModel):
 
 
 class TrackerConfig(StrictBaseModel):
-    provider: Literal["botsort"] = "botsort"
     lost_track_buffer: int = 30
     track_activation_threshold: float = 0.35
     minimum_consecutive_frames: int = 2
@@ -95,12 +91,9 @@ class TrackerConfig(StrictBaseModel):
 class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool = True
     interpolate: bool = True
-    interpolation_method: Literal["linear", "polynomial", "hermite"] = "hermite"
-    smooth_keyframes: bool = True
-    window_seconds: float = 0.25
+    interpolation_method: Literal["linear", "pchip"] = "pchip"
     max_gap_seconds: float = 0.35
     min_observations: int = 3
-    polynomial_order: int = Field(default=2, ge=1, le=3)
     max_center_offset_ratio: float = 0.20
     max_size_delta_ratio: float = 0.20
     reject_short_excursions: bool = True
@@ -136,26 +129,9 @@ class RenderConfig(StrictBaseModel):
     label_font_scale: float = 1.0
     label_thickness: int = 1
     label_padding_px: int = 4
-    label_line_gap_px: int = Field(default=2, ge=0)
-    label_max_width_ratio: float = Field(default=0.35, gt=0.0, le=1.0)
-    label_min_width_px: int = Field(default=160, ge=1)
     label_gap_px: int = 5
     label_text_color: str = "#FFFFFF"
     label_bg_color: str = "#101820"
-    label_bg_alpha: float = Field(default=0.0, ge=0.0, le=1.0)
-    label_shadow_enabled: bool = False
-    label_shadow_color: str = "#000000"
-    label_shadow_alpha: float = Field(default=0.45, ge=0.0, le=1.0)
-    label_shadow_offset_px: int = Field(default=1, ge=0)
-    label_shadow_thickness_extra: int = Field(default=1, ge=0)
-    label_smart_position: bool = True
-    label_max_offset_px: int = Field(default=48, ge=0)
-    glow_enabled: bool = True
-    glow_color: str = "#FFFFFF"
-    glow_radius_px: int = Field(default=9, ge=0)
-    glow_alpha: float = Field(default=0.55, ge=0.0, le=1.0)
-    label_glow_radius_px: int = Field(default=7, ge=0)
-    label_glow_alpha: float = Field(default=0.30, ge=0.0, le=1.0)
     corner_thickness: int = 2
     corner_length: int = 32
     unknown_label: str = "UNKNOWN"

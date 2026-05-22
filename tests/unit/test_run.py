@@ -3,10 +3,27 @@ from pathlib import Path
 from config import AppConfig, build_full_frame_profile
 from pipeline import run as run_module
 from pipeline.run import run_pipeline
+from storage.run_store import RunStore
 
 
 class DummyRunStore:
     root = Path("output/test-run")
+
+
+def test_run_store_creates_expected_artifact_directories(tmp_path) -> None:
+    store = RunStore.create(
+        output_root=tmp_path,
+        camera_id="test-camera",
+        video_stem="video",
+    )
+
+    assert store.root.exists()
+    assert store.analysis_dir.is_dir()
+    assert store.crops_dir.is_dir()
+    assert store.mmr_dir.is_dir()
+    assert store.mmr_cache_dir.is_dir()
+    assert store.mmr_batch_grids_dir.is_dir()
+    assert not (store.root / "render").exists()
 
 
 def test_run_pipeline_orders_analyze_classify_render_report(

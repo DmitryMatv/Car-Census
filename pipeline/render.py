@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-
-import orjson
 
 from config import AppConfig, CameraProfile
 from models import FrameRecord, MMRResult
@@ -22,78 +21,48 @@ from utils.video import (
 logger = logging.getLogger(__name__)
 
 
-def _load_labels(path: Path) -> dict[int, MMRResult]:
-    if not path.exists():
-        return {}
-    raw = orjson.loads(path.read_bytes())
-    return {
-        int(track_id): MMRResult.model_validate(payload)
-        for track_id, payload in raw.items()
-    }
-
-
-def _iter_frame_records(path: Path):
-    with path.open("rb") as handle:
-        for line in handle:
-            if line.strip():
-                yield FrameRecord.model_validate(orjson.loads(line))
-
-
 def format_label_text(result: MMRResult, unknown_label: str) -> str:
     make_model = " ".join(
         part.strip()
         for part in [result.make or None, result.model or None]
         if part and part.strip()
     ).strip()
-    lines = [make_model or unknown_label]
+    parts = [make_model or unknown_label]
     for part in [result.generation, result.variation]:
         if part and part.strip():
-            lines.append(part.strip())
-    label_index = result.vehicle_index or result.api_classification_index
-    if label_index is not None:
-        lines[0] = f"{label_index} | {lines[0]}"
-    return "\n".join(lines)
+            parts.append(part.strip())
+    if result.vehicle_index is not None:
+        parts.insert(0, str(result.vehicle_index))
+    return " | ".join(parts)
 
 
 def visible_track_label_text_by_track(
-    frames_path: Path, unknown_label: str
+    records: Iterable[FrameRecord], unknown_label: str
 ) -> dict[int, str]:
-    records = list(_iter_frame_records(frames_path))
-    has_vehicle_indices = any(
-        track.vehicle_index is not None for record in records for track in record.tracks
-    )
     labels: dict[int, str] = {}
-    fallback_index_by_track: dict[int, int] = {}
     for record in records:
         for track in record.tracks:
-            if track.track_id in labels:
+            if track.track_id in labels or track.vehicle_index is None:
                 continue
-            label_index = track.vehicle_index
-            if label_index is None:
-                if has_vehicle_indices:
-                    continue
-                label_index = fallback_index_by_track.setdefault(
-                    track.track_id, len(fallback_index_by_track) + 1
-                )
             labels[track.track_id] = format_label_text(
-                MMRResult(vehicle_index=label_index),
+                MMRResult(vehicle_index=track.vehicle_index),
                 unknown_label,
             )
     return labels
 
 
 def visible_track_ids_by_observation_count(
-    frames_path: Path, min_observations: int
+    records: Iterable[FrameRecord], min_observations: int
 ) -> set[int]:
     counts: Counter[int] = Counter()
-    for record in _iter_frame_records(frames_path):
+    for record in records:
         counts.update(track.track_id for track in record.tracks)
     return {track_id for track_id, count in counts.items() if count >= min_observations}
 
 
-def crop_eligible_track_ids(frames_path: Path) -> set[int]:
+def crop_eligible_track_ids(records: Iterable[FrameRecord]) -> set[int]:
     eligible: set[int] = set()
-    for record in _iter_frame_records(frames_path):
+    for record in records:
         for track in record.tracks:
             if track.vehicle_index is not None:
                 eligible.add(track.track_id)
@@ -113,16 +82,17 @@ def render_video(
         expected_fps=config.video.fps,
         tolerance=config.video.fps_tolerance,
     )
-    labels = _load_labels(run_store.labels_path)
+    labels = run_store.read_labels()
+    raw_records = run_store.read_frame_records(smoothed=False)
     visible_track_ids = visible_track_ids_by_observation_count(
-        run_store.frames_path,
+        raw_records,
         config.render.min_visible_track_observations,
     )
     if (
         config.render.require_crop_eligible_track
         and not config.render.show_unclassified_tracks
     ):
-        visible_track_ids &= crop_eligible_track_ids(run_store.frames_path)
+        visible_track_ids &= crop_eligible_track_ids(raw_records)
     frames_path = (
         smooth_render_tracks(config=config, profile=profile, run_store=run_store)
         if config.render.smoothing.enabled
@@ -135,7 +105,10 @@ def render_video(
         }
     elif allow_unclassified_annotations or config.render.show_unclassified_tracks:
         label_text = visible_track_label_text_by_track(
-            frames_path, config.render.unknown_label
+            run_store.iter_frame_records(
+                smoothed=frames_path == run_store.render_frames_path
+            ),
+            config.render.unknown_label,
         )
     else:
         label_text = {}
@@ -153,7 +126,9 @@ def render_video(
         nvenc_preset=config.render.nvenc_preset,
         nvenc_cq=config.render.nvenc_cq,
     )
-    record_iter = iter(_iter_frame_records(frames_path))
+    record_iter = run_store.iter_frame_records(
+        smoothed=frames_path == run_store.render_frames_path
+    )
     current_record = next(record_iter, None)
     latest_tracks = []
     frame_iter = (
@@ -180,7 +155,6 @@ def render_video(
             ]
             annotated = annotator.annotate(
                 frame=frame,
-                profile=profile,
                 tracks=render_tracks,
                 labels_by_track=label_text,
             )

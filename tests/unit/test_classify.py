@@ -26,6 +26,25 @@ class DummyRunStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
 
+    def iter_track_summaries(self):
+        if not self.tracks_path.exists():
+            return
+        for line in self.tracks_path.read_bytes().splitlines():
+            if line.strip():
+                yield TrackSummary.model_validate(orjson.loads(line))
+
+    def write_labels(self, labels_by_track: dict[int, MMRResult]) -> None:
+        self.labels_path.parent.mkdir(parents=True, exist_ok=True)
+        self.labels_path.write_bytes(
+            orjson.dumps(
+                {
+                    str(track_id): result.model_dump(mode="json")
+                    for track_id, result in labels_by_track.items()
+                },
+                option=orjson.OPT_INDENT_2,
+            )
+        )
+
 
 def _candidate(
     path: Path,
@@ -84,19 +103,21 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
         [
             TrackSummary(
                 track_id=1,
+                vehicle_index=99,
                 first_frame_index=1,
                 last_frame_index=4,
                 frames_seen=4,
                 max_box_height_px=100,
-                candidates=[_candidate(short_crop, track_id=1)],
+                candidates=[_candidate(short_crop, track_id=1, vehicle_index=99)],
             ),
             TrackSummary(
                 track_id=2,
+                vehicle_index=1,
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
                 max_box_height_px=100,
-                candidates=[_candidate(long_crop, track_id=2)],
+                candidates=[_candidate(long_crop, track_id=2, vehicle_index=1)],
             ),
         ],
     )
@@ -152,27 +173,30 @@ def test_classify_tracks_assigns_api_classification_index(
         [
             TrackSummary(
                 track_id=1,
+                vehicle_index=99,
                 first_frame_index=1,
                 last_frame_index=4,
                 frames_seen=4,
                 max_box_height_px=100,
-                candidates=[_candidate(skipped_crop, track_id=1)],
+                candidates=[_candidate(skipped_crop, track_id=1, vehicle_index=99)],
             ),
             TrackSummary(
                 track_id=2,
+                vehicle_index=1,
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
                 max_box_height_px=100,
-                candidates=[_candidate(rejected_crop, track_id=2)],
+                candidates=[_candidate(rejected_crop, track_id=2, vehicle_index=1)],
             ),
             TrackSummary(
                 track_id=3,
+                vehicle_index=2,
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
                 max_box_height_px=100,
-                candidates=[_candidate(accepted_crop, track_id=3)],
+                candidates=[_candidate(accepted_crop, track_id=3, vehicle_index=2)],
             ),
         ],
     )

@@ -37,13 +37,12 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent
 
 
-def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
+def _accelerator_overrides(accelerator: str) -> dict[str, Any]:
     accelerator = accelerator.strip().lower()
     if accelerator == "default":
-        return {"project": {"device": device}}
+        return {}
     if accelerator == "colab-t4":
         return {
-            "project": {"device": "cuda"},
             "detector": {
                 "onnx_execution_providers": [
                     "CUDAExecutionProvider",
@@ -60,7 +59,6 @@ def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
         }
     if accelerator == "onnx-cuda":
         return {
-            "project": {"device": "cuda"},
             "detector": {
                 "onnx_execution_providers": [
                     "CUDAExecutionProvider",
@@ -71,7 +69,6 @@ def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
         }
     if accelerator == "tensorrt":
         return {
-            "project": {"device": "cuda"},
             "detector": {
                 "onnx_execution_providers": [
                     "TensorrtExecutionProvider",
@@ -89,22 +86,15 @@ def _accelerator_overrides(accelerator: str, device: str) -> dict[str, Any]:
 
 def _load_config_with_accelerator(
     config_path: Optional[Path],
-    device: str,
     accelerator: str = "default",
 ) -> tuple[Path, AppConfig]:
     project_root = _project_root()
     config = build_effective_config(
         root=project_root,
         config_path=config_path,
-        overrides=_accelerator_overrides(accelerator, device),
+        overrides=_accelerator_overrides(accelerator),
     )
     return project_root, config
-
-
-def _load_config_with_device(
-    config_path: Optional[Path], device: str
-) -> tuple[Path, AppConfig]:
-    return _load_config_with_accelerator(config_path, device)
 
 
 def _resolve_profile(
@@ -121,12 +111,11 @@ def _resolve_profile(
 def roi_edit(
     video: Path,
     camera_id: str = typer.Option(..., "--camera-id"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(config_path)
     output_path = camera_profile_path(config, camera_id, root=project_root)
     profile = edit_camera_profile(
         video_path=video, camera_id=camera_id, output_path=output_path
@@ -139,7 +128,6 @@ def roi_edit(
 def analyze(
     video: Path,
     camera_id: Optional[str] = typer.Option(None, "--camera-id"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
@@ -151,9 +139,7 @@ def analyze(
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_accelerator(
-        config_path, device, accelerator
-    )
+    project_root, config = _load_config_with_accelerator(config_path, accelerator)
     profile = _resolve_profile(project_root, config, video, camera_id)
     if run_dir is not None:
         store = RunStore.from_existing(run_dir)
@@ -176,13 +162,12 @@ def analyze(
 @app.command()
 def classify(
     run_dir: Path = typer.Option(..., "--run-dir"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(config_path)
     _ = project_root
     store = RunStore.from_existing(run_dir)
     classify_tracks(config=config, run_store=store)
@@ -192,7 +177,6 @@ def classify(
 @app.command()
 def render(
     run_dir: Path = typer.Option(..., "--run-dir"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
@@ -203,9 +187,7 @@ def render(
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_accelerator(
-        config_path, device, accelerator
-    )
+    project_root, config = _load_config_with_accelerator(config_path, accelerator)
     store = RunStore.from_existing(run_dir)
     manifest = store.read_manifest()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
@@ -221,13 +203,12 @@ def render(
 @app.command()
 def smooth(
     run_dir: Path = typer.Option(..., "--run-dir"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_device(config_path, device)
+    project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
     manifest = store.read_manifest()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
@@ -241,11 +222,9 @@ def smooth(
 @app.command()
 def report(
     run_dir: Path = typer.Option(..., "--run-dir"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     configure_logging(verbose)
-    _ = device
     store = RunStore.from_existing(run_dir)
     payload = generate_reports(run_store=store)
     typer.echo(typer.style("Report generated", fg=typer.colors.GREEN))
@@ -256,7 +235,6 @@ def report(
 def run(
     video: Path,
     camera_id: Optional[str] = typer.Option(None, "--camera-id"),
-    device: str = typer.Option("auto", "--device", help="cpu, cuda, or auto"),
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
@@ -270,9 +248,7 @@ def run(
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_accelerator(
-        config_path, device, accelerator
-    )
+    project_root, config = _load_config_with_accelerator(config_path, accelerator)
     profile = _resolve_profile(project_root, config, video, camera_id)
     store = run_pipeline(
         project_root=project_root,

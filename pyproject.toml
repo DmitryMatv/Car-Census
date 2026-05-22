@@ -17,6 +17,7 @@ dependencies = [
   "pydantic>=2.8,<3",
   "python-dotenv>=1.0,<2",
   "PyYAML>=6.0,<7",
+  "scipy>=1.17,<2",
   "types-PyYAML>=6.0,<7",
   "supervision>=0.28,<0.40",
   "trackers>=2.4,<3",
@@ -26,9 +27,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3,<9",
-]
-pytorch = [
-  "ultralytics>=8.3,<9",
 ]
 
 [project.scripts]
@@ -85,13 +83,12 @@ module = [
   "onnxruntime",
   "supervision",
   "trackers.*",
-  "ultralytics.*",
 ]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "detectors.ultralytics_local"
-disable_error_code = ["union-attr"]
+module = "scipy.interpolate"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "render.annotators"
@@ -134,5 +131,4 @@ replace-imports-with-any = [
     "onnxruntime",
     "supervision",
     "trackers",
-    "ultralytics",
 ]

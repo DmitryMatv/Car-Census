@@ -23,7 +23,6 @@ from models import (
 from pipeline.vehicles import (
     discard_track_artifacts,
     finalize_vehicle_identities,
-    rewrite_frame_vehicle_indices,
     staged_track_crop_dir,
     track_summary_from_state,
 )
@@ -527,7 +526,6 @@ def analyze_video(
     tracker = BotSortAdapter(config, frame_rate=analysis_fps)
     diagnostics = AnalysisDiagnostics()
     track_states: dict[int, MutableTrackState] = {}
-    finished_track_states: list[MutableTrackState] = []
     count_line = profile.count_line
     line_start: tuple[float, float] | None = None
     line_end: tuple[float, float] | None = None
@@ -663,10 +661,7 @@ def analyze_video(
                     timestamp_seconds=timestamp_seconds,
                     direction=crossed_direction,
                 )
-                run_store.write_jsonl(
-                    run_store.count_events_path,
-                    state.count_event.model_dump(mode="json"),
-                )
+                run_store.append_count_event(state.count_event)
                 crossed_line = True
 
             state.frames_seen += 1
@@ -711,16 +706,15 @@ def analyze_video(
             )
             frame_tracks.append(tracked_object)
 
-        run_store.write_jsonl(
-            run_store.frames_path,
+        run_store.append_frame_record(
             FrameRecord(
                 frame_index=frame_index,
                 timestamp_seconds=timestamp_seconds,
                 tracks=frame_tracks,
-            ).model_dump(mode="json"),
+            )
         )
 
-    all_track_states = [*finished_track_states, *track_states.values()]
+    all_track_states = list(track_states.values())
     all_track_states.sort(key=lambda item: (item.first_frame_index, item.track_id))
     diagnostics.tracks_without_crop_candidates = sum(
         1 for state in all_track_states if not state.candidates
@@ -751,13 +745,12 @@ def analyze_video(
                 discard_track_artifacts(state, run_store.crops_dir)
                 state.candidates = []
     vehicle_index_by_track = finalize_vehicle_identities(run_store, all_track_states)
-    rewrite_frame_vehicle_indices(run_store.frames_path, vehicle_index_by_track)
+    run_store.rewrite_frame_vehicle_indices(vehicle_index_by_track)
     for state in all_track_states:
         summary = track_summary_from_state(state)
-        run_store.write_jsonl(run_store.tracks_path, summary.model_dump(mode="json"))
-    run_store.write_json(
-        run_store.detection_stats_path,
-        _analysis_diagnostics_payload(diagnostics, detector),
+        run_store.append_track_summary(summary)
+    run_store.write_detection_stats(
+        _analysis_diagnostics_payload(diagnostics, detector)
     )
 
     logger.info("Analysis complete. Run directory: %s", run_store.root)

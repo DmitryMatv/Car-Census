@@ -31,6 +31,7 @@ def test_build_vehicle_report_rows_adds_only_affirmative_tag_columns() -> None:
         1: MMRResult(
             make="Toyota",
             model="Corolla",
+            vehicle_index=1,
             tags=[
                 {"name": "taxi", "value": "yes", "score": 0.91},
                 {"name": "damaged", "value": "no"},
@@ -39,6 +40,7 @@ def test_build_vehicle_report_rows_adds_only_affirmative_tag_columns() -> None:
         2: MMRResult(
             make="Audi",
             model="A4",
+            vehicle_index=2,
             tags=[
                 {"name": "Police Car", "value": True},
                 {"name": "fleet", "value": 1},
@@ -59,6 +61,19 @@ def test_build_vehicle_report_rows_adds_only_affirmative_tag_columns() -> None:
     assert rows[1]["tag_taxi_confidence"] == ""
     assert rows[1]["tag_police_car"] is True
     assert rows[1]["tag_fleet"] is True
+
+
+def test_build_vehicle_report_rows_skips_unindexed_labels() -> None:
+    rows = build_vehicle_report_rows(
+        {
+            1: MMRResult(make="Toyota", model="Corolla"),
+            2: MMRResult(make="Audi", model="A4", vehicle_index=2),
+        }
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["vehicle_index"] == 2
+    assert rows[0]["track_id"] == 2
 
 
 def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:

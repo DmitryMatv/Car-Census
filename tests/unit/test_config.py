@@ -38,7 +38,6 @@ def test_edge_touch_filtering_is_enabled_by_default() -> None:
 def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
     config = AppConfig()
 
-    assert config.tracker.provider == "botsort"
     assert config.tracker.lost_track_buffer == 30
     assert config.tracker.track_activation_threshold == 0.35
     assert config.tracker.minimum_consecutive_frames == 2
@@ -68,6 +67,16 @@ def test_tracker_config_rejects_legacy_tracker_fields() -> None:
         AppConfig.model_validate({"tracker": {"reid_half": True}})
 
 
+def test_tracker_config_rejects_removed_provider_key() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"tracker": {"provider": "botsort"}})
+
+
+def test_project_config_rejects_removed_device_key() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"project": {"device": "cpu"}})
+
+
 def test_video_config_accepts_fixed_fps() -> None:
     config = AppConfig.model_validate({"video": {"fps": 30.0}})
 
@@ -79,8 +88,14 @@ def test_analysis_config_defaults_to_batched_detection() -> None:
     config = AppConfig()
 
     assert config.analysis.fps == 10.0
-    assert config.analysis.batch_size == 16
+    assert config.analysis.batch_size == 32
     assert config.analysis.min_box_height_px == 160
+    assert not hasattr(config.analysis, "crop_limit_per_track")
+
+
+def test_analysis_config_rejects_removed_crop_limit_per_track() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"analysis": {"crop_limit_per_track": 1}})
 
 
 def test_render_config_accepts_visual_defaults() -> None:
@@ -117,22 +132,8 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_padding_px == 4
     assert config.render.label_text_color == "#FFFFFF"
     assert config.render.label_bg_color == "#101820"
-    assert config.render.label_bg_alpha == 0.0
-    assert config.render.label_shadow_enabled is False
-    assert config.render.label_shadow_color == "#000000"
-    assert config.render.label_shadow_alpha == 0.45
-    assert config.render.label_shadow_offset_px == 1
-    assert config.render.label_shadow_thickness_extra == 1
-    assert config.render.label_smart_position is True
-    assert config.render.label_max_offset_px == 48
-    assert config.render.glow_enabled is False
-    assert config.render.glow_color == "#FFFFFF"
-    assert config.render.glow_radius_px == 9
-    assert config.render.label_glow_alpha == 0.0
-    assert config.render.label_glow_alpha < config.render.glow_alpha
     assert config.render.unknown_label == "Unknown"
-    assert config.render.smoothing.interpolation_method == "hermite"
-    assert config.render.smoothing.polynomial_order == 2
+    assert config.render.smoothing.interpolation_method == "pchip"
     assert config.render.smoothing.reject_short_excursions is True
     assert config.render.smoothing.max_excursion_observations == 2
     assert config.render.smoothing.excursion_center_ratio == 1.25
@@ -173,6 +174,11 @@ def test_detector_config_defaults_to_auto_onnx_input_dtype() -> None:
     assert config.detector.onnx_input_dtype == "auto"
 
 
+def test_detector_config_rejects_removed_provider_key() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"provider": "onnxruntime_local"}})
+
+
 def test_detector_config_accepts_onnx_input_dtype_options() -> None:
     for dtype in ["auto", "float32", "float16"]:
         config = AppConfig.model_validate({"detector": {"onnx_input_dtype": dtype}})
@@ -210,8 +216,13 @@ def test_render_config_rejects_unknown_encode_backend() -> None:
         AppConfig.model_validate({"render": {"encode_backend": "cuda-draw"}})
 
 
+def test_render_config_rejects_removed_visual_keys() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"label" + "_shadow_enabled": True}})
+
+
 def test_render_smoothing_accepts_supported_interpolation_methods() -> None:
-    for interpolation_method in ["linear", "polynomial", "hermite"]:
+    for interpolation_method in ["linear", "pchip"]:
         config = AppConfig.model_validate(
             {"render": {"smoothing": {"interpolation_method": interpolation_method}}}
         )
@@ -219,7 +230,12 @@ def test_render_smoothing_accepts_supported_interpolation_methods() -> None:
 
 
 def test_render_smoothing_rejects_unknown_interpolation_method() -> None:
-    with pytest.raises(ValidationError):
-        AppConfig.model_validate(
-            {"render": {"smoothing": {"interpolation_method": "spline"}}}
-        )
+    for interpolation_method in ["polynomial", "hermite", "spline"]:
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate(
+                {
+                    "render": {
+                        "smoothing": {"interpolation_method": interpolation_method}
+                    }
+                }
+            )

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import numpy as np
-import orjson
 
 from config import AppConfig
 from models import BBox, FrameRecord, TrackedObject
@@ -9,11 +8,11 @@ from pipeline.analyze import MutableTrackState, _save_candidate
 from pipeline.vehicles import (
     discard_track_artifacts,
     finalize_vehicle_identities,
-    rewrite_frame_vehicle_indices,
     staged_track_crop_dir,
     track_summary_from_state,
     vehicle_crop_path,
 )
+from storage.run_store import RunStore
 
 
 class DummyRunStore:
@@ -106,22 +105,18 @@ def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> 
 def test_rewrite_frame_vehicle_indices_marks_only_crop_eligible_tracks(
     tmp_path,
 ) -> None:
-    frames_path = tmp_path / "frames.jsonl"
-    frames_path.parent.mkdir(parents=True, exist_ok=True)
+    store = RunStore(tmp_path)
+    store.ensure_directories()
     record = FrameRecord(
         frame_index=1,
         timestamp_seconds=0.1,
         tracks=[_track(10), _track(20), _track(30)],
     )
-    frames_path.write_bytes(
-        b"".join([orjson.dumps(record.model_dump(mode="json")) + b"\n"])
-    )
+    store.write_frame_records([record])
 
-    rewrite_frame_vehicle_indices(frames_path, {20: 1, 30: 2})
+    store.rewrite_frame_vehicle_indices({20: 1, 30: 2})
 
-    rewritten = FrameRecord.model_validate(
-        orjson.loads(frames_path.read_bytes().splitlines()[0])
-    )
+    rewritten = store.read_frame_records()[0]
     assert [track.vehicle_index for track in rewritten.tracks] == [None, 1, 2]
 
 

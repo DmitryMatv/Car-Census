@@ -1,14 +1,13 @@
 from car_census_cli import _accelerator_overrides
 
 
-def test_default_accelerator_preserves_device_choice() -> None:
-    assert _accelerator_overrides("default", "cpu") == {"project": {"device": "cpu"}}
+def test_default_accelerator_has_no_overrides() -> None:
+    assert _accelerator_overrides("default") == {}
 
 
 def test_colab_t4_accelerator_enables_cuda_onnx_and_auto_nvenc() -> None:
-    overrides = _accelerator_overrides("colab-t4", "cpu")
+    overrides = _accelerator_overrides("colab-t4")
 
-    assert overrides["project"]["device"] == "cuda"
     assert overrides["detector"]["onnx_execution_providers"] == [
         "CUDAExecutionProvider",
         "CPUExecutionProvider",
@@ -21,10 +20,9 @@ def test_colab_t4_accelerator_enables_cuda_onnx_and_auto_nvenc() -> None:
 
 
 def test_onnx_cuda_accelerator_enables_cuda_without_render_override() -> None:
-    overrides = _accelerator_overrides("onnx-cuda", "cpu")
+    overrides = _accelerator_overrides("onnx-cuda")
 
     assert overrides == {
-        "project": {"device": "cuda"},
         "detector": {
             "onnx_execution_providers": [
                 "CUDAExecutionProvider",
@@ -36,9 +34,8 @@ def test_onnx_cuda_accelerator_enables_cuda_without_render_override() -> None:
 
 
 def test_tensorrt_accelerator_requires_gpu_providers_in_order() -> None:
-    overrides = _accelerator_overrides("tensorrt", "cpu")
+    overrides = _accelerator_overrides("tensorrt")
 
-    assert overrides["project"]["device"] == "cuda"
     assert overrides["detector"]["onnx_execution_providers"] == [
         "TensorrtExecutionProvider",
         "CUDAExecutionProvider",
