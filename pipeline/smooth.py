@@ -449,14 +449,14 @@ def smooth_render_tracks(
     profile: CameraProfile,
     run_store: RunStore,
 ) -> Path:
-    analysis_records = run_store.read_frame_records(smoothed=False)
+    analysis_records = run_store.frames.read_all(smoothed=False)
     if not config.render.smoothing.enabled:
         return run_store.frames_path
     if not analysis_records:
-        run_store.write_frame_records([], smoothed=True)
+        run_store.frames.write_all([], smoothed=True)
         return run_store.render_frames_path
 
-    manifest = run_store.read_manifest()
+    manifest = run_store.manifest.read()
     final_frame_index = _manifest_final_frame_index(manifest)
     records = (
         _expand_records_to_source_frames(
@@ -536,5 +536,5 @@ def smooth_render_tracks(
         )
         for record in records
     ]
-    run_store.write_frame_records(smoothed_records, smoothed=True)
+    run_store.frames.write_all(smoothed_records, smoothed=True)
     return run_store.render_frames_path

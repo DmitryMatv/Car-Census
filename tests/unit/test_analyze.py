@@ -517,7 +517,7 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     )
 
     records = _read_frame_records(store.frames_path)
-    manifest = store.read_manifest()
+    manifest = store.manifest.read()
     assert len(records) == 1
     assert records[0].tracks == []
     assert tracker.frame_rate == 10.0

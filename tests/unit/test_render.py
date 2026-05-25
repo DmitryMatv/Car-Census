@@ -24,6 +24,8 @@ class DummyRunStore:
         self.tracks_path = root / "analysis" / "tracks.jsonl"
         self.labels_path = root / "mmr" / "labels.json"
         self.output_video_path = root / "annotated.mp4"
+        self.labels = self
+        self.frames = self
         self.manifest = RunManifest(
             run_id="test",
             video_path=root / "input.mp4",
@@ -35,7 +37,7 @@ class DummyRunStore:
             height=32,
         )
 
-    def read_labels(self) -> dict[int, MMRResult]:
+    def read(self) -> dict[int, MMRResult]:
         if not self.labels_path.exists():
             return {}
         raw = orjson.loads(self.labels_path.read_bytes())
@@ -44,7 +46,7 @@ class DummyRunStore:
             for track_id, payload in raw.items()
         }
 
-    def iter_frame_records(self, *, smoothed: bool = False):
+    def iter(self, *, smoothed: bool = False):
         path = self.render_frames_path if smoothed else self.frames_path
         if not path.exists():
             return
@@ -52,8 +54,8 @@ class DummyRunStore:
             if line.strip():
                 yield FrameRecord.model_validate(orjson.loads(line))
 
-    def read_frame_records(self, *, smoothed: bool = False) -> list[FrameRecord]:
-        return list(self.iter_frame_records(smoothed=smoothed))
+    def read_all(self, *, smoothed: bool = False) -> list[FrameRecord]:
+        return list(self.iter(smoothed=smoothed))
 
 
 class DummyWriter:
@@ -121,6 +123,7 @@ def _config(
     min_visible_track_observations: int = 1,
     require_crop_eligible_track: bool = False,
     show_unclassified_tracks: bool = False,
+    smoothing_enabled: bool = False,
 ) -> AppConfig:
     return AppConfig.model_validate(
         {
@@ -128,7 +131,7 @@ def _config(
                 "min_visible_track_observations": min_visible_track_observations,
                 "require_crop_eligible_track": require_crop_eligible_track,
                 "show_unclassified_tracks": show_unclassified_tracks,
-                "smoothing": {"enabled": False},
+                "smoothing": {"enabled": smoothing_enabled},
             }
         }
     )
@@ -377,3 +380,66 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     assert [1] in DummyAnnotator.seen_track_ids
     assert [2] not in DummyAnnotator.seen_track_ids
     assert DummyAnnotator.seen_labels_by_track[-1] == {1: "8 | UNKNOWN"}
+
+
+def test_render_uses_injected_smoother_when_smoothing_is_enabled(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, 0, vehicle_index=1)],
+            )
+        ],
+    )
+    _write_records(
+        store.render_frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, 0, vehicle_index=1)],
+            )
+        ],
+    )
+    writer = DummyWriter()
+    _patch_render_io(monkeypatch, writer)
+    calls = 0
+
+    def fake_smoother(config, profile, run_store):
+        nonlocal calls
+        _ = config, profile
+        calls += 1
+        assert run_store is store
+        return store.render_frames_path
+
+    render_video(
+        config=_config(smoothing_enabled=True),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=store,
+        allow_unclassified_annotations=True,
+        smooth_render_tracks=fake_smoother,
+    )
+
+    assert calls == 1
+
+
+def test_render_requires_smoother_when_smoothing_is_enabled(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    writer = DummyWriter()
+    _patch_render_io(monkeypatch, writer)
+
+    with pytest.raises(ValueError, match="no smoothing stage was provided"):
+        render_video(
+            config=_config(smoothing_enabled=True),
+            profile=build_full_frame_profile(width=32, height=32),
+            video_path=store.manifest.video_path,
+            run_store=store,
+        )

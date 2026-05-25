@@ -10,7 +10,8 @@ from typing import Any, Iterator
 import cv2
 
 from config import AppConfig, CameraProfile
-from detectors.base import Detector, create_detector
+from detectors.base import Detector
+from detectors.factory import create_detector
 from models import (
     BBox,
     CountEvent,
@@ -520,7 +521,7 @@ def analyze_video(
         height=metadata.height,
         frame_count=metadata.frame_count,
     )
-    run_store.write_manifest(manifest)
+    run_store.manifest.write(manifest)
 
     detector = create_detector(config, project_root=project_root)
     tracker = BotSortAdapter(config, frame_rate=analysis_fps)
@@ -661,7 +662,7 @@ def analyze_video(
                     timestamp_seconds=timestamp_seconds,
                     direction=crossed_direction,
                 )
-                run_store.append_count_event(state.count_event)
+                run_store.counts.append(state.count_event)
                 crossed_line = True
 
             state.frames_seen += 1
@@ -706,7 +707,7 @@ def analyze_video(
             )
             frame_tracks.append(tracked_object)
 
-        run_store.append_frame_record(
+        run_store.frames.append(
             FrameRecord(
                 frame_index=frame_index,
                 timestamp_seconds=timestamp_seconds,
@@ -745,11 +746,11 @@ def analyze_video(
                 discard_track_artifacts(state, run_store.crops_dir)
                 state.candidates = []
     vehicle_index_by_track = finalize_vehicle_identities(run_store, all_track_states)
-    run_store.rewrite_frame_vehicle_indices(vehicle_index_by_track)
+    run_store.frames.rewrite_vehicle_indices(vehicle_index_by_track)
     for state in all_track_states:
         summary = track_summary_from_state(state)
-        run_store.append_track_summary(summary)
-    run_store.write_detection_stats(
+        run_store.tracks.append(summary)
+    run_store.detection_stats.write(
         _analysis_diagnostics_payload(diagnostics, detector)
     )
 

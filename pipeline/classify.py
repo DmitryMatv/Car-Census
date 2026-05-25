@@ -52,7 +52,7 @@ def _collect_classification_tasks(
     labels_by_track: dict[int, MMRResult] = {}
     classification_tasks: list[_ClassificationTask] = []
     summaries_by_vehicle: dict[int, list[TrackSummary]] = {}
-    for summary in run_store.iter_track_summaries():
+    for summary in run_store.tracks.iter():
         if summary.vehicle_index is None:
             continue
         summaries_by_vehicle.setdefault(summary.vehicle_index, []).append(summary)
@@ -146,7 +146,7 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
             for summary in task.summaries:
                 labels_by_track[summary.track_id] = result
 
-    run_store.write_labels(labels_by_track)
+    run_store.labels.write(labels_by_track)
     logger.info("Classification complete for %s tracks", len(labels_by_track))
     return labels_by_track
 

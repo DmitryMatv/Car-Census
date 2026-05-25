@@ -3,10 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from config import AppConfig, CameraProfile
-from pipeline.analyze import analyze_video
-from pipeline.classify import classify_tracks, write_skipped_classification_batch_grids
-from pipeline.render import render_video
-from pipeline.report import generate_reports
+from pipeline.stages import PipelineStages
 from storage.run_store import RunStore
 
 
@@ -15,6 +12,7 @@ def run_pipeline(
     config: AppConfig,
     profile: CameraProfile,
     video_path: Path,
+    stages: PipelineStages,
     skip_classification: bool = False,
 ) -> RunStore:
     run_store = RunStore.create(
@@ -22,23 +20,17 @@ def run_pipeline(
         camera_id=profile.camera_id,
         video_stem=video_path.stem,
     )
-    analyze_video(
-        project_root=project_root,
-        config=config,
-        profile=profile,
-        video_path=video_path,
-        run_store=run_store,
-    )
+    stages.analyze_video(project_root, config, profile, video_path, run_store)
     if skip_classification:
-        write_skipped_classification_batch_grids(config=config, run_store=run_store)
+        stages.write_skipped_classification_batch_grids(config, run_store)
     else:
-        classify_tracks(config=config, run_store=run_store)
-    render_video(
-        config=config,
-        profile=profile,
-        video_path=video_path,
-        run_store=run_store,
+        stages.classify_tracks(config, run_store)
+    stages.render_video(
+        config,
+        profile,
+        video_path,
+        run_store,
         allow_unclassified_annotations=skip_classification,
     )
-    generate_reports(run_store=run_store)
+    stages.generate_reports(run_store)
     return run_store

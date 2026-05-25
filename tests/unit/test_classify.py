@@ -16,6 +16,8 @@ class DummyRunStore:
         self.labels_path = root / "mmr" / "labels.json"
         self.mmr_cache_dir = root / "mmr" / "cache"
         self.mmr_batch_grids_dir = root / "mmr" / "batch_grids"
+        self.tracks = self
+        self.labels = self
         self.crops_dir.mkdir(parents=True)
         self.tracks_path.parent.mkdir(parents=True)
         self.labels_path.parent.mkdir(parents=True)
@@ -26,14 +28,14 @@ class DummyRunStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
 
-    def iter_track_summaries(self):
+    def iter(self):
         if not self.tracks_path.exists():
             return
         for line in self.tracks_path.read_bytes().splitlines():
             if line.strip():
                 yield TrackSummary.model_validate(orjson.loads(line))
 
-    def write_labels(self, labels_by_track: dict[int, MMRResult]) -> None:
+    def write(self, labels_by_track: dict[int, MMRResult]) -> None:
         self.labels_path.parent.mkdir(parents=True, exist_ok=True)
         self.labels_path.write_bytes(
             orjson.dumps(

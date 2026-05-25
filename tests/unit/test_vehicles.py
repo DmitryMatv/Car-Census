@@ -112,11 +112,11 @@ def test_rewrite_frame_vehicle_indices_marks_only_crop_eligible_tracks(
         timestamp_seconds=0.1,
         tracks=[_track(10), _track(20), _track(30)],
     )
-    store.write_frame_records([record])
+    store.frames.write_all([record])
 
-    store.rewrite_frame_vehicle_indices({20: 1, 30: 2})
+    store.frames.rewrite_vehicle_indices({20: 1, 30: 2})
 
-    rewritten = store.read_frame_records()[0]
+    rewritten = store.frames.read_all()[0]
     assert [track.vehicle_index for track in rewritten.tracks] == [None, 1, 2]
 
 

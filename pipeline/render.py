@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from config import AppConfig, CameraProfile
 from models import FrameRecord, MMRResult
-from pipeline.smooth import smooth_render_tracks
 from render.annotators import VideoAnnotator
 from storage.run_store import RunStore
 from utils.video import (
@@ -19,6 +18,8 @@ from utils.video import (
 )
 
 logger = logging.getLogger(__name__)
+
+SmoothRenderTracks = Callable[[AppConfig, CameraProfile, RunStore], Path]
 
 
 def format_label_text(result: MMRResult, unknown_label: str) -> str:
@@ -75,6 +76,7 @@ def render_video(
     video_path: Path,
     run_store: RunStore,
     allow_unclassified_annotations: bool = False,
+    smooth_render_tracks: SmoothRenderTracks | None = None,
 ) -> Path:
     metadata = read_video_metadata(video_path)
     validate_video_fps(
@@ -82,8 +84,8 @@ def render_video(
         expected_fps=config.video.fps,
         tolerance=config.video.fps_tolerance,
     )
-    labels = run_store.read_labels()
-    raw_records = run_store.read_frame_records(smoothed=False)
+    labels = run_store.labels.read()
+    raw_records = run_store.frames.read_all(smoothed=False)
     visible_track_ids = visible_track_ids_by_observation_count(
         raw_records,
         config.render.min_visible_track_observations,
@@ -93,11 +95,14 @@ def render_video(
         and not config.render.show_unclassified_tracks
     ):
         visible_track_ids &= crop_eligible_track_ids(raw_records)
-    frames_path = (
-        smooth_render_tracks(config=config, profile=profile, run_store=run_store)
-        if config.render.smoothing.enabled
-        else run_store.frames_path
-    )
+    if config.render.smoothing.enabled:
+        if smooth_render_tracks is None:
+            raise ValueError(
+                "render smoothing is enabled but no smoothing stage was provided"
+            )
+        frames_path = smooth_render_tracks(config, profile, run_store)
+    else:
+        frames_path = run_store.frames_path
     if labels:
         label_text = {
             track_id: format_label_text(result, config.render.unknown_label)
@@ -105,9 +110,7 @@ def render_video(
         }
     elif allow_unclassified_annotations or config.render.show_unclassified_tracks:
         label_text = visible_track_label_text_by_track(
-            run_store.iter_frame_records(
-                smoothed=frames_path == run_store.render_frames_path
-            ),
+            run_store.frames.iter(smoothed=frames_path == run_store.render_frames_path),
             config.render.unknown_label,
         )
     else:
@@ -126,7 +129,7 @@ def render_video(
         nvenc_preset=config.render.nvenc_preset,
         nvenc_cq=config.render.nvenc_cq,
     )
-    record_iter = run_store.iter_frame_records(
+    record_iter = run_store.frames.iter(
         smoothed=frames_path == run_store.render_frames_path
     )
     current_record = next(record_iter, None)

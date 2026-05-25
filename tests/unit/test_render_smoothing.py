@@ -50,7 +50,7 @@ def _store(
 ) -> RunStore:
     store = RunStore(tmp_path)
     store.ensure_directories()
-    store.write_manifest(
+    store.manifest.write(
         RunManifest(
             run_id="test",
             video_path=tmp_path / "video.mp4",

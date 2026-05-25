@@ -10,15 +10,16 @@ class DummyRunStore:
         self.count_events_path = root / "count_events.jsonl"
         self.tracks_path = root / "tracks.jsonl"
         self.report_csv_path = root / "report.csv"
-        self.labels: dict[int, MMRResult] = {}
+        self._labels: dict[int, MMRResult] = {}
+        self.labels = self
 
-    def read_labels(self) -> dict[int, MMRResult]:
-        return self.labels
+    def read(self) -> dict[int, MMRResult]:
+        return self._labels
 
 
 def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     store = DummyRunStore(tmp_path)
-    store.labels = {
+    store._labels = {
         7: MMRResult(
             make="Toyota",
             model="Corolla",

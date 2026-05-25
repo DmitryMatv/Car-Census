@@ -17,6 +17,7 @@ from config import (
 )
 from pipeline.analyze import analyze_video
 from pipeline.classify import classify_tracks
+from pipeline.default_stages import default_pipeline_stages
 from pipeline.render import render_video
 from pipeline.report import generate_reports
 from pipeline.run import run_pipeline
@@ -189,13 +190,17 @@ def render(
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path, accelerator)
     store = RunStore.from_existing(run_dir)
-    manifest = store.read_manifest()
+    manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
     else:
         profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
     render_video(
-        config=config, profile=profile, video_path=manifest.video_path, run_store=store
+        config=config,
+        profile=profile,
+        video_path=manifest.video_path,
+        run_store=store,
+        smooth_render_tracks=smooth_render_tracks,
     )
     typer.echo(str(store.output_video_path))
 
@@ -210,7 +215,7 @@ def smooth(
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
-    manifest = store.read_manifest()
+    manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
     else:
@@ -255,6 +260,7 @@ def run(
         config=config,
         profile=profile,
         video_path=video,
+        stages=default_pipeline_stages(),
         skip_classification=skip_classify,
     )
     typer.echo(str(store.root))
