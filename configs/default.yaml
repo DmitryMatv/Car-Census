@@ -78,12 +78,6 @@ render:
   unknown_label: Unknown
   smoothing:
     enabled: true
-    interpolate: true
-    interpolation_method: pchip
-    max_gap_seconds: 0.5
-    min_observations: 2
-    max_center_offset_ratio: 0.3
-    max_size_delta_ratio: 0.3
-    reject_short_excursions: true
-    max_excursion_observations: 2
-    excursion_center_ratio: 1.25
+    history_length: 5
+    interpolate_source_frames: true
+    max_interpolation_gap_seconds: 0.25

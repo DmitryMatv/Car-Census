@@ -17,7 +17,6 @@ dependencies = [
   "pydantic>=2.8,<3",
   "python-dotenv>=1.0,<2",
   "PyYAML>=6.0,<7",
-  "scipy>=1.17,<2",
   "types-PyYAML>=6.0,<7",
   "supervision>=0.28,<0.40",
   "trackers>=2.4,<3",
@@ -84,10 +83,6 @@ module = [
   "supervision",
   "trackers.*",
 ]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "scipy.interpolate"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

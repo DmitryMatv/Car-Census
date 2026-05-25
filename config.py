@@ -90,15 +90,9 @@ class TrackerConfig(StrictBaseModel):
 
 class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool = True
-    interpolate: bool = True
-    interpolation_method: Literal["linear", "pchip"] = "pchip"
-    max_gap_seconds: float = 0.35
-    min_observations: int = 3
-    max_center_offset_ratio: float = 0.20
-    max_size_delta_ratio: float = 0.20
-    reject_short_excursions: bool = True
-    max_excursion_observations: int = Field(default=2, ge=1)
-    excursion_center_ratio: float = Field(default=1.25, ge=0.0)
+    history_length: int = Field(default=5, ge=1)
+    interpolate_source_frames: bool = True
+    max_interpolation_gap_seconds: float | None = Field(default=None, gt=0.0)
 
 
 class MMRConfig(StrictBaseModel):
