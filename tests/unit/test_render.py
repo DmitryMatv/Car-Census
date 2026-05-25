@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import orjson
@@ -8,11 +9,15 @@ from config import AppConfig, build_full_frame_profile
 from models import BBox, FrameRecord, MMRResult, RunManifest, TrackedObject
 from pipeline import render as render_module
 from pipeline.render import (
+    _output_fps,
+    _resolve_render_frames_path,
+    _visible_track_ids,
     format_label_text,
     render_video,
     visible_track_label_text_by_track,
 )
 from render.annotators import VideoAnnotator
+from storage.run_store import RunStore
 from utils.video import VideoMetadata
 
 
@@ -68,6 +73,10 @@ class DummyWriter:
 
     def release(self) -> None:
         self.released = True
+
+
+def _as_run_store(store: DummyRunStore) -> RunStore:
+    return cast(RunStore, store)
 
 
 class DummyAnnotator:
@@ -265,6 +274,110 @@ def test_visible_track_label_text_only_uses_vehicle_indexed_tracks(tmp_path) -> 
     assert visible_track_label_text_by_track(records, "unknown") == {2: "7 | unknown"}
 
 
+def test_output_fps_caps_configured_render_fps_at_source_fps() -> None:
+    config = AppConfig.model_validate(
+        {"video": {"fps": 30.0}, "render": {"output_fps": 60.0}}
+    )
+
+    assert _output_fps(config) == 30.0
+
+
+def test_visible_track_ids_applies_crop_eligibility_when_required() -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, vehicle_index=1),
+                _track(2, vehicle_index=None),
+            ],
+        )
+    ]
+
+    assert _visible_track_ids(
+        _config(require_crop_eligible_track=True),
+        records,
+    ) == {1}
+
+
+def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show() -> (
+    None
+):
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, vehicle_index=1),
+                _track(2, vehicle_index=None),
+            ],
+        )
+    ]
+
+    assert _visible_track_ids(
+        _config(
+            require_crop_eligible_track=True,
+            show_unclassified_tracks=True,
+        ),
+        records,
+    ) == {1, 2}
+
+
+def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
+    tmp_path,
+) -> None:
+    store = DummyRunStore(tmp_path)
+
+    assert (
+        _resolve_render_frames_path(
+            _config(smoothing_enabled=False),
+            build_full_frame_profile(width=32, height=32),
+            _as_run_store(store),
+            smooth_render_tracks=None,
+        )
+        == store.frames_path
+    )
+
+
+def test_resolve_render_frames_path_calls_smoother_when_smoothing_enabled(
+    tmp_path,
+) -> None:
+    store = DummyRunStore(tmp_path)
+    calls = 0
+
+    def fake_smoother(config, profile, run_store):
+        nonlocal calls
+        _ = config, profile
+        calls += 1
+        assert run_store is store
+        return store.render_frames_path
+
+    assert (
+        _resolve_render_frames_path(
+            _config(smoothing_enabled=True),
+            build_full_frame_profile(width=32, height=32),
+            _as_run_store(store),
+            smooth_render_tracks=fake_smoother,
+        )
+        == store.render_frames_path
+    )
+    assert calls == 1
+
+
+def test_resolve_render_frames_path_requires_smoother_when_smoothing_enabled(
+    tmp_path,
+) -> None:
+    store = DummyRunStore(tmp_path)
+
+    with pytest.raises(ValueError, match="no smoothing stage was provided"):
+        _resolve_render_frames_path(
+            _config(smoothing_enabled=True),
+            build_full_frame_profile(width=32, height=32),
+            _as_run_store(store),
+            smooth_render_tracks=None,
+        )
+
+
 def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -300,7 +413,7 @@ def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
         config=_config(min_visible_track_observations=2),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
-        run_store=store,
+        run_store=_as_run_store(store),
     )
 
     assert [1] in DummyAnnotator.seen_track_ids
@@ -340,7 +453,7 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
         config=_config(require_crop_eligible_track=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
-        run_store=store,
+        run_store=_as_run_store(store),
     )
 
     assert [1] in DummyAnnotator.seen_track_ids
@@ -373,7 +486,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
         config=_config(),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
-        run_store=store,
+        run_store=_as_run_store(store),
         allow_unclassified_annotations=True,
     )
 
@@ -421,7 +534,7 @@ def test_render_uses_injected_smoother_when_smoothing_is_enabled(
         config=_config(smoothing_enabled=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
-        run_store=store,
+        run_store=_as_run_store(store),
         allow_unclassified_annotations=True,
         smooth_render_tracks=fake_smoother,
     )
@@ -441,5 +554,5 @@ def test_render_requires_smoother_when_smoothing_is_enabled(
             config=_config(smoothing_enabled=True),
             profile=build_full_frame_profile(width=32, height=32),
             video_path=store.manifest.video_path,
-            run_store=store,
+            run_store=_as_run_store(store),
         )

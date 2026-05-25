@@ -699,10 +699,13 @@ def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
     )
 
     records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [],
         [7],
     ]
+    assert stats["edge_observations_skipped"] == 1
+    assert stats["tracks_discarded_edge_contact"] == 0
     assert tracker.drop_calls == []
 
 
