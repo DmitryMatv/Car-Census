@@ -18,7 +18,7 @@ If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as th
 
 ## Environment
 
-This project uses local ONNX Runtime inference. Install project dependencies:
+This project uses local RF-DETR-S inference. Install project dependencies:
 
 ```bash
 pip install -e .
@@ -29,38 +29,22 @@ the main project dependencies.
 
 ## Model Setup
 
-The default configuration expects a local YOLO26 ONNX detector at:
+The default detector is RF-DETR-S through Roboflow's `rfdetr` package. RF-DETR-S
+uses a 512x512 detector input by default. The first run may download and cache
+the pretrained COCO checkpoint through the package.
 
-```text
-weights/yolo26s_fp16.onnx
-```
-
-Use a YOLO26 detection model exported to ONNX. The default path is intentionally a local artifact so the pipeline can run offline after setup.
-
-By default, the ONNX Runtime detector uses `CPUExecutionProvider`.
-`--accelerator colab-t4`, `--accelerator onnx-cuda`, or a config override can
-request CUDA/TensorRT providers.
+For offline reproducibility, set `detector.pretrain_weights` to a local
+RF-DETR-S checkpoint path.
 
 ## Google Colab T4
 
-For Colab GPU runs, install the project and use the GPU ONNX Runtime package:
+For Colab GPU runs, install the project and use the Colab accelerator preset:
 
 ```bash
 source .venv/bin/activate
 pip install -e .
-pip install onnxruntime-gpu
 Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
 ```
-
-The `--accelerator colab-t4` preset keeps the existing ONNX weights path and
-requests ONNX Runtime CUDA execution with CPU fallback registered. ONNX is not
-required for GPU inference in general, but it is the detector path used by this
-project.
-
-If the runtime still has the CPU-only `onnxruntime` package, replace it with
-`onnxruntime-gpu`. TensorRT can be requested explicitly with
-`--accelerator tensorrt`, but it requires ONNX Runtime TensorRT provider
-dependencies in the Colab runtime and does not auto-export `.engine` files.
 
 Colab FFmpeg builds vary. `--accelerator colab-t4` enables `auto-nvenc` for the
 final video encode, which uses NVENC when FFmpeg exposes it and falls back to

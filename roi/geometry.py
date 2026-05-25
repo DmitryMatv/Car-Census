@@ -25,8 +25,8 @@ def crop_to_polygon(
     x, y, w, h = polygon_bounding_rect(polygon)
     roi = frame[y : y + h, x : x + w].copy()
     local_polygon = np.array([[px - x, py - y] for px, py in polygon], dtype=np.int32)
-    mask = np.zeros(roi.shape[:2], dtype=np.uint8)
-    cv2.fillPoly(mask, [local_polygon], 255)
+    mask: np.ndarray = np.zeros(roi.shape[:2], dtype=np.uint8)
+    cv2.fillPoly(mask, [local_polygon], (255,))
     roi[mask == 0] = 0
     return roi, (x, y)
 

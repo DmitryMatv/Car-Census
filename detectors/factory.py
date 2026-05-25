@@ -4,8 +4,8 @@ from pathlib import Path
 
 from config import AppConfig
 from detectors.base import Detector
-from detectors.onnxruntime_local import OnnxRuntimeLocalDetector
+from detectors.rfdetr_local import RfDetrSmallDetector
 
 
 def create_detector(config: AppConfig, project_root: Path) -> Detector:
-    return OnnxRuntimeLocalDetector(config=config, project_root=project_root)
+    return RfDetrSmallDetector(config=config, project_root=project_root)

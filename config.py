@@ -7,28 +7,6 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
-def _coco_class_names() -> dict[int, str]:
-    return {
-        0: "person",
-        1: "bicycle",
-        2: "car",
-        3: "motorcycle",
-        4: "airplane",
-        5: "bus",
-        6: "train",
-        7: "truck",
-        8: "boat",
-        9: "traffic light",
-        10: "fire hydrant",
-        11: "stop sign",
-        12: "parking meter",
-        13: "bench",
-        14: "bird",
-        15: "cat",
-        16: "dog",
-    }
-
-
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -46,7 +24,6 @@ class VideoConfig(StrictBaseModel):
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
     batch_size: int = Field(default=32, ge=1)
-    imgsz: int = 960
     min_track_frames: int = 10
     min_box_height_px: int = 160
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
@@ -57,18 +34,12 @@ class AnalysisConfig(StrictBaseModel):
 
 
 class DetectorConfig(StrictBaseModel):
-    weights: str = "weights/yolo26s_fp16.onnx"
+    model: Literal["rfdetr-small"] = "rfdetr-small"
     confidence: float = 0.30
-    iou: float = 0.4
+    input_size: int = Field(default=512, ge=64)
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
-    allowed_class_ids: list[int] | None = None
-    class_names: dict[int, str] = Field(default_factory=_coco_class_names)
-    onnx_threads: int = 4
-    onnx_execution_providers: list[str] = Field(
-        default_factory=lambda: ["CPUExecutionProvider"]
-    )
-    onnx_require_gpu: bool = False
-    onnx_input_dtype: Literal["auto", "float32", "float16"] = "auto"
+    pretrain_weights: str | None = None
+    include_source_image: bool = False
 
 
 class TrackerConfig(StrictBaseModel):

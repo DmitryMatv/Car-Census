@@ -9,7 +9,6 @@ video:
 analysis:
   fps: 10
   batch_size: 32
-  imgsz: 640
   min_track_frames: 6
   min_box_height_px: 160
   crop_padding_ratio: 0.10
@@ -19,16 +18,16 @@ analysis:
   crop_jpeg_quality: 95
 
 detector:
-  weights: weights/yolo26s_fp16.onnx
+  model: rfdetr-small
   confidence: 0.30
-  iou: 0.45
+  input_size: 512
   allowed_class_names:
     - car
     # - truck
     # - bus
     # - motorcycle
-  onnx_threads: 6
-  onnx_input_dtype: auto
+  pretrain_weights: null
+  include_source_image: false
 
 tracker:
   lost_track_buffer: 45

@@ -107,10 +107,12 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.analysis.batch_size == 32
     assert config.analysis.min_track_frames == 6
     assert config.analysis.min_box_height_px == 160
+    assert config.detector.model == "rfdetr-small"
     assert config.detector.confidence == 0.30
-    assert config.detector.iou == 0.45
-    assert config.detector.onnx_execution_providers == ["CPUExecutionProvider"]
-    assert config.detector.onnx_require_gpu is False
+    assert config.detector.input_size == 512
+    assert config.detector.allowed_class_names == ["car"]
+    assert config.detector.pretrain_weights is None
+    assert config.detector.include_source_image is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_first_assoc == 0.08
@@ -148,47 +150,41 @@ def test_config_rejects_unknown_nested_keys() -> None:
         AppConfig.model_validate({"render": {"line_thickness": 1}})
 
 
-def test_detector_config_accepts_onnx_execution_provider_options() -> None:
+def test_detector_config_accepts_rfdetr_options() -> None:
     config = AppConfig.model_validate(
         {
             "detector": {
-                "onnx_execution_providers": [
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ],
-                "onnx_require_gpu": True,
+                "model": "rfdetr-small",
+                "input_size": 512,
+                "allowed_class_names": ["car", "truck"],
+                "pretrain_weights": "weights/rfdetr-small.pth",
+                "include_source_image": True,
             }
         }
     )
 
-    assert config.detector.onnx_execution_providers == [
-        "CUDAExecutionProvider",
-        "CPUExecutionProvider",
-    ]
-    assert config.detector.onnx_require_gpu is True
-
-
-def test_detector_config_defaults_to_auto_onnx_input_dtype() -> None:
-    config = AppConfig()
-
-    assert config.detector.onnx_input_dtype == "auto"
+    assert config.detector.model == "rfdetr-small"
+    assert config.detector.input_size == 512
+    assert config.detector.allowed_class_names == ["car", "truck"]
+    assert config.detector.pretrain_weights == "weights/rfdetr-small.pth"
+    assert config.detector.include_source_image is True
 
 
 def test_detector_config_rejects_removed_provider_key() -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"provider": "onnxruntime_local"}})
+        AppConfig.model_validate({"detector": {"provider": "legacy_local"}})
 
 
-def test_detector_config_accepts_onnx_input_dtype_options() -> None:
-    for dtype in ["auto", "float32", "float16"]:
-        config = AppConfig.model_validate({"detector": {"onnx_input_dtype": dtype}})
-
-        assert config.detector.onnx_input_dtype == dtype
-
-
-def test_detector_config_rejects_unknown_onnx_input_dtype() -> None:
-    with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"onnx_input_dtype": "bfloat16"}})
+def test_detector_config_rejects_removed_runtime_keys() -> None:
+    for key, value in [
+        ("weights", "weights/legacy-detector.bin"),
+        ("iou", 0.45),
+        ("execution_providers", ["CPUExecutionProvider"]),
+        ("require_gpu", False),
+        ("input_dtype", "auto"),
+    ]:
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate({"detector": {key: value}})
 
 
 def test_render_config_accepts_nvenc_backend() -> None:

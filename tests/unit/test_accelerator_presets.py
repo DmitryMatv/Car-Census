@@ -5,40 +5,20 @@ def test_default_accelerator_has_no_overrides() -> None:
     assert _accelerator_overrides("default") == {}
 
 
-def test_colab_t4_accelerator_enables_cuda_onnx_and_auto_nvenc() -> None:
+def test_colab_t4_accelerator_enables_auto_nvenc_only() -> None:
     overrides = _accelerator_overrides("colab-t4")
 
-    assert overrides["detector"]["onnx_execution_providers"] == [
-        "CUDAExecutionProvider",
-        "CPUExecutionProvider",
-    ]
-    assert overrides["detector"]["onnx_require_gpu"] is True
+    assert "detector" not in overrides
     assert overrides["render"]["encode_backend"] == "auto-nvenc"
     assert overrides["render"]["output_fps"] == 30.0
     assert overrides["render"]["nvenc_preset"] == "p4"
     assert overrides["render"]["nvenc_cq"] == 23
 
 
-def test_onnx_cuda_accelerator_enables_cuda_without_render_override() -> None:
-    overrides = _accelerator_overrides("onnx-cuda")
-
-    assert overrides == {
-        "detector": {
-            "onnx_execution_providers": [
-                "CUDAExecutionProvider",
-                "CPUExecutionProvider",
-            ],
-            "onnx_require_gpu": True,
-        },
-    }
-
-
-def test_tensorrt_accelerator_requires_gpu_providers_in_order() -> None:
-    overrides = _accelerator_overrides("tensorrt")
-
-    assert overrides["detector"]["onnx_execution_providers"] == [
-        "TensorrtExecutionProvider",
-        "CUDAExecutionProvider",
-        "CPUExecutionProvider",
-    ]
-    assert overrides["detector"]["onnx_require_gpu"] is True
+def test_removed_gpu_accelerator_is_rejected() -> None:
+    try:
+        _accelerator_overrides("gpu")
+    except Exception as exc:
+        assert "Unsupported accelerator" in str(exc)
+    else:
+        raise AssertionError("gpu should be rejected")

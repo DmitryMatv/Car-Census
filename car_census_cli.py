@@ -31,7 +31,7 @@ app = typer.Typer(no_args_is_help=True)
 roi_app = typer.Typer(no_args_is_help=True)
 app.add_typer(roi_app, name="roi")
 
-SUPPORTED_ACCELERATORS = {"default", "colab-t4", "onnx-cuda", "tensorrt"}
+SUPPORTED_ACCELERATORS = {"default", "colab-t4"}
 
 
 def _project_root() -> Path:
@@ -44,39 +44,11 @@ def _accelerator_overrides(accelerator: str) -> dict[str, Any]:
         return {}
     if accelerator == "colab-t4":
         return {
-            "detector": {
-                "onnx_execution_providers": [
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ],
-                "onnx_require_gpu": True,
-            },
             "render": {
                 "encode_backend": "auto-nvenc",
                 "output_fps": 30.0,
                 "nvenc_preset": "p4",
                 "nvenc_cq": 23,
-            },
-        }
-    if accelerator == "onnx-cuda":
-        return {
-            "detector": {
-                "onnx_execution_providers": [
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ],
-                "onnx_require_gpu": True,
-            },
-        }
-    if accelerator == "tensorrt":
-        return {
-            "detector": {
-                "onnx_execution_providers": [
-                    "TensorrtExecutionProvider",
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ],
-                "onnx_require_gpu": True,
             },
         }
     supported = ", ".join(sorted(SUPPORTED_ACCELERATORS))
@@ -132,7 +104,7 @@ def analyze(
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
-        help="default, colab-t4, onnx-cuda, or tensorrt",
+        help="default or colab-t4",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     run_dir: Optional[Path] = typer.Option(None, "--run-dir"),
@@ -181,7 +153,7 @@ def render(
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
-        help="default, colab-t4, onnx-cuda, or tensorrt",
+        help="default or colab-t4",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
@@ -243,7 +215,7 @@ def run(
     accelerator: str = typer.Option(
         "default",
         "--accelerator",
-        help="default, colab-t4, onnx-cuda, or tensorrt",
+        help="default or colab-t4",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     skip_classify: bool = typer.Option(

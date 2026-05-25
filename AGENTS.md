@@ -18,7 +18,8 @@ Maintain a strict type-safety direction for the project.
 
 ## Environment & Setup
 
-- ONNX model expected at `weights/yolo26s_fp16.onnx` (local offline use)
+- Default detector is RF-DETR-S through the `rfdetr` package at 512x512.
+  Optional local offline checkpoint path: `detector.pretrain_weights`.
 - Tracking uses Roboflow's `trackers` package. Do not create a local top-level
   Python package named `trackers`; it collides with the third-party dependency.
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
