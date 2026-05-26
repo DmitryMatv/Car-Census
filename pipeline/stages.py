@@ -1,48 +1,37 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
 
-if TYPE_CHECKING:
-    from config import AppConfig, CameraProfile
-    from storage.run_store import RunStore
+from config import AppConfig, CameraProfile
+from models import MMRResult
+from storage.run_store import RunStore
 
+AnalyzeStage = Callable[
+    [Path, AppConfig, CameraProfile, Path, RunStore],
+    RunStore,
+]
 
-class AnalyzeStage(Protocol):
-    def __call__(
-        self,
-        project_root: Path,
-        config: "AppConfig",
-        profile: "CameraProfile",
-        video_path: Path,
-        run_store: "RunStore",
-    ) -> "RunStore": ...
+ClassifyStage = Callable[
+    [AppConfig, RunStore],
+    dict[int, MMRResult],
+]
 
+WriteSkippedClassificationBatchGridsStage = Callable[
+    [AppConfig, RunStore],
+    list[Path],
+]
 
-class ClassifyStage(Protocol):
-    def __call__(
-        self, config: "AppConfig", run_store: "RunStore"
-    ) -> dict[int, Any]: ...
+RenderStage = Callable[
+    [AppConfig, CameraProfile, Path, RunStore, bool],
+    Path,
+]
 
-
-class WriteSkippedClassificationBatchGridsStage(Protocol):
-    def __call__(self, config: "AppConfig", run_store: "RunStore") -> list[Path]: ...
-
-
-class RenderStage(Protocol):
-    def __call__(
-        self,
-        config: "AppConfig",
-        profile: "CameraProfile",
-        video_path: Path,
-        run_store: "RunStore",
-        allow_unclassified_annotations: bool,
-    ) -> Path: ...
-
-
-class ReportStage(Protocol):
-    def __call__(self, run_store: "RunStore") -> dict[str, object]: ...
+ReportStage = Callable[
+    [RunStore],
+    dict[str, object],
+]
 
 
 @dataclass(frozen=True, slots=True)

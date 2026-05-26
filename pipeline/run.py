@@ -30,7 +30,7 @@ def run_pipeline(
         profile,
         video_path,
         run_store,
-        allow_unclassified_annotations=skip_classification,
+        skip_classification,
     )
     stages.generate_reports(run_store)
     return run_store

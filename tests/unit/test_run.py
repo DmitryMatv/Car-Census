@@ -44,6 +44,7 @@ def test_run_pipeline_orders_analyze_classify_render_report(
         _ = project_root, config, profile, video_path
         calls.append("analyze")
         assert run_store is store
+        return store
 
     def fake_classify_tracks(config, run_store):
         _ = config
@@ -109,6 +110,7 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
         _ = project_root, config, profile, video_path
         calls.append("analyze")
         assert run_store is store
+        return store
 
     def fake_classify_tracks(config, run_store):
         _ = config, run_store

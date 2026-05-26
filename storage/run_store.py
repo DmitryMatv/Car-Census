@@ -3,20 +3,26 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from models import CountEvent, RunManifest, TrackSummary
+from storage.run_artifacts import (
+    DetectionStatsFile,
+    FrameRecordsFile,
+    JsonlModelFile,
+    JsonModelFile,
+    LabelsFile,
+)
 from storage.run_layout import RunLayout
-from storage.run_repositories import RunRepositories
 
 
 class RunStore:
     def __init__(self, root: Path | RunLayout) -> None:
         self.layout = root if isinstance(root, RunLayout) else RunLayout(root)
-        self.repositories = RunRepositories.create(self.layout)
-        self.manifest = self.repositories.manifest
-        self.frames = self.repositories.frames
-        self.tracks = self.repositories.tracks
-        self.counts = self.repositories.counts
-        self.labels = self.repositories.labels
-        self.detection_stats = self.repositories.detection_stats
+        self.manifest = JsonModelFile(self.layout.manifest_path, RunManifest)
+        self.frames = FrameRecordsFile(self.layout)
+        self.tracks = JsonlModelFile(self.layout.tracks_path, TrackSummary)
+        self.counts = JsonlModelFile(self.layout.count_events_path, CountEvent)
+        self.labels = LabelsFile(self.layout.labels_path)
+        self.detection_stats = DetectionStatsFile(self.layout.detection_stats_path)
 
     @classmethod
     def create(

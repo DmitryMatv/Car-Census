@@ -7,7 +7,7 @@ from pathlib import Path
 from config import AppConfig
 from mmr.trafficeye import TrafficEyeClient
 from models import CropCandidate, MMRResult, TrackSummary
-from pipeline.analysis_crops import candidate_rank_for_candidate
+from pipeline.analysis_crops import rank_crop_candidate
 from storage.run_store import RunStore
 
 logger = logging.getLogger(__name__)
@@ -47,19 +47,6 @@ def _recognize_tasks(
     return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
 
 
-def _candidate_rank_for_summary(
-    summary: TrackSummary,
-    candidate: CropCandidate,
-    config: AppConfig,
-) -> tuple[float, float, float, float, int]:
-    return candidate_rank_for_candidate(
-        candidate,
-        summary.min_box_height_px,
-        summary.max_box_height_px,
-        config,
-    )
-
-
 def _best_candidate_for_summaries(
     summaries: list[TrackSummary], config: AppConfig
 ) -> CropCandidate | None:
@@ -72,7 +59,12 @@ def _best_candidate_for_summaries(
         return None
     _summary, candidate = max(
         ranked_candidates,
-        key=lambda item: _candidate_rank_for_summary(item[0], item[1], config),
+        key=lambda item: rank_crop_candidate(
+            item[1],
+            item[0].min_box_height_px,
+            item[0].max_box_height_px,
+            config,
+        ),
     )
     return candidate
 

@@ -121,6 +121,24 @@ def test_rewrite_frame_vehicle_indices_marks_only_crop_eligible_tracks(
     assert [track.vehicle_index for track in rewritten.tracks] == [None, 1, 2]
 
 
+def test_rewrite_frame_vehicle_indices_preserves_existing_unmapped_indices(
+    tmp_path,
+) -> None:
+    store = RunStore(tmp_path)
+    store.ensure_directories()
+    record = FrameRecord(
+        frame_index=1,
+        timestamp_seconds=0.1,
+        tracks=[_track(10, vehicle_index=7), _track(20)],
+    )
+    store.frames.write_all([record])
+
+    store.frames.rewrite_vehicle_indices({20: 1})
+
+    rewritten = store.frames.read_all()[0]
+    assert [track.vehicle_index for track in rewritten.tracks] == [7, 1]
+
+
 def test_discard_track_artifacts_removes_empty_temp_crop_dir(tmp_path) -> None:
     store = DummyRunStore(tmp_path)
     state = MutableTrackState(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -25,6 +26,15 @@ class CropStore(Protocol):
     def crops_dir(self) -> Path: ...
 
 
+@dataclass(frozen=True, order=True, slots=True)
+class CropCandidateRank:
+    scale_score: float
+    sharpness: float
+    edge_margin_score: float
+    area_score: float
+    recency_score: int
+
+
 def score_candidate(
     crop: cv2.typing.MatLike, bbox: BBox, frame_shape: tuple[int, int, int]
 ) -> tuple[float, float, float]:
@@ -39,7 +49,7 @@ def score_candidate(
     return sharpness, edge_margin_score, area_score
 
 
-def candidate_rank(
+def crop_candidate_rank(
     *,
     bbox_height: float,
     sharpness: float,
@@ -49,29 +59,29 @@ def candidate_rank(
     min_box_height_px: float | None,
     max_box_height_px: float,
     target_ratio: float,
-) -> tuple[float, float, float, float, int]:
+) -> CropCandidateRank:
     min_height = (
         min_box_height_px if min_box_height_px is not None else max_box_height_px
     )
     target_height = min_height + ((max_box_height_px - min_height) * target_ratio)
     scale_error = abs(bbox_height - target_height) / max(target_height, 1.0)
-    return (
-        -scale_error,
-        sharpness,
-        edge_margin_score,
-        area_score,
-        -frame_index,
+    return CropCandidateRank(
+        scale_score=-scale_error,
+        sharpness=sharpness,
+        edge_margin_score=edge_margin_score,
+        area_score=area_score,
+        recency_score=-frame_index,
     )
 
 
-def candidate_rank_for_candidate(
+def rank_crop_candidate(
     candidate: CropCandidate,
     min_box_height_px: float | None,
     max_box_height_px: float,
     config: AppConfig,
-) -> tuple[float, float, float, float, int]:
+) -> CropCandidateRank:
     vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
-    return candidate_rank(
+    return crop_candidate_rank(
         bbox_height=vehicle_bbox.height,
         sharpness=candidate.sharpness,
         edge_margin_score=candidate.edge_margin_score,
@@ -138,12 +148,12 @@ def save_candidate(
         area_score=area_score,
     )
     current = track_state.candidates[0] if track_state.candidates else None
-    if current is not None and candidate_rank_for_candidate(
+    if current is not None and rank_crop_candidate(
         current,
         track_state.min_box_height_px,
         track_state.max_box_height_px,
         config,
-    ) >= candidate_rank_for_candidate(
+    ) >= rank_crop_candidate(
         candidate,
         track_state.min_box_height_px,
         track_state.max_box_height_px,
