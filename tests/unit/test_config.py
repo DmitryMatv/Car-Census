@@ -141,8 +141,10 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_bg_color == "#101820"
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.enabled is True
-    assert config.render.smoothing.history_length == 5
+    assert config.render.smoothing.observed_box_smoothing == "none"
+    assert config.render.smoothing.history_length == 1
     assert config.render.smoothing.interpolate_source_frames is True
+    assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
     assert config.mmr.batch_size == 25
     assert config.mmr.batch_grid_columns == 5
@@ -244,12 +246,25 @@ def test_render_config_rejects_removed_visual_keys() -> None:
 def test_render_smoothing_rejects_removed_custom_smoothing_keys() -> None:
     for key, value in [
         ("interpolate", True),
-        ("interpolation_method", "pchip"),
         ("max_gap_seconds", 0.5),
         ("reject_short_excursions", True),
     ]:
         with pytest.raises(ValidationError):
             AppConfig.model_validate({"render": {"smoothing": {key: value}}})
+
+
+def test_render_smoothing_rejects_unknown_observed_box_smoothing() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {"render": {"smoothing": {"observed_box_smoothing": "centered"}}}
+        )
+
+
+def test_render_smoothing_rejects_unknown_interpolation_method() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {"render": {"smoothing": {"interpolation_method": "smoothstep"}}}
+        )
 
 
 def test_render_smoothing_rejects_non_positive_max_interpolation_gap() -> None:

@@ -126,7 +126,16 @@ def test_smooth_render_tracks_averages_real_observations_before_interpolation(
 ) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate({"render": {"smoothing": {"history_length": 2}}})
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "causal_average",
+                    "history_length": 2,
+                }
+            }
+        }
+    )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=20, y1=20, x2=40, y2=40))]),
@@ -146,12 +155,21 @@ def test_smooth_render_tracks_averages_real_observations_before_interpolation(
     assert smoothed[6].tracks[0].bbox.y1 == pytest.approx(25)
 
 
-def test_smooth_render_tracks_interpolates_between_smoothed_observations(
+def test_smooth_render_tracks_interpolates_between_causal_average_observations(
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate({"render": {"smoothing": {"history_length": 2}}})
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "causal_average",
+                    "history_length": 2,
+                }
+            }
+        }
+    )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
@@ -180,7 +198,20 @@ def test_smooth_render_tracks_does_not_smooth_interpolated_frames(tmp_path) -> N
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(
+        AppConfig.model_validate(
+            {
+                "render": {
+                    "smoothing": {
+                        "observed_box_smoothing": "causal_average",
+                        "history_length": 2,
+                    }
+                }
+            }
+        ),
+        profile,
+        store,
+    )
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(5)
@@ -397,7 +428,16 @@ def test_smooth_render_tracks_drops_smoother_history_when_track_absent(
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate({"render": {"smoothing": {"history_length": 5}}}),
+        AppConfig.model_validate(
+            {
+                "render": {
+                    "smoothing": {
+                        "observed_box_smoothing": "causal_average",
+                        "history_length": 5,
+                    }
+                }
+            }
+        ),
         profile,
         store,
     )
@@ -562,6 +602,53 @@ def test_smooth_render_tracks_history_length_one_preserves_observed_boxes(
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
     assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
+
+
+def test_smooth_render_tracks_default_preserves_observed_boxes_and_interpolates(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
+    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
+    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
+    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
+    assert smoothed[4].tracks[0].bbox.x1 == pytest.approx(40)
+    assert smoothed[5].tracks[0].bbox.x1 == pytest.approx(50)
+
+
+def test_smooth_render_tracks_history_length_without_causal_average_preserves_observed_boxes(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate({"render": {"smoothing": {"history_length": 5}}})
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
+    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
+    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
+    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
+    assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
 
 
 def test_smooth_render_tracks_returns_raw_path_when_disabled(tmp_path) -> None:

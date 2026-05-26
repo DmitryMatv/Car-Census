@@ -123,18 +123,29 @@ def _interpolate_bbox(previous: BBox, current: BBox, ratio: float) -> BBox:
     )
 
 
+def _interpolation_ratio(ratio: float, config: AppConfig) -> float:
+    ratio = max(0.0, min(1.0, ratio))
+    if config.render.smoothing.interpolation_method == "linear":
+        return ratio
+    raise ValueError(
+        f"Unsupported interpolation method: "
+        f"{config.render.smoothing.interpolation_method}"
+    )
+
+
 def _interpolate_track(
     previous: _TrackRenderPoint,
     current: _TrackRenderPoint,
     frame_index: int,
     timestamp_seconds: float,
     profile: CameraProfile,
+    config: AppConfig,
 ) -> TrackedObject:
     total = current.timestamp_seconds - previous.timestamp_seconds
     ratio = (
         0.0 if total <= 0 else (timestamp_seconds - previous.timestamp_seconds) / total
     )
-    ratio = max(0.0, min(1.0, ratio))
+    ratio = _interpolation_ratio(ratio, config)
     bbox = _interpolate_bbox(previous.bbox, current.bbox, ratio)
     bottom_center = bbox.bottom_center
     source = previous.source
@@ -219,6 +230,7 @@ def _interpolated_records_between(
                     frame_index=frame_index,
                     timestamp_seconds=timestamp_seconds,
                     profile=profile,
+                    config=config,
                 )
                 for track_id in interpolated_track_ids
             ],
@@ -247,7 +259,7 @@ def iter_interpolated_source_frame_records(
         previous = current
 
 
-def iter_smoothed_analysis_records(
+def iter_causal_average_analysis_records(
     records: Iterable[FrameRecord],
     config: AppConfig,
     profile: CameraProfile,
@@ -267,6 +279,18 @@ def iter_smoothed_analysis_records(
         )
 
 
+def iter_observed_render_records(
+    records: Iterable[FrameRecord],
+    config: AppConfig,
+    profile: CameraProfile,
+) -> Iterator[FrameRecord]:
+    if config.render.smoothing.observed_box_smoothing == "none":
+        yield from records
+        return
+
+    yield from iter_causal_average_analysis_records(records, config, profile)
+
+
 def smooth_render_tracks(
     config: AppConfig,
     profile: CameraProfile,
@@ -275,15 +299,15 @@ def smooth_render_tracks(
     if not config.render.smoothing.enabled:
         return run_store.frames_path
 
-    smoothed_records: Iterable[FrameRecord] = iter_smoothed_analysis_records(
+    render_records: Iterable[FrameRecord] = iter_observed_render_records(
         run_store.frames.iter(smoothed=False), config, profile
     )
     if config.render.smoothing.interpolate_source_frames:
-        smoothed_records = iter_interpolated_source_frame_records(
-            smoothed_records, config, profile
+        render_records = iter_interpolated_source_frame_records(
+            render_records, config, profile
         )
 
     with run_store.frames.open_writer(smoothed=True) as writer:
-        for record in smoothed_records:
+        for record in render_records:
             writer.write(record)
     return run_store.render_frames_path

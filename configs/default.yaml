@@ -3,7 +3,7 @@ project:
   camera_profiles_dir: configs/cameras
 
 video:
-  fps: 30.0
+  fps: 30.00
   fps_tolerance: 0.05
 
 analysis:
@@ -12,7 +12,7 @@ analysis:
   detector_batch_size: 32
   min_track_frames: 6
   min_box_height_px: 160
-  crop_padding_ratio: 0.10
+  crop_padding_ratio: 0.08
   crop_padding_px: 0
   crop_target_box_range_ratio: 0.55
   crop_min_spacing_seconds: 0.5
@@ -52,8 +52,8 @@ tracker:
 mmr:
   api_url: https://trafficeye.ai/recognition
   api_key_env: TRAFFICEYE_API_KEY
-  timeout_seconds: 45.0
-  accept_model_confidence: 0.60
+  timeout_seconds: 30
+  accept_model_confidence: 0.50
   tasks:
     - DETECTION
     - MMR
@@ -81,6 +81,8 @@ render:
   unknown_label: Unknown
   smoothing:
     enabled: true
-    history_length: 5
+    observed_box_smoothing: none
+    history_length: 1
     interpolate_source_frames: true
+    interpolation_method: linear
     max_interpolation_gap_seconds: 0.25
