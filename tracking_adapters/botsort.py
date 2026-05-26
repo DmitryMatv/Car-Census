@@ -8,13 +8,10 @@ import supervision as sv
 from trackers import BoTSORTTracker
 
 from config import AppConfig
-from models import Detection
 
 
 class TrackerAdapter(Protocol):
-    def update(
-        self, detections: list[Detection], frame: np.ndarray
-    ) -> sv.Detections: ...
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections: ...
 
     def drop_tracks(self, track_ids: Collection[int]) -> None: ...
 
@@ -58,9 +55,8 @@ class BotSortAdapter:
             config, frame_rate
         )
 
-    def update(self, detections: list[Detection], frame: np.ndarray) -> sv.Detections:
-        sv_detections = self._to_supervision_detections(detections)
-        return self.tracker.update(sv_detections, frame=frame)
+    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections:
+        return self.tracker.update(detections, frame=frame)
 
     def drop_tracks(self, track_ids: Collection[int]) -> None:
         if not track_ids:
@@ -75,44 +71,3 @@ class BotSortAdapter:
             if getattr(track, "tracker_id", None) not in suppressed_ids
         ]
         setattr(self.tracker, "tracks", filtered_tracks)
-
-    @staticmethod
-    def _to_supervision_detections(detections: list[Detection]) -> sv.Detections:
-        if not detections:
-            return sv.Detections(
-                xyxy=np.empty((0, 4), dtype=np.float32),
-                confidence=np.empty((0,), dtype=np.float32),
-                class_id=np.empty((0,), dtype=np.int32),
-                data={"class_name": np.array([], dtype=object)},
-            )
-
-        return sv.Detections(
-            xyxy=np.array(
-                [
-                    [
-                        detection.bbox.x1,
-                        detection.bbox.y1,
-                        detection.bbox.x2,
-                        detection.bbox.y2,
-                    ]
-                    for detection in detections
-                ],
-                dtype=np.float32,
-            ),
-            confidence=np.array(
-                [detection.confidence for detection in detections], dtype=np.float32
-            ),
-            class_id=np.array(
-                [
-                    detection.class_id if detection.class_id is not None else -1
-                    for detection in detections
-                ],
-                dtype=np.int32,
-            ),
-            data={
-                "class_name": np.array(
-                    [detection.class_name or "" for detection in detections],
-                    dtype=object,
-                )
-            },
-        )

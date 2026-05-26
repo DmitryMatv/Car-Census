@@ -33,13 +33,6 @@ class BBox(BaseModel):
         return ((self.x1 + self.x2) / 2.0, self.y2)
 
 
-class Detection(BaseModel):
-    bbox: BBox
-    confidence: float
-    class_id: int | None = None
-    class_name: str | None = None
-
-
 class TrackedObject(BaseModel):
     track_id: int
     vehicle_index: int | None = None

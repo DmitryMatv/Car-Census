@@ -11,7 +11,6 @@ from models import (
     BBox,
     CountEvent,
     CropCandidate,
-    Detection,
     FrameRecord,
     TrackedObject,
 )
@@ -44,7 +43,7 @@ class FrameTrackingInput:
     frame: cv2.typing.MatLike
     roi_frame: cv2.typing.MatLike
     roi_offset: tuple[int, int]
-    detections: list[Detection]
+    detections: sv.Detections
 
 
 @dataclass(slots=True)

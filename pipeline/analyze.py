@@ -4,10 +4,12 @@ import logging
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
+import supervision as sv
+
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
 from detectors.factory import create_detector
-from models import Detection, RunManifest
+from models import RunManifest
 from pipeline.analysis_crops import (
     CropCandidateSelector,
     candidate_rank,
@@ -105,7 +107,7 @@ def _iter_detected_sampled_frames(
     target_fps: float,
     profile: CameraProfile,
     batch_size: int,
-) -> Iterator[tuple[SampledFrame, list[Detection]]]:
+) -> Iterator[tuple[SampledFrame, sv.Detections]]:
     return iter_detected_sampled_frames(
         detector=detector,
         video_path=video_path,

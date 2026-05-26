@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -11,7 +11,7 @@ import supervision as sv
 
 from config import AppConfig
 from detectors.base import Detector
-from models import BBox, Detection
+from pipeline.detections import class_names, clip_detections_to_shape, clone_detections
 
 
 def _load_rfdetr_small() -> type[Any]:
@@ -61,10 +61,10 @@ class RfDetrSmallDetector(Detector):
             )
         self.class_names = _coerce_class_names(getattr(self.model, "class_names", {}))
 
-    def detect(self, image: np.ndarray) -> list[Detection]:
+    def detect(self, image: np.ndarray) -> sv.Detections:
         return self.detect_batch([image])[0]
 
-    def detect_batch(self, images: Sequence[np.ndarray]) -> list[list[Detection]]:
+    def detect_batch(self, images: Sequence[np.ndarray]) -> list[sv.Detections]:
         if not images:
             return []
         rgb_images = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
@@ -81,7 +81,7 @@ class RfDetrSmallDetector(Detector):
                 f"{len(detections_by_image)} detection sets for {len(images)} images"
             )
         return [
-            self._convert_detections(detections, image.shape)
+            self._filter_detections(detections, image.shape)
             for detections, image in zip(detections_by_image, images, strict=True)
         ]
 
@@ -109,67 +109,40 @@ class RfDetrSmallDetector(Detector):
             f"{type(predictions).__name__}"
         )
 
-    def _convert_detections(
+    def _filter_detections(
         self, detections: sv.Detections, image_shape: tuple[int, ...]
-    ) -> list[Detection]:
-        height, width = image_shape[:2]
-        confidences = (
-            detections.confidence
-            if detections.confidence is not None
-            else np.ones(len(detections), dtype=np.float32)
-        )
-        class_ids = (
-            detections.class_id
-            if detections.class_id is not None
-            else np.full(len(detections), -1, dtype=np.int32)
-        )
-        class_names = self._class_names_from_detections(detections)
-
+    ) -> sv.Detections:
+        detections = self._ensure_class_names(detections)
         self._counts["raw_candidate_rows"] += len(detections)
         self._counts["detections_after_confidence_filtering"] += len(detections)
 
-        converted: list[Detection] = []
-        for index, xyxy in enumerate(detections.xyxy):
-            confidence = float(confidences[index])
-            class_id = int(class_ids[index])
-            class_name = class_names[index]
-            if self.allowed_class_names and class_name not in self.allowed_class_names:
-                continue
-
-            box = np.asarray(xyxy, dtype=np.float32).copy()
-            box[[0, 2]] = np.clip(box[[0, 2]], 0, width - 1)
-            box[[1, 3]] = np.clip(box[[1, 3]], 0, height - 1)
-            if box[2] <= box[0] or box[3] <= box[1]:
-                continue
-
-            self._counts["detections_after_class_filtering"] += 1
-            self._confidence_values.append(confidence)
-            converted.append(
-                Detection(
-                    bbox=BBox(
-                        x1=float(box[0]),
-                        y1=float(box[1]),
-                        x2=float(box[2]),
-                        y2=float(box[3]),
-                    ),
-                    confidence=confidence,
-                    class_id=class_id if class_id >= 0 else None,
-                    class_name=class_name,
-                )
+        if self.allowed_class_names:
+            keep = np.array(
+                [name in self.allowed_class_names for name in class_names(detections)],
+                dtype=bool,
             )
-        return converted
+            detections = cast(sv.Detections, detections[keep])
 
-    def _class_names_from_detections(self, detections: sv.Detections) -> list[str]:
-        raw_names = detections.data.get("class_name") if detections.data else None
-        names: list[str] = []
+        detections = clip_detections_to_shape(detections, image_shape)
+        self._counts["detections_after_class_filtering"] += len(detections)
+        if detections.confidence is not None:
+            self._confidence_values.extend(
+                float(confidence) for confidence in detections.confidence.tolist()
+            )
+        return detections
+
+    def _ensure_class_names(self, detections: sv.Detections) -> sv.Detections:
+        names = class_names(detections)
+        if names and any(names):
+            return detections
+        updated = clone_detections(detections)
+        resolved_names: list[str] = []
         for index in range(len(detections)):
-            if raw_names is not None and index < len(raw_names):
-                names.append(str(raw_names[index]).lower())
-                continue
             class_id = (
                 int(detections.class_id[index])
                 if detections.class_id is not None
                 else -1
             )
-            names.append(self.class_names.get(class_id, ""))
-        return names
+            resolved_names.append(self.class_names.get(class_id, ""))
+        updated.data["class_name"] = np.array(resolved_names, dtype=object)
+        return updated

@@ -1,4 +1,5 @@
 from collections.abc import Collection
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import orjson
 import supervision as sv
 
 from config import AppConfig, CameraProfile, PolygonZoneConfig
-from models import BBox, Detection, FrameRecord
+from models import BBox, FrameRecord
 from pipeline import analyze as analyze_module
 from pipeline.analyze import (
     MutableTrackState,
@@ -16,6 +17,7 @@ from pipeline.analyze import (
     _save_candidate,
     analyze_video,
 )
+from pipeline.detections import detection_bboxes
 from pipeline.vehicles import staged_track_crop_dir
 from storage.run_store import RunStore
 from utils.video import VideoMetadata
@@ -25,6 +27,61 @@ class DummyRunStore:
     def __init__(self, root: Path) -> None:
         self.crops_dir = root / "crops"
         self.crops_dir.mkdir(parents=True)
+
+
+@dataclass(frozen=True, slots=True)
+class Detection:
+    bbox: BBox
+    confidence: float
+    class_id: int | None = None
+    class_name: str | None = None
+
+
+def _detections_to_sv(detections: object) -> sv.Detections:
+    if isinstance(detections, sv.Detections):
+        return detections
+    if not isinstance(detections, list):
+        raise TypeError(
+            f"Unsupported test detections type: {type(detections).__name__}"
+        )
+    if not detections:
+        return sv.Detections(
+            xyxy=np.empty((0, 4), dtype=np.float32),
+            confidence=np.empty((0,), dtype=np.float32),
+            class_id=np.empty((0,), dtype=np.int32),
+            data={"class_name": np.empty((0,), dtype=object)},
+        )
+    return sv.Detections(
+        xyxy=np.array(
+            [
+                [
+                    detection.bbox.x1,
+                    detection.bbox.y1,
+                    detection.bbox.x2,
+                    detection.bbox.y2,
+                ]
+                for detection in detections
+            ],
+            dtype=np.float32,
+        ),
+        confidence=np.array(
+            [detection.confidence for detection in detections],
+            dtype=np.float32,
+        ),
+        class_id=np.array(
+            [
+                detection.class_id if detection.class_id is not None else -1
+                for detection in detections
+            ],
+            dtype=np.int32,
+        ),
+        data={
+            "class_name": np.array(
+                [detection.class_name or "" for detection in detections],
+                dtype=object,
+            )
+        },
+    )
 
 
 def test_save_candidate_stages_crop_under_track_identity(tmp_path) -> None:
@@ -150,18 +207,18 @@ def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
 class FakeDetector:
     def __init__(
         self,
-        detections: list[Detection],
+        detections: object,
         diagnostics: dict[str, object] | None = None,
     ) -> None:
-        self.detections = detections
+        self.detections = _detections_to_sv(detections)
         self.diagnostics = diagnostics or {}
         self.received_batch_sizes: list[int] = []
 
-    def detect(self, frame) -> list[Detection]:
+    def detect(self, frame) -> sv.Detections:
         _ = frame
         return self.detections
 
-    def detect_batch(self, frames) -> list[list[Detection]]:
+    def detect_batch(self, frames) -> list[sv.Detections]:
         self.received_batch_sizes.append(len(frames))
         return [self.detect(frame) for frame in frames]
 
@@ -170,15 +227,17 @@ class FakeDetector:
 
 
 class SequenceFakeDetector(FakeDetector):
-    def __init__(self, detections_by_frame: list[list[Detection]]) -> None:
+    def __init__(self, detections_by_frame: list[object]) -> None:
         super().__init__([])
-        self.detections_by_frame = detections_by_frame
+        self.detections_by_frame = [
+            _detections_to_sv(detections) for detections in detections_by_frame
+        ]
         self.frame_index = 0
 
-    def detect(self, frame) -> list[Detection]:
+    def detect(self, frame) -> sv.Detections:
         _ = frame
         if self.frame_index >= len(self.detections_by_frame):
-            return []
+            return _detections_to_sv([])
         detections = self.detections_by_frame[self.frame_index]
         self.frame_index += 1
         return detections
@@ -187,11 +246,11 @@ class SequenceFakeDetector(FakeDetector):
 class FakeTrackerAdapter:
     def __init__(self, tracks: sv.Detections) -> None:
         self.tracks = tracks
-        self.received_detections: list[list[Detection]] = []
+        self.received_detections: list[sv.Detections] = []
         self.frame_rate: float | None = None
         self.drop_calls: list[set[int]] = []
 
-    def update(self, detections: list[Detection], frame) -> sv.Detections:
+    def update(self, detections: sv.Detections, frame) -> sv.Detections:
         _ = frame
         self.received_detections.append(detections)
         return self.tracks
@@ -205,7 +264,7 @@ class SequenceFakeTrackerAdapter(FakeTrackerAdapter):
         super().__init__(_empty_tracks())
         self.tracks_by_frame = tracks_by_frame
 
-    def update(self, detections: list[Detection], frame) -> sv.Detections:
+    def update(self, detections: sv.Detections, frame) -> sv.Detections:
         _ = frame
         self.received_detections.append(detections)
         index = len(self.received_detections) - 1
@@ -220,35 +279,41 @@ class DetectionDrivenTrackerAdapter(FakeTrackerAdapter):
         self.track_ids_by_update = track_ids_by_update
         self.dropped_track_ids: set[int] = set()
 
-    def update(self, detections: list[Detection], frame) -> sv.Detections:
+    def update(self, detections: sv.Detections, frame) -> sv.Detections:
         _ = frame
         self.received_detections.append(detections)
         index = len(self.received_detections) - 1
-        if not detections or index >= len(self.track_ids_by_update):
+        if len(detections) == 0 or index >= len(self.track_ids_by_update):
             return _empty_tracks()
         track_id = self.track_ids_by_update[index]
         if track_id in self.dropped_track_ids:
             return _empty_tracks()
-        detection = detections[0]
+        class_names = detections.data.get("class_name", []) if detections.data else []
         return sv.Detections(
-            xyxy=np.array(
+            xyxy=np.array([detections.xyxy[0]], dtype=np.float32),
+            confidence=np.array(
                 [
-                    [
-                        detection.bbox.x1,
-                        detection.bbox.y1,
-                        detection.bbox.x2,
-                        detection.bbox.y2,
-                    ]
+                    float(detections.confidence[0])
+                    if detections.confidence is not None
+                    else 0.0
                 ],
                 dtype=np.float32,
             ),
-            confidence=np.array([detection.confidence], dtype=np.float32),
             class_id=np.array(
-                [detection.class_id if detection.class_id is not None else -1],
+                [
+                    int(detections.class_id[0])
+                    if detections.class_id is not None
+                    else -1
+                ],
                 dtype=np.int32,
             ),
             tracker_id=np.array([track_id], dtype=np.int32),
-            data={"class_name": np.array([detection.class_name or ""], dtype=object)},
+            data={
+                "class_name": np.array(
+                    [str(class_names[0]) if len(class_names) else ""],
+                    dtype=object,
+                )
+            },
         )
 
     def drop_tracks(self, track_ids: Collection[int]) -> None:
@@ -261,32 +326,38 @@ class UnconfirmedThenConfirmedTrackerAdapter(FakeTrackerAdapter):
         super().__init__(_empty_tracks())
         self.unconfirmed_dropped = False
 
-    def update(self, detections: list[Detection], frame) -> sv.Detections:
+    def update(self, detections: sv.Detections, frame) -> sv.Detections:
         _ = frame
         self.received_detections.append(detections)
-        if self.unconfirmed_dropped or not detections:
+        if self.unconfirmed_dropped or len(detections) == 0:
             return _empty_tracks()
-        detection = detections[0]
         update_index = len(self.received_detections) - 1
+        class_names = detections.data.get("class_name", []) if detections.data else []
         return sv.Detections(
-            xyxy=np.array(
+            xyxy=np.array([detections.xyxy[0]], dtype=np.float32),
+            confidence=np.array(
                 [
-                    [
-                        detection.bbox.x1,
-                        detection.bbox.y1,
-                        detection.bbox.x2,
-                        detection.bbox.y2,
-                    ]
+                    float(detections.confidence[0])
+                    if detections.confidence is not None
+                    else 0.0
                 ],
                 dtype=np.float32,
             ),
-            confidence=np.array([detection.confidence], dtype=np.float32),
             class_id=np.array(
-                [detection.class_id if detection.class_id is not None else -1],
+                [
+                    int(detections.class_id[0])
+                    if detections.class_id is not None
+                    else -1
+                ],
                 dtype=np.int32,
             ),
             tracker_id=np.array([-1 if update_index == 0 else 7], dtype=np.int32),
-            data={"class_name": np.array([detection.class_name or ""], dtype=object)},
+            data={
+                "class_name": np.array(
+                    [str(class_names[0]) if len(class_names) else ""],
+                    dtype=object,
+                )
+            },
         )
 
     def drop_tracks(self, track_ids: Collection[int]) -> None:
@@ -434,7 +505,7 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
     )
 
     class OrderedTracker(FakeTrackerAdapter):
-        def update(self, detections: list[Detection], frame) -> sv.Detections:
+        def update(self, detections: sv.Detections, frame) -> sv.Detections:
             self.received_detections.append(detections)
             frame_value = int(frame[0, 0, 0])
             track_id = {40: 1, 80: 2, 120: 3}[frame_value]
@@ -583,7 +654,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observa
         [7],
     ]
     assert tracker.drop_calls == []
-    assert [detection.bbox for detection in tracker.received_detections[1]] == [
+    assert detection_bboxes(tracker.received_detections[1]) == [
         BBox(x1=0, y1=20, x2=60, y2=60)
     ]
     assert _read_detection_stats(store)["edge_observations_skipped"] == 1
@@ -767,7 +838,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_obser
         [7],
     ]
     assert tracker.drop_calls == []
-    assert [detection.bbox for detection in tracker.received_detections[1]] == [
+    assert detection_bboxes(tracker.received_detections[1]) == [
         BBox(x1=10, y1=30, x2=60, y2=60)
     ]
 
@@ -827,7 +898,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observ
         [7],
     ]
     assert tracker.drop_calls == []
-    assert [detection.bbox for detection in tracker.received_detections[1]] == [
+    assert detection_bboxes(tracker.received_detections[1]) == [
         BBox(x1=48, y1=18, x2=56, y2=28)
     ]
 
@@ -1025,7 +1096,7 @@ def test_analyze_no_longer_filters_edge_detections_before_tracker(
 
     records = _read_frame_records(store.frames_path)
     assert records[0].tracks == []
-    assert [detection.bbox for detection in tracker.received_detections[0]] == [
+    assert detection_bboxes(tracker.received_detections[0]) == [
         BBox(x1=48, y1=18, x2=56, y2=28)
     ]
     assert tracker.drop_calls == []

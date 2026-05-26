@@ -10,6 +10,7 @@ import supervision as sv
 from config import AppConfig
 from detectors import rfdetr_local
 from detectors.rfdetr_local import RfDetrSmallDetector
+from pipeline.detections import class_names, detection_bboxes
 
 
 class FakeRfDetrSmall:
@@ -70,7 +71,8 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
     detections = detector.detect_batch([image])
 
     assert len(detections) == 1
-    assert detections[0][0].class_name == "car"
+    assert isinstance(detections[0], sv.Detections)
+    assert class_names(detections[0]) == ["car"]
     call = FakeRfDetrSmall.calls[0]
     assert call["kwargs"] == {
         "threshold": 0.42,
@@ -92,7 +94,8 @@ def test_detect_delegates_to_single_item_batch() -> None:
     detections = detector.detect(np.zeros((24, 32, 3), dtype=np.uint8))
 
     assert len(detections) == 1
-    assert detections[0].bbox.x1 == 1
+    assert isinstance(detections, sv.Detections)
+    assert detection_bboxes(detections)[0].x1 == 1
 
 
 def test_detect_batch_filters_to_allowed_class_names() -> None:
@@ -108,7 +111,7 @@ def test_detect_batch_filters_to_allowed_class_names() -> None:
 
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
-    assert [detection.class_name for detection in detections[0]] == ["car"]
+    assert class_names(detections[0]) == ["car"]
 
 
 def test_detect_batch_preserves_multi_image_prediction_order() -> None:
@@ -137,8 +140,10 @@ def test_detect_batch_preserves_multi_image_prediction_order() -> None:
     assert len(FakeRfDetrSmall.calls) == 1
     assert len(FakeRfDetrSmall.calls[0]["images"]) == 2
     assert len(detections) == 2
-    assert detections[0][0].bbox.x1 == 1
-    assert detections[1][0].bbox.x1 == 3
+    assert isinstance(detections[0], sv.Detections)
+    assert isinstance(detections[1], sv.Detections)
+    assert detection_bboxes(detections[0])[0].x1 == 1
+    assert detection_bboxes(detections[1])[0].x1 == 3
 
 
 def test_detect_batch_falls_back_to_model_class_names() -> None:
@@ -153,7 +158,7 @@ def test_detect_batch_falls_back_to_model_class_names() -> None:
 
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
-    assert [detection.class_name for detection in detections[0]] == ["car"]
+    assert class_names(detections[0]) == ["car"]
 
 
 def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
@@ -170,7 +175,7 @@ def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
     assert len(detections[0]) == 1
-    assert detections[0][0].bbox.model_dump() == {
+    assert detection_bboxes(detections[0])[0].model_dump() == {
         "x1": 0.0,
         "y1": 0.0,
         "x2": 31.0,

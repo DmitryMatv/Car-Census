@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
+import supervision as sv
 
 from config import CameraProfile
 from detectors.base import Detector
-from models import Detection
-from roi.geometry import crop_to_polygon, map_bbox_to_global
+from pipeline.detections import map_detections_to_global as _map_detections_to_global
+from roi.geometry import crop_to_polygon
 from utils.video import iter_sampled_frames
 
 SampledFramesFunc = Callable[
@@ -65,7 +66,7 @@ def iter_detected_sampled_frames(
     profile: CameraProfile,
     batch_size: int,
     iter_sampled_frames_func: SampledFramesFunc = iter_sampled_frames,
-) -> Iterator[tuple[SampledFrame, list[Detection]]]:
+) -> Iterator[tuple[SampledFrame, sv.Detections]]:
     for batch in iter_sampled_frame_batches(
         video_path=video_path,
         source_fps=source_fps,
@@ -84,12 +85,7 @@ def iter_detected_sampled_frames(
 
 
 def map_detections_to_global(
-    detections: Sequence[Detection],
+    detections: sv.Detections,
     offset: tuple[int, int],
-) -> list[Detection]:
-    return [
-        detection.model_copy(
-            update={"bbox": map_bbox_to_global(detection.bbox, offset)}
-        )
-        for detection in detections
-    ]
+) -> sv.Detections:
+    return _map_detections_to_global(detections, offset)

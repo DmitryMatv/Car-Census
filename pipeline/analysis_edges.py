@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC
 
+import supervision as sv
+
 from config import AppConfig, CameraProfile
-from models import BBox, Detection
+from models import BBox
+from pipeline.detections import detection_bboxes
 from roi.geometry import (
     bbox_touches_frame_edge,
     bbox_touches_polygon_edge,
@@ -78,7 +81,7 @@ class EdgeSuppression:
 
     def detection_edge_bboxes(
         self,
-        detections: SequenceABC[Detection],
+        detections: sv.Detections,
         *,
         frame_shape: tuple[int, int, int],
         roi_shape: tuple[int, int, int],
@@ -87,10 +90,10 @@ class EdgeSuppression:
         if not self.config.tracker.ignore_edge_touches:
             return []
         return [
-            detection.bbox
-            for detection in detections
+            bbox
+            for bbox in detection_bboxes(detections)
             if self.track_touches_suppression_edge(
-                bbox=detection.bbox,
+                bbox=bbox,
                 frame_shape=frame_shape,
                 roi_shape=roi_shape,
                 roi_offset=roi_offset,

@@ -4,7 +4,6 @@ import supervision as sv
 from trackers import BoTSORTTracker
 
 from config import AppConfig
-from models import BBox, Detection
 from tracking_adapters.botsort import (
     BotSortAdapter,
     _create_botsort_tracker,
@@ -50,10 +49,17 @@ def test_botsort_adapter_calls_tracker_for_empty_detections() -> None:
     frame = np.zeros((10, 20, 3), dtype=np.uint8)
     fake_tracker = FakeTracker(_empty_tracks())
     adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
+    detections = sv.Detections(
+        xyxy=np.empty((0, 4), dtype=np.float32),
+        confidence=np.empty((0,), dtype=np.float32),
+        class_id=np.empty((0,), dtype=np.int32),
+        data={"class_name": np.empty((0,), dtype=object)},
+    )
 
-    tracked = adapter.update([], frame)
+    tracked = adapter.update(detections, frame)
 
     sent_detections = fake_tracker.calls[0][0]
+    assert sent_detections is detections
     assert len(sent_detections) == 0
     assert sent_detections.xyxy.shape == (0, 4)
     assert sent_detections.confidence is not None
@@ -64,47 +70,21 @@ def test_botsort_adapter_calls_tracker_for_empty_detections() -> None:
     assert tracked.tracker_id is not None
 
 
-def test_botsort_adapter_converts_detections_to_supervision() -> None:
+def test_botsort_adapter_passes_detections_to_tracker() -> None:
     frame = np.zeros((10, 20, 3), dtype=np.uint8)
     fake_tracker = FakeTracker(_empty_tracks())
     adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
-    detections = [
-        Detection(
-            bbox=BBox(x1=1, y1=2, x2=11, y2=12),
-            confidence=0.88,
-            class_id=2,
-            class_name="car",
-        )
-    ]
-
-    adapter.update(detections, frame)
-
-    sent_detections = fake_tracker.calls[0][0]
-    np.testing.assert_allclose(
-        sent_detections.xyxy,
-        np.array([[1, 2, 11, 12]], dtype=np.float32),
+    detections = sv.Detections(
+        xyxy=np.array([[1, 2, 11, 12]], dtype=np.float32),
+        confidence=np.array([0.88], dtype=np.float32),
+        class_id=np.array([2], dtype=np.int32),
+        data={"class_name": np.array(["car"], dtype=object)},
     )
-    assert sent_detections.confidence.tolist() == pytest.approx([0.88])
-    assert sent_detections.class_id.tolist() == [2]
-    assert sent_detections.data["class_name"].tolist() == ["car"]
-
-
-def test_botsort_adapter_handles_missing_class_id_and_class_name() -> None:
-    frame = np.zeros((10, 20, 3), dtype=np.uint8)
-    fake_tracker = FakeTracker(_empty_tracks())
-    adapter = BotSortAdapter(AppConfig(), tracker=fake_tracker)
-    detections = [
-        Detection(
-            bbox=BBox(x1=1, y1=2, x2=11, y2=12),
-            confidence=0.88,
-        )
-    ]
 
     adapter.update(detections, frame)
 
     sent_detections = fake_tracker.calls[0][0]
-    assert sent_detections.class_id.tolist() == [-1]
-    assert sent_detections.data["class_name"].tolist() == [""]
+    assert sent_detections is detections
 
 
 def test_botsort_adapter_drop_tracks_removes_matching_internal_tracklets() -> None:
