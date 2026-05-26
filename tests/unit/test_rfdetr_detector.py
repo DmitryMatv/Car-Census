@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -16,6 +17,8 @@ from pipeline.detections import class_names, detection_bboxes
 class FakeRfDetrSmall:
     class_names = {2: "car", 3: "motorcycle", 7: "truck"}
     calls: list[dict[str, Any]] = []
+    default_model_device: object = "cpu"
+    optimize_calls: list[dict[str, Any]] = []
     predictions: object = []
 
     def __init__(
@@ -27,6 +30,12 @@ class FakeRfDetrSmall:
         self.pretrain_weights = pretrain_weights
         self.resolution = resolution
         self.device = device
+        self.model = SimpleNamespace(
+            device=device if device is not None else self.default_model_device
+        )
+
+    def optimize_for_inference(self, **kwargs: Any) -> None:
+        self.optimize_calls.append(kwargs)
 
     def predict(self, images: list[np.ndarray], **kwargs: Any) -> object:
         self.calls.append({"images": images, "kwargs": kwargs})
@@ -36,6 +45,8 @@ class FakeRfDetrSmall:
 @pytest.fixture(autouse=True)
 def fake_model(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeRfDetrSmall.calls = []
+    FakeRfDetrSmall.default_model_device = "cpu"
+    FakeRfDetrSmall.optimize_calls = []
     FakeRfDetrSmall.predictions = []
     monkeypatch.setattr(rfdetr_local, "_load_rfdetr_small", lambda: FakeRfDetrSmall)
 
@@ -93,6 +104,81 @@ def test_detector_passes_configured_cpu_device_to_rfdetr() -> None:
     detector = RfDetrSmallDetector(config=config, project_root=Path("."))
 
     assert detector.model.device == "cpu"
+
+
+def test_detector_optimizes_cuda_auto_dtype_as_float16() -> None:
+    config = AppConfig.model_validate({"detector": {"device": "cuda"}})
+
+    RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [{"compile": False, "dtype": "float16"}]
+
+
+def test_detector_optimizes_cpu_auto_dtype_as_float32() -> None:
+    config = AppConfig.model_validate({"detector": {"device": "cpu"}})
+
+    RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [{"compile": False, "dtype": "float32"}]
+
+
+def test_detector_uses_cuda_fallback_when_model_device_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    FakeRfDetrSmall.default_model_device = None
+    monkeypatch.setattr(rfdetr_local, "_cuda_is_available", lambda: True)
+
+    RfDetrSmallDetector(config=AppConfig(), project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [{"compile": False, "dtype": "float16"}]
+    assert "using float16 because CUDA is available" in caplog.text
+
+
+def test_detector_uses_float32_fallback_when_model_device_and_cuda_are_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    FakeRfDetrSmall.default_model_device = None
+    monkeypatch.setattr(rfdetr_local, "_cuda_is_available", lambda: False)
+
+    RfDetrSmallDetector(config=AppConfig(), project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [{"compile": False, "dtype": "float32"}]
+    assert "using float32 because CUDA is not available" in caplog.text
+
+
+def test_detector_skips_optimization_when_disabled() -> None:
+    config = AppConfig.model_validate({"detector": {"optimize_for_inference": False}})
+
+    RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == []
+
+
+def test_detector_uses_explicit_inference_dtype() -> None:
+    config = AppConfig.model_validate(
+        {"detector": {"device": "cpu", "inference_dtype": "float16"}}
+    )
+
+    RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [{"compile": False, "dtype": "float16"}]
+
+
+def test_detector_passes_batch_size_only_when_compiling_for_inference() -> None:
+    config = AppConfig.model_validate(
+        {
+            "analysis": {"batch_size": 8, "detector_batch_size": 3},
+            "detector": {"compile_for_inference": True},
+        }
+    )
+
+    RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert FakeRfDetrSmall.optimize_calls == [
+        {"compile": True, "dtype": "float32", "batch_size": 3}
+    ]
 
 
 def test_detect_delegates_to_single_item_batch() -> None:
@@ -249,6 +335,9 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
         "model": "rfdetr-small",
         "input_size": 512,
         "runtime": "rfdetr",
+        "optimized_for_inference": True,
+        "inference_dtype": "float32",
+        "compiled_for_inference": False,
     }
 
 

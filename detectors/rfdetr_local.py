@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -13,6 +14,8 @@ from config import AppConfig
 from detectors.base import Detector
 from pipeline.analysis_diagnostics import CONFIDENCE_BINS, HistogramAccumulator
 from pipeline.detections import class_names, clip_detections_to_shape, clone_detections
+
+logger = logging.getLogger(__name__)
 
 
 def _load_rfdetr_small() -> type[Any]:
@@ -32,6 +35,33 @@ def _coerce_class_names(raw: object) -> dict[int, str]:
     if isinstance(raw, Sequence) and not isinstance(raw, str):
         return {index: str(name).lower() for index, name in enumerate(raw)}
     return {}
+
+
+def _cuda_is_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+    return torch.cuda.is_available()
+
+
+def _resolved_inference_dtype(configured_dtype: str, device: object) -> str:
+    if configured_dtype != "auto":
+        return configured_dtype
+    if getattr(device, "type", None) == "cuda" or str(device).startswith("cuda"):
+        return "float16"
+    if device is None:
+        if _cuda_is_available():
+            logger.warning(
+                "RF-DETR model device was unavailable while resolving auto "
+                "inference dtype; using float16 because CUDA is available."
+            )
+            return "float16"
+        logger.warning(
+            "RF-DETR model device was unavailable while resolving auto "
+            "inference dtype; using float32 because CUDA is not available."
+        )
+    return "float32"
 
 
 class RfDetrSmallDetector(Detector):
@@ -61,6 +91,20 @@ class RfDetrSmallDetector(Detector):
                 )
             self.model = model_class(pretrain_weights=str(weights_path), **model_kwargs)
         self.class_names = _coerce_class_names(getattr(self.model, "class_names", {}))
+        self._inference_dtype = _resolved_inference_dtype(
+            config.detector.inference_dtype,
+            getattr(getattr(self.model, "model", None), "device", None),
+        )
+        if config.detector.optimize_for_inference:
+            optimize_kwargs: dict[str, object] = {
+                "compile": config.detector.compile_for_inference,
+                "dtype": self._inference_dtype,
+            }
+            if config.detector.compile_for_inference:
+                optimize_kwargs["batch_size"] = (
+                    config.analysis.detector_batch_size or config.analysis.batch_size
+                )
+            self.model.optimize_for_inference(**optimize_kwargs)
 
     def detect(self, image: np.ndarray) -> sv.Detections:
         return self.detect_batch([image])[0]
@@ -93,6 +137,9 @@ class RfDetrSmallDetector(Detector):
             "model": "rfdetr-small",
             "input_size": self.input_size,
             "runtime": "rfdetr",
+            "optimized_for_inference": self.config.detector.optimize_for_inference,
+            "inference_dtype": self._inference_dtype,
+            "compiled_for_inference": self.config.detector.compile_for_inference,
         }
 
     @staticmethod

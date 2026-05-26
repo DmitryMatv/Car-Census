@@ -106,7 +106,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
-    assert config.analysis.detector_batch_size == 4
+    assert config.analysis.detector_batch_size == 32
     assert config.analysis.min_track_frames == 6
     assert config.analysis.min_box_height_px == 160
     assert config.detector.model == "rfdetr-small"
@@ -115,6 +115,9 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.allowed_class_names == ["car"]
     assert config.detector.pretrain_weights is None
     assert config.detector.include_source_image is False
+    assert config.detector.optimize_for_inference is True
+    assert config.detector.inference_dtype == "auto"
+    assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_first_assoc == 0.08
@@ -162,6 +165,9 @@ def test_detector_config_accepts_rfdetr_options() -> None:
                 "allowed_class_names": ["car", "truck"],
                 "pretrain_weights": "weights/rfdetr-small.pth",
                 "include_source_image": True,
+                "optimize_for_inference": False,
+                "inference_dtype": "float16",
+                "compile_for_inference": True,
             }
         }
     )
@@ -172,6 +178,20 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     assert config.detector.allowed_class_names == ["car", "truck"]
     assert config.detector.pretrain_weights == "weights/rfdetr-small.pth"
     assert config.detector.include_source_image is True
+    assert config.detector.optimize_for_inference is False
+    assert config.detector.inference_dtype == "float16"
+    assert config.detector.compile_for_inference is True
+
+
+def test_detector_config_accepts_explicit_float32_inference_dtype() -> None:
+    config = AppConfig.model_validate({"detector": {"inference_dtype": "float32"}})
+
+    assert config.detector.inference_dtype == "float32"
+
+
+def test_detector_config_rejects_invalid_inference_dtype() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"inference_dtype": "bfloat16"}})
 
 
 def test_detector_config_rejects_removed_provider_key() -> None:

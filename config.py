@@ -42,6 +42,9 @@ class DetectorConfig(StrictBaseModel):
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
     pretrain_weights: str | None = None
     include_source_image: bool = False
+    optimize_for_inference: bool = True
+    inference_dtype: Literal["auto", "float32", "float16"] = "auto"
+    compile_for_inference: bool = False
 
 
 class TrackerConfig(StrictBaseModel):
