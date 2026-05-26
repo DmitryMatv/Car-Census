@@ -5,6 +5,7 @@ from typing import Self
 import cv2
 import numpy as np
 import orjson
+import pytest
 
 from config import AppConfig
 from mmr.trafficeye import (
@@ -13,7 +14,125 @@ from mmr.trafficeye import (
     parse_mmr_results,
     parse_mmr_results_by_combination,
 )
+from mmr.trafficeye_batch_grid import (
+    BatchCell,
+    batch_request_payload,
+    build_batch_image,
+    decode_image,
+    match_batch_results,
+)
+from mmr.trafficeye_cache import hash_request
 from models import BBox
+
+
+def test_hash_request_is_stable_for_same_image_and_payload() -> None:
+    payload = {"tasks": ["MMR"], "mmrPreference": "BOX"}
+
+    first = hash_request(b"image-bytes", payload)
+    second = hash_request(b"image-bytes", payload)
+
+    assert first == second
+
+
+def test_batch_request_payload_uses_content_boxes(tmp_path) -> None:
+    cells = [
+        BatchCell(
+            index=0,
+            source_image=tmp_path / "crop.jpg",
+            cell_box=BBox(x1=0, y1=0, x2=100, y2=100),
+            content_box=BBox(x1=10, y1=20, x2=90, y2=80),
+        )
+    ]
+
+    request = batch_request_payload(cells, mmr_preference="BOX")
+
+    assert request["tasks"] == ["MMR"]
+    assert request["mmrPreference"] == "BOX"
+    assert request["combinations"][0]["roadUsers"][0]["box"]["position"] == {
+        "topLeftCol": 10,
+        "topLeftRow": 20,
+        "bottomRightCol": 90,
+        "bottomRightRow": 80,
+    }
+
+
+def test_decode_image_raises_for_invalid_image_bytes(tmp_path) -> None:
+    image_path = tmp_path / "bad.jpg"
+
+    with pytest.raises(RuntimeError, match="Could not decode crop for MMR request"):
+        decode_image(b"not-an-image", image_path)
+
+
+def test_build_batch_image_rejects_empty_image_paths() -> None:
+    with pytest.raises(ValueError, match="image_paths cannot be empty"):
+        build_batch_image([], columns=1, cell_size_px=100, jpeg_quality=95)
+
+
+def test_build_batch_image_rejects_nonpositive_columns(tmp_path) -> None:
+    image_path = tmp_path / "crop.jpg"
+
+    with pytest.raises(ValueError, match="columns must be positive, got 0"):
+        build_batch_image([image_path], columns=0, cell_size_px=100, jpeg_quality=95)
+
+
+def test_build_batch_image_rejects_nonpositive_cell_size(tmp_path) -> None:
+    image_path = tmp_path / "crop.jpg"
+
+    with pytest.raises(ValueError, match="cell_size_px must be positive, got 0"):
+        build_batch_image([image_path], columns=1, cell_size_px=0, jpeg_quality=95)
+
+
+def test_match_batch_results_prefers_combination_order_before_box_fallback(
+    tmp_path,
+) -> None:
+    cells = [
+        BatchCell(
+            index=0,
+            source_image=tmp_path / "first.jpg",
+            cell_box=BBox(x1=0, y1=0, x2=100, y2=100),
+            content_box=BBox(x1=0, y1=0, x2=100, y2=100),
+        ),
+        BatchCell(
+            index=1,
+            source_image=tmp_path / "second.jpg",
+            cell_box=BBox(x1=100, y1=0, x2=200, y2=100),
+            content_box=BBox(x1=100, y1=0, x2=200, y2=100),
+        ),
+    ]
+    payload = {
+        "combinations": [
+            {
+                "roadUsers": [
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 130,
+                                "topLeftRow": 10,
+                                "bottomRightCol": 190,
+                                "bottomRightRow": 90,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Toyota", "score": 0.9},
+                            "model": {"value": "Corolla", "score": 0.8},
+                        },
+                    }
+                ]
+            },
+            {"roadUsers": []},
+        ]
+    }
+
+    results = match_batch_results(
+        payload, cells, tmp_path / "batch.jpg", lambda result: result
+    )
+
+    assert [result.make for result in results] == ["Toyota", None]
+    assert [result.source_image for result in results] == [
+        tmp_path / "first.jpg",
+        tmp_path / "second.jpg",
+    ]
+    assert results[1].raw["skipped_reason"] == "batch_no_mmr_result"
 
 
 def test_parse_mmr_response_reads_largest_detected_road_user() -> None:

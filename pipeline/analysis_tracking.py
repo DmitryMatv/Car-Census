@@ -52,6 +52,55 @@ class TrackUpdateResult:
     counted_events: list[CountEvent] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class TrackObservation:
+    index: int
+    track_id: int
+    bbox: BBox
+    confidence: float
+    class_id: int | None
+    class_name: str | None
+    bottom_center: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class CountUpdate:
+    counted_event: CountEvent | None
+    crossed_line: bool
+
+
+def _tracker_confidences(tracked: sv.Detections) -> list[float]:
+    if tracked.confidence is None:
+        return [0.0] * len(tracked.xyxy)
+    return [float(value) for value in tracked.confidence.tolist()]
+
+
+def _iter_track_observations(tracked: sv.Detections) -> list[TrackObservation]:
+    tracker_ids = tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
+    class_ids = tracked.class_id.tolist() if tracked.class_id is not None else []
+    class_names = tracked.data.get("class_name", []) if tracked.data else []
+    confidences = _tracker_confidences(tracked)
+
+    observations: list[TrackObservation] = []
+    for index, xyxy in enumerate(tracked.xyxy.tolist()):
+        track_id = int(tracker_ids[index]) if index < len(tracker_ids) else -1
+        bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
+        observations.append(
+            TrackObservation(
+                index=index,
+                track_id=track_id,
+                bbox=bbox,
+                confidence=confidences[index],
+                class_id=int(class_ids[index]) if index < len(class_ids) else None,
+                class_name=(
+                    str(class_names[index]) if index < len(class_names) else None
+                ),
+                bottom_center=bbox.bottom_center,
+            )
+        )
+    return observations
+
+
 class TrackStateUpdater:
     def __init__(
         self,
@@ -95,133 +144,48 @@ class TrackStateUpdater:
         self.diagnostics.tracker_outputs += len(tracked.xyxy)
         frame_tracks: list[TrackedObject] = []
         counted_events: list[CountEvent] = []
-        tracker_ids = (
-            tracked.tracker_id.tolist() if tracked.tracker_id is not None else []
-        )
-        class_ids = (
-            tracked.class_id.tolist()
-            if tracked.class_id is not None
-            else [-1] * len(tracked.xyxy)
-        )
-        class_names = tracked.data.get("class_name", []) if tracked.data else []
-        confidences = (
-            tracked.confidence.tolist()
-            if tracked.confidence is not None
-            else [0.0] * len(tracked.xyxy)
-        )
+        confidences = _tracker_confidences(tracked)
         self.diagnostics.tracker_confidence_histogram.extend(
-            float(value) for value in confidences
+            value for value in confidences
         )
 
-        for index, xyxy in enumerate(tracked.xyxy.tolist()):
-            track_id = int(tracker_ids[index]) if index < len(tracker_ids) else -1
-            bbox = BBox(x1=xyxy[0], y1=xyxy[1], x2=xyxy[2], y2=xyxy[3])
-            touches_suppression_edge = (
-                self.edge_suppression.should_skip_track_observation(
-                    bbox=bbox,
-                    edge_detection_bboxes=edge_detection_bboxes,
-                    frame_shape=frame_input.frame.shape,
-                    roi_shape=frame_input.roi_frame.shape,
-                    roi_offset=frame_input.roi_offset,
-                )
+        for observation in _iter_track_observations(tracked):
+            touches_suppression_edge = self._should_skip_observation(
+                observation, frame_input, edge_detection_bboxes
             )
-            if track_id < 0:
+            if observation.track_id < 0:
                 if touches_suppression_edge:
                     self.diagnostics.edge_observations_skipped += 1
                 continue
-            state = self._track_states.get(track_id)
             if touches_suppression_edge:
                 self.diagnostics.edge_observations_skipped += 1
                 self.diagnostics.tracks_discarded_edge_contact += 1
                 continue
 
-            bottom_center = bbox.bottom_center
-            self.diagnostics.tracker_box_height_histogram.observe(bbox.height)
-            inside_roi = point_in_polygon(bottom_center, self.profile.polygon.points)
-            confidence = float(confidences[index])
-            class_id = int(class_ids[index]) if index < len(class_ids) else None
-            class_name = str(class_names[index]) if index < len(class_names) else None
-
-            if state is None:
-                state = MutableTrackState(
-                    track_id=track_id,
-                    first_frame_index=frame_input.frame_index,
-                    last_frame_index=frame_input.frame_index,
-                )
-                self._track_states[track_id] = state
-
-            crossed_direction = None
-            if self._count_line is None:
-                if inside_roi and not state.counted:
-                    state.counted = True
-            elif state.previous_bottom_center is not None:
-                assert self._line_start is not None
-                assert self._line_end is not None
-                crossed_direction = line_crossing_direction(
-                    previous_point=state.previous_bottom_center,
-                    current_point=bottom_center,
-                    line_start=self._line_start,
-                    line_end=self._line_end,
-                )
-
-            crossed_line = False
-            if (
-                self._count_line is not None
-                and crossed_direction is not None
-                and (
-                    self._count_line.direction == "BOTH"
-                    or crossed_direction == self._count_line.direction
-                )
-                and not state.counted
-                and inside_roi
-            ):
-                state.counted = True
-                state.count_event = CountEvent(
-                    track_id=track_id,
-                    frame_index=frame_input.frame_index,
-                    timestamp_seconds=frame_input.timestamp_seconds,
-                    direction=crossed_direction,
-                )
-                counted_events.append(state.count_event)
-                crossed_line = True
-
-            state.frames_seen += 1
-            state.last_frame_index = frame_input.frame_index
-            state.min_box_height_px = (
-                bbox.height
-                if state.min_box_height_px is None
-                else min(state.min_box_height_px, bbox.height)
+            self.diagnostics.tracker_box_height_histogram.observe(
+                observation.bbox.height
             )
-            state.max_box_height_px = max(state.max_box_height_px, bbox.height)
-            state.previous_bottom_center = bottom_center
+            inside_roi = point_in_polygon(
+                observation.bottom_center, self.profile.polygon.points
+            )
+            state = self._get_or_create_state(observation, frame_input)
+            count_update = self._update_count_state(
+                state, observation, frame_input, inside_roi
+            )
+            if count_update.counted_event is not None:
+                counted_events.append(count_update.counted_event)
 
-            self.crop_selector.maybe_save_candidate(
-                track_state=state,
-                frame=frame_input.frame,
-                bbox=bbox,
-                frame_index=frame_input.frame_index,
-                timestamp_seconds=frame_input.timestamp_seconds,
+            self._update_track_metrics(state, observation, frame_input.frame_index)
+            self._update_crop_state(state, observation, frame_input)
+            frame_tracks.append(
+                self._build_tracked_object(
+                    state,
+                    observation,
+                    frame_input,
+                    inside_roi,
+                    count_update.crossed_line,
+                )
             )
-
-            render_bbox = self.crop_selector.render_bbox_for_track(
-                bbox, frame_input.frame.shape
-            )
-            tracked_object = TrackedObject(
-                track_id=track_id,
-                vehicle_index=None,
-                frame_index=frame_input.frame_index,
-                timestamp_seconds=frame_input.timestamp_seconds,
-                bbox=render_bbox,
-                confidence=confidence,
-                class_id=class_id,
-                class_name=class_name,
-                centroid=render_bbox.center,
-                bottom_center=render_bbox.bottom_center,
-                inside_roi=inside_roi,
-                counted=state.counted,
-                crossed_line=crossed_line,
-            )
-            frame_tracks.append(tracked_object)
 
         return TrackUpdateResult(
             frame_record=FrameRecord(
@@ -230,6 +194,134 @@ class TrackStateUpdater:
                 tracks=frame_tracks,
             ),
             counted_events=counted_events,
+        )
+
+    def _should_skip_observation(
+        self,
+        observation: TrackObservation,
+        frame_input: FrameTrackingInput,
+        edge_detection_bboxes: SequenceABC[BBox],
+    ) -> bool:
+        return self.edge_suppression.should_skip_track_observation(
+            bbox=observation.bbox,
+            edge_detection_bboxes=edge_detection_bboxes,
+            frame_shape=frame_input.frame.shape,
+            roi_shape=frame_input.roi_frame.shape,
+            roi_offset=frame_input.roi_offset,
+        )
+
+    def _get_or_create_state(
+        self, observation: TrackObservation, frame_input: FrameTrackingInput
+    ) -> MutableTrackState:
+        state = self._track_states.get(observation.track_id)
+        if state is not None:
+            return state
+
+        state = MutableTrackState(
+            track_id=observation.track_id,
+            first_frame_index=frame_input.frame_index,
+            last_frame_index=frame_input.frame_index,
+        )
+        self._track_states[observation.track_id] = state
+        return state
+
+    def _update_count_state(
+        self,
+        state: MutableTrackState,
+        observation: TrackObservation,
+        frame_input: FrameTrackingInput,
+        inside_roi: bool,
+    ) -> CountUpdate:
+        crossed_direction = None
+        if self._count_line is None:
+            if inside_roi and not state.counted:
+                state.counted = True
+        elif state.previous_bottom_center is not None:
+            assert self._line_start is not None
+            assert self._line_end is not None
+            crossed_direction = line_crossing_direction(
+                previous_point=state.previous_bottom_center,
+                current_point=observation.bottom_center,
+                line_start=self._line_start,
+                line_end=self._line_end,
+            )
+
+        if (
+            self._count_line is not None
+            and crossed_direction is not None
+            and (
+                self._count_line.direction == "BOTH"
+                or crossed_direction == self._count_line.direction
+            )
+            and not state.counted
+            and inside_roi
+        ):
+            state.counted = True
+            state.count_event = CountEvent(
+                track_id=observation.track_id,
+                frame_index=frame_input.frame_index,
+                timestamp_seconds=frame_input.timestamp_seconds,
+                direction=crossed_direction,
+            )
+            return CountUpdate(counted_event=state.count_event, crossed_line=True)
+
+        return CountUpdate(counted_event=None, crossed_line=False)
+
+    def _update_track_metrics(
+        self,
+        state: MutableTrackState,
+        observation: TrackObservation,
+        frame_index: int,
+    ) -> None:
+        state.frames_seen += 1
+        state.last_frame_index = frame_index
+        state.min_box_height_px = (
+            observation.bbox.height
+            if state.min_box_height_px is None
+            else min(state.min_box_height_px, observation.bbox.height)
+        )
+        state.max_box_height_px = max(state.max_box_height_px, observation.bbox.height)
+        state.previous_bottom_center = observation.bottom_center
+
+    def _update_crop_state(
+        self,
+        state: MutableTrackState,
+        observation: TrackObservation,
+        frame_input: FrameTrackingInput,
+    ) -> None:
+        self.crop_selector.maybe_save_candidate(
+            track_state=state,
+            frame=frame_input.frame,
+            bbox=observation.bbox,
+            frame_index=frame_input.frame_index,
+            timestamp_seconds=frame_input.timestamp_seconds,
+        )
+
+    def _build_tracked_object(
+        self,
+        state: MutableTrackState,
+        observation: TrackObservation,
+        frame_input: FrameTrackingInput,
+        inside_roi: bool,
+        crossed_line: bool,
+    ) -> TrackedObject:
+        render_bbox = self.crop_selector.render_bbox_for_track(
+            observation.bbox, frame_input.frame.shape
+        )
+        return TrackedObject(
+            track_id=observation.track_id,
+            vehicle_index=None,
+            frame_index=frame_input.frame_index,
+            timestamp_seconds=frame_input.timestamp_seconds,
+            bbox=render_bbox,
+            confidence=observation.confidence,
+            class_id=observation.class_id,
+            class_name=observation.class_name,
+            centroid=render_bbox.center,
+            bottom_center=render_bbox.bottom_center,
+            inside_roi=inside_roi,
+            counted=state.counted,
+            crossed_line=crossed_line,
         )
 
     def sorted_track_states(self) -> list[MutableTrackState]:

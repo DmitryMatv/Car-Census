@@ -12,7 +12,7 @@ from config import AppConfig, CameraProfile, PolygonZoneConfig
 from models import BBox, FrameRecord
 from pipeline import analyze as analyze_module
 from pipeline.analysis_crops import render_bbox_for_track, save_candidate
-from pipeline.analysis_tracking import MutableTrackState
+from pipeline.analysis_tracking import MutableTrackState, _iter_track_observations
 from pipeline.analyze import analyze_video
 from pipeline.detections import detection_bboxes
 from pipeline.vehicles import staged_track_crop_dir
@@ -381,6 +381,21 @@ def _single_track(bbox: BBox) -> sv.Detections:
         tracker_id=np.array([7], dtype=np.int32),
         data={"class_name": np.array(["car"], dtype=object)},
     )
+
+
+def test_iter_track_observations_uses_missing_field_fallbacks() -> None:
+    tracked = sv.Detections(
+        xyxy=np.array([[10, 20, 30, 40]], dtype=np.float32),
+    )
+
+    observations = _iter_track_observations(tracked)
+
+    assert len(observations) == 1
+    assert observations[0].track_id == -1
+    assert observations[0].confidence == 0.0
+    assert observations[0].class_id is None
+    assert observations[0].class_name is None
+    assert observations[0].bbox == BBox(x1=10, y1=20, x2=30, y2=40)
 
 
 def _profile_with_slanted_polygon() -> CameraProfile:
