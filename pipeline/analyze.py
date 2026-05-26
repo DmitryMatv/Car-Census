@@ -1,45 +1,21 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-
-import supervision as sv
 
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
 from detectors.factory import create_detector
 from models import RunManifest
-from pipeline.analysis_crops import (
-    CropCandidateSelector,
-    candidate_rank,
-    candidate_target_score,
-    expand_crop_bbox,
-    refresh_candidate_score,
-    render_bbox_for_track,
-    save_candidate,
-    score_candidate,
-)
+from pipeline.analysis_crops import CropCandidateSelector
 from pipeline.analysis_diagnostics import (
     AnalysisDiagnostics,
     analysis_diagnostics_payload,
-    detector_diagnostics,
-    diagnostic_count,
-    diagnostic_float_values,
-    histogram,
 )
-from pipeline.analysis_edges import (
-    EdgeSuppression,
-    bbox_contains_point,
-    bbox_intersection_area,
-    bbox_iou,
-    track_matches_edge_detection,
-    track_touches_suppression_edge,
-)
+from pipeline.analysis_edges import EdgeSuppression
 from pipeline.analysis_frames import (
-    SampledFrame,
     iter_detected_sampled_frames,
-    iter_sampled_frame_batches,
     map_detections_to_global,
 )
 from pipeline.analysis_tracking import (
@@ -57,66 +33,6 @@ from tracking_adapters.botsort import BotSortAdapter
 from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
 
 logger = logging.getLogger(__name__)
-
-
-# Compatibility exports for tests and any internal callers that imported the old
-# private helpers from this module before the extraction.
-_SampledFrame = SampledFrame
-_histogram = histogram
-_detector_diagnostics = detector_diagnostics
-_diagnostic_count = diagnostic_count
-_diagnostic_float_values = diagnostic_float_values
-_analysis_diagnostics_payload = analysis_diagnostics_payload
-_score_candidate = score_candidate
-_candidate_target_score = candidate_target_score
-_candidate_rank = candidate_rank
-_refresh_candidate_score = refresh_candidate_score
-_expand_crop_bbox = expand_crop_bbox
-_save_candidate = save_candidate
-_render_bbox_for_track = render_bbox_for_track
-_bbox_intersection_area = bbox_intersection_area
-_bbox_iou = bbox_iou
-_bbox_contains_point = bbox_contains_point
-_track_matches_edge_detection = track_matches_edge_detection
-_track_touches_suppression_edge = track_touches_suppression_edge
-
-
-def _iter_sampled_frame_batches(
-    *,
-    video_path: Path,
-    source_fps: float,
-    target_fps: float,
-    profile: CameraProfile,
-    batch_size: int,
-) -> Iterator[list[SampledFrame]]:
-    return iter_sampled_frame_batches(
-        video_path=video_path,
-        source_fps=source_fps,
-        target_fps=target_fps,
-        profile=profile,
-        batch_size=batch_size,
-        iter_sampled_frames_func=iter_sampled_frames,
-    )
-
-
-def _iter_detected_sampled_frames(
-    *,
-    detector: Detector,
-    video_path: Path,
-    source_fps: float,
-    target_fps: float,
-    profile: CameraProfile,
-    batch_size: int,
-) -> Iterator[tuple[SampledFrame, sv.Detections]]:
-    return iter_detected_sampled_frames(
-        detector=detector,
-        video_path=video_path,
-        source_fps=source_fps,
-        target_fps=target_fps,
-        profile=profile,
-        batch_size=batch_size,
-        iter_sampled_frames_func=iter_sampled_frames,
-    )
 
 
 def _finalize_analysis(
@@ -203,13 +119,14 @@ def analyze_video(
         diagnostics=diagnostics,
     )
 
-    for sampled_frame, detections in _iter_detected_sampled_frames(
+    for sampled_frame, detections in iter_detected_sampled_frames(
         detector=detector,
         video_path=video_path,
         source_fps=config.video.fps,
         target_fps=analysis_fps,
         profile=profile,
-        batch_size=config.analysis.batch_size,
+        batch_size=config.analysis.detector_batch_size or config.analysis.batch_size,
+        iter_sampled_frames_func=iter_sampled_frames,
     ):
         diagnostics.total_sampled_frames += 1
         global_detections = map_detections_to_global(detections, sampled_frame.offset)

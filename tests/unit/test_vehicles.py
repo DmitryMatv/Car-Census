@@ -4,7 +4,8 @@ import numpy as np
 
 from config import AppConfig
 from models import BBox, FrameRecord, TrackedObject
-from pipeline.analyze import MutableTrackState, _save_candidate
+from pipeline.analysis_crops import save_candidate
+from pipeline.analysis_tracking import MutableTrackState
 from pipeline.vehicles import (
     discard_track_artifacts,
     finalize_vehicle_identities,
@@ -68,7 +69,7 @@ def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> 
     )
     frame = np.full((20, 20, 3), 255, dtype=np.uint8)
     for state, frame_index in [(later_state, 20), (earlier_state, 10)]:
-        _save_candidate(
+        save_candidate(
             store=store,
             track_state=state,
             frame=frame,
@@ -129,7 +130,7 @@ def test_discard_track_artifacts_removes_empty_temp_crop_dir(tmp_path) -> None:
     )
     frame = np.full((20, 20, 3), 255, dtype=np.uint8)
 
-    _save_candidate(
+    save_candidate(
         store=store,
         track_state=state,
         frame=frame,
@@ -152,6 +153,7 @@ def test_track_summary_from_state_preserves_vehicle_index(tmp_path) -> None:
         first_frame_index=1,
         last_frame_index=3,
         frames_seen=3,
+        min_box_height_px=40,
         max_box_height_px=100,
         counted=True,
     )
@@ -163,6 +165,7 @@ def test_track_summary_from_state_preserves_vehicle_index(tmp_path) -> None:
     assert summary.first_frame_index == 1
     assert summary.last_frame_index == 3
     assert summary.frames_seen == 3
+    assert summary.min_box_height_px == 40
     assert summary.max_box_height_px == 100
     assert summary.counted is True
     assert summary.candidates == []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -188,87 +189,82 @@ def _interpolated_records_between(
     current: FrameRecord,
     config: AppConfig,
     profile: CameraProfile,
-) -> list[FrameRecord]:
+) -> Iterator[FrameRecord]:
     if current.frame_index <= previous.frame_index + 1:
-        return []
+        return
 
     gap_seconds = current.timestamp_seconds - previous.timestamp_seconds
     if gap_seconds <= 0:
-        return []
+        return
     if gap_seconds > _effective_max_interpolation_gap_seconds(config):
-        return [_empty_clear_record(previous, config)]
+        yield _empty_clear_record(previous, config)
+        return
 
     previous_points = _track_points_by_id(previous)
     current_points = _track_points_by_id(current)
     interpolated_track_ids = sorted(previous_points.keys() & current_points.keys())
     if not interpolated_track_ids:
-        return [_empty_clear_record(previous, config)]
+        yield _empty_clear_record(previous, config)
+        return
 
-    records: list[FrameRecord] = []
     for frame_index in range(previous.frame_index + 1, current.frame_index):
         timestamp_seconds = frame_index / config.video.fps
-        records.append(
-            FrameRecord(
-                frame_index=frame_index,
-                timestamp_seconds=timestamp_seconds,
-                tracks=[
-                    _interpolate_track(
-                        previous=previous_points[track_id],
-                        current=current_points[track_id],
-                        frame_index=frame_index,
-                        timestamp_seconds=timestamp_seconds,
-                        profile=profile,
-                    )
-                    for track_id in interpolated_track_ids
-                ],
-            )
+        yield FrameRecord(
+            frame_index=frame_index,
+            timestamp_seconds=timestamp_seconds,
+            tracks=[
+                _interpolate_track(
+                    previous=previous_points[track_id],
+                    current=current_points[track_id],
+                    frame_index=frame_index,
+                    timestamp_seconds=timestamp_seconds,
+                    profile=profile,
+                )
+                for track_id in interpolated_track_ids
+            ],
         )
-    return records
 
 
-def _interpolate_source_frame_records(
-    records: list[FrameRecord],
+def iter_interpolated_source_frame_records(
+    records: Iterable[FrameRecord],
     config: AppConfig,
     profile: CameraProfile,
-) -> list[FrameRecord]:
-    if len(records) < 2:
-        return records
+) -> Iterator[FrameRecord]:
+    iterator = iter(records)
+    previous = next(iterator, None)
+    if previous is None:
+        return
 
-    output: dict[int, FrameRecord] = {record.frame_index: record for record in records}
-    for previous, current in zip(records, records[1:]):
-        for interpolated in _interpolated_records_between(
+    yield previous
+    for current in iterator:
+        yield from _interpolated_records_between(
             previous=previous,
             current=current,
             config=config,
             profile=profile,
-        ):
-            output[interpolated.frame_index] = interpolated
+        )
+        yield current
+        previous = current
 
-    return [output[frame_index] for frame_index in sorted(output)]
 
-
-def _smooth_analysis_records(
-    records: list[FrameRecord],
+def iter_smoothed_analysis_records(
+    records: Iterable[FrameRecord],
     config: AppConfig,
     profile: CameraProfile,
-) -> list[FrameRecord]:
+) -> Iterator[FrameRecord]:
     smoother = sv.DetectionsSmoother(length=config.render.smoothing.history_length)
-    smoothed_records: list[FrameRecord] = []
     for record in records:
         detections = _tracks_to_detections(record.tracks)
         smoothed_detections = smoother.update_with_detections(detections)
-        smoothed_records.append(
-            FrameRecord(
-                frame_index=record.frame_index,
-                timestamp_seconds=record.timestamp_seconds,
-                tracks=_smoothed_tracks_for_record(
-                    record=record,
-                    smoothed_detections=smoothed_detections,
-                    profile=profile,
-                ),
-            )
+        yield FrameRecord(
+            frame_index=record.frame_index,
+            timestamp_seconds=record.timestamp_seconds,
+            tracks=_smoothed_tracks_for_record(
+                record=record,
+                smoothed_detections=smoothed_detections,
+                profile=profile,
+            ),
         )
-    return smoothed_records
 
 
 def smooth_render_tracks(
@@ -276,18 +272,18 @@ def smooth_render_tracks(
     profile: CameraProfile,
     run_store: RunStore,
 ) -> Path:
-    analysis_records = run_store.frames.read_all(smoothed=False)
     if not config.render.smoothing.enabled:
         return run_store.frames_path
-    if not analysis_records:
-        run_store.frames.write_all([], smoothed=True)
-        return run_store.render_frames_path
 
-    smoothed_records = _smooth_analysis_records(analysis_records, config, profile)
+    smoothed_records: Iterable[FrameRecord] = iter_smoothed_analysis_records(
+        run_store.frames.iter(smoothed=False), config, profile
+    )
     if config.render.smoothing.interpolate_source_frames:
-        smoothed_records = _interpolate_source_frame_records(
+        smoothed_records = iter_interpolated_source_frame_records(
             smoothed_records, config, profile
         )
 
-    run_store.frames.write_all(smoothed_records, smoothed=True)
+    with run_store.frames.open_writer(smoothed=True) as writer:
+        for record in smoothed_records:
+            writer.write(record)
     return run_store.render_frames_path

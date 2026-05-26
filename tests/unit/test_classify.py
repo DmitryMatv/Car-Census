@@ -52,19 +52,25 @@ def _candidate(
     path: Path,
     track_id: int = 1,
     vehicle_index: int | None = None,
-    total_score: float = 10_003.0,
+    frame_index: int = 1,
+    bbox: BBox | None = None,
+    vehicle_bbox: BBox | None = None,
+    sharpness: float = 1.0,
+    edge_margin_score: float = 1.0,
+    area_score: float = 10_000.0,
 ) -> CropCandidate:
+    crop_bbox = bbox or BBox(x1=0, y1=0, x2=100, y2=100)
     return CropCandidate(
         track_id=track_id,
         vehicle_index=vehicle_index,
-        frame_index=1,
-        timestamp_seconds=0.1,
-        bbox=BBox(x1=0, y1=0, x2=100, y2=100),
+        frame_index=frame_index,
+        timestamp_seconds=frame_index / 10,
+        bbox=crop_bbox,
+        vehicle_bbox=vehicle_bbox,
         image_path=path,
-        sharpness=1.0,
-        edge_margin_score=1.0,
-        area_score=10_000.0,
-        total_score=total_score,
+        sharpness=sharpness,
+        edge_margin_score=edge_margin_score,
+        area_score=area_score,
     )
 
 
@@ -75,6 +81,37 @@ def _write_summaries(path: Path, summaries: list[TrackSummary]) -> None:
             for summary in summaries
         )
     )
+
+
+def test_legacy_candidate_and_summary_payloads_still_parse(tmp_path) -> None:
+    payload = {
+        "track_id": 1,
+        "vehicle_index": 1,
+        "first_frame_index": 1,
+        "last_frame_index": 10,
+        "frames_seen": 10,
+        "max_box_height_px": 100,
+        "candidates": [
+            {
+                "track_id": 1,
+                "vehicle_index": 1,
+                "frame_index": 1,
+                "timestamp_seconds": 0.1,
+                "bbox": {"x1": 0, "y1": 0, "x2": 100, "y2": 100},
+                "image_path": str(tmp_path / "vehicle.jpg"),
+                "sharpness": 1.0,
+                "edge_margin_score": 1.0,
+                "area_score": 10_000.0,
+                "total_score": 123.0,
+            }
+        ],
+    }
+
+    summary = TrackSummary.model_validate(payload)
+
+    assert summary.min_box_height_px is None
+    assert len(summary.candidates) == 1
+    assert not hasattr(summary.candidates[0], "total_score")
 
 
 def test_classify_tracks_omits_tracks_below_min_track_frames(
@@ -125,6 +162,7 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
     )
     config = AppConfig()
     config.analysis.min_track_frames = 10
+    config.analysis.crop_target_box_range_ratio = 0.5
 
     labels = classify_tracks(config=config, run_store=store)
 
@@ -204,6 +242,7 @@ def test_classify_tracks_assigns_api_classification_index(
     )
     config = AppConfig()
     config.analysis.min_track_frames = 10
+    config.analysis.crop_target_box_range_ratio = 0.5
 
     labels = classify_tracks(config=config, run_store=store)
 
@@ -253,13 +292,14 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=1,
                 last_frame_index=5,
                 frames_seen=5,
+                min_box_height_px=40,
                 max_box_height_px=100,
                 candidates=[
                     _candidate(
                         weak_crop,
                         track_id=10,
                         vehicle_index=7,
-                        total_score=100,
+                        vehicle_bbox=BBox(x1=0, y1=0, x2=80, y2=80),
                     )
                 ],
             ),
@@ -269,13 +309,14 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=9,
                 last_frame_index=13,
                 frames_seen=5,
+                min_box_height_px=40,
                 max_box_height_px=100,
                 candidates=[
                     _candidate(
                         best_crop,
                         track_id=11,
                         vehicle_index=7,
-                        total_score=200,
+                        vehicle_bbox=BBox(x1=0, y1=0, x2=70, y2=70),
                     )
                 ],
             ),
@@ -285,13 +326,13 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=20,
                 last_frame_index=29,
                 frames_seen=10,
+                min_box_height_px=40,
                 max_box_height_px=100,
                 candidates=[
                     _candidate(
                         other_crop,
                         track_id=20,
                         vehicle_index=8,
-                        total_score=150,
                     )
                 ],
             ),
@@ -299,6 +340,7 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
     )
     config = AppConfig()
     config.analysis.min_track_frames = 10
+    config.analysis.crop_target_box_range_ratio = 0.5
 
     labels = classify_tracks(config=config, run_store=store)
 
@@ -315,6 +357,162 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
     assert payload["11"]["vehicle_index"] == 7
     assert payload["10"]["api_classification_index"] == 7
     assert payload["11"]["api_classification_index"] == 7
+
+
+def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
+    tmp_path, monkeypatch
+) -> None:
+    calls: list[Path] = []
+
+    class FakeTrafficEyeClient:
+        def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+            pass
+
+        def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
+            calls.append(image_path)
+            return MMRResult(make="Toyota", model="Corolla", accepted=True)
+
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
+
+    store = DummyRunStore(tmp_path)
+    crops = {
+        name: tmp_path / f"{name}.jpg"
+        for name in [
+            "scale",
+            "sharpness",
+            "edge",
+            "area",
+            "earlier",
+            "later",
+        ]
+    }
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                min_box_height_px=50,
+                max_box_height_px=100,
+                candidates=[
+                    _candidate(
+                        crops["scale"],
+                        track_id=1,
+                        vehicle_index=1,
+                        vehicle_bbox=BBox(x1=0, y1=0, x2=75, y2=75),
+                    )
+                ],
+            ),
+            TrackSummary(
+                track_id=2,
+                vehicle_index=2,
+                first_frame_index=11,
+                last_frame_index=20,
+                frames_seen=10,
+                min_box_height_px=50,
+                max_box_height_px=100,
+                candidates=[
+                    _candidate(
+                        crops["sharpness"],
+                        track_id=2,
+                        vehicle_index=2,
+                        sharpness=2.0,
+                    ),
+                    _candidate(
+                        tmp_path / "dull.jpg",
+                        track_id=2,
+                        vehicle_index=2,
+                        sharpness=1.0,
+                    ),
+                ],
+            ),
+            TrackSummary(
+                track_id=3,
+                vehicle_index=3,
+                first_frame_index=21,
+                last_frame_index=30,
+                frames_seen=10,
+                min_box_height_px=100,
+                max_box_height_px=100,
+                candidates=[
+                    _candidate(
+                        crops["edge"],
+                        track_id=3,
+                        vehicle_index=3,
+                        edge_margin_score=10.0,
+                    ),
+                    _candidate(
+                        tmp_path / "edge-low.jpg",
+                        track_id=3,
+                        vehicle_index=3,
+                        edge_margin_score=1.0,
+                    ),
+                ],
+            ),
+            TrackSummary(
+                track_id=4,
+                vehicle_index=4,
+                first_frame_index=31,
+                last_frame_index=40,
+                frames_seen=10,
+                min_box_height_px=100,
+                max_box_height_px=100,
+                candidates=[
+                    _candidate(
+                        crops["area"],
+                        track_id=4,
+                        vehicle_index=4,
+                        area_score=20_000.0,
+                    ),
+                    _candidate(
+                        tmp_path / "area-low.jpg",
+                        track_id=4,
+                        vehicle_index=4,
+                        area_score=10_000.0,
+                    ),
+                ],
+            ),
+            TrackSummary(
+                track_id=5,
+                vehicle_index=5,
+                first_frame_index=41,
+                last_frame_index=50,
+                frames_seen=10,
+                min_box_height_px=100,
+                max_box_height_px=100,
+                candidates=[
+                    _candidate(
+                        crops["later"],
+                        track_id=5,
+                        vehicle_index=5,
+                        frame_index=2,
+                    ),
+                    _candidate(
+                        crops["earlier"],
+                        track_id=5,
+                        vehicle_index=5,
+                        frame_index=1,
+                    ),
+                ],
+            ),
+        ],
+    )
+    config = AppConfig()
+    config.analysis.min_track_frames = 1
+    config.analysis.crop_target_box_range_ratio = 0.5
+
+    classify_tracks(config=config, run_store=store)
+
+    assert calls == [
+        crops["scale"],
+        crops["sharpness"],
+        crops["edge"],
+        crops["area"],
+        crops["earlier"],
+    ]
 
 
 def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> None:
@@ -481,7 +679,6 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
                         tmp_path / "vehicle.jpg",
                         track_id=20,
                         vehicle_index=1,
-                        total_score=150,
                     )
                 ],
             ),

@@ -32,6 +32,7 @@ roi_app = typer.Typer(no_args_is_help=True)
 app.add_typer(roi_app, name="roi")
 
 SUPPORTED_ACCELERATORS = {"default", "colab-t4"}
+SUPPORTED_DEVICES = {"auto", "cpu", "cuda"}
 
 
 def _project_root() -> Path:
@@ -57,15 +58,30 @@ def _accelerator_overrides(accelerator: str) -> dict[str, Any]:
     )
 
 
+def _device_overrides(device: str) -> dict[str, Any]:
+    device = device.strip().lower()
+    if device not in SUPPORTED_DEVICES:
+        supported = ", ".join(sorted(SUPPORTED_DEVICES))
+        raise typer.BadParameter(
+            f"Unsupported device '{device}'. Expected one of: {supported}."
+        )
+    if device == "auto":
+        return {}
+    return {"detector": {"device": device}}
+
+
 def _load_config_with_accelerator(
     config_path: Optional[Path],
     accelerator: str = "default",
+    device: str = "auto",
 ) -> tuple[Path, AppConfig]:
     project_root = _project_root()
+    overrides = _accelerator_overrides(accelerator)
+    overrides = {**overrides, **_device_overrides(device)}
     config = build_effective_config(
         root=project_root,
         config_path=config_path,
-        overrides=_accelerator_overrides(accelerator),
+        overrides=overrides,
     )
     return project_root, config
 
@@ -106,13 +122,20 @@ def analyze(
         "--accelerator",
         help="default or colab-t4",
     ),
+    device: str = typer.Option(
+        "auto",
+        "--device",
+        help="Detector device: auto, cpu, or cuda.",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     run_dir: Optional[Path] = typer.Option(None, "--run-dir"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_accelerator(config_path, accelerator)
+    project_root, config = _load_config_with_accelerator(
+        config_path, accelerator, device
+    )
     profile = _resolve_profile(project_root, config, video, camera_id)
     if run_dir is not None:
         store = RunStore.from_existing(run_dir)
@@ -217,6 +240,11 @@ def run(
         "--accelerator",
         help="default or colab-t4",
     ),
+    device: str = typer.Option(
+        "auto",
+        "--device",
+        help="Detector device: auto, cpu, or cuda.",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     skip_classify: bool = typer.Option(
         False, "--skip-classify", help="Skip make/model API calls."
@@ -225,7 +253,9 @@ def run(
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
-    project_root, config = _load_config_with_accelerator(config_path, accelerator)
+    project_root, config = _load_config_with_accelerator(
+        config_path, accelerator, device
+    )
     profile = _resolve_profile(project_root, config, video, camera_id)
     store = run_pipeline(
         project_root=project_root,

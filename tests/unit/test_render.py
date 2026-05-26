@@ -11,9 +11,9 @@ from pipeline import render as render_module
 from pipeline.render import (
     _output_fps,
     _resolve_render_frames_path,
-    _visible_track_ids,
     format_label_text,
     render_video,
+    visible_track_ids_for_render,
     visible_track_label_text_by_track,
 )
 from render.annotators import VideoAnnotator
@@ -294,7 +294,7 @@ def test_visible_track_ids_applies_crop_eligibility_when_required() -> None:
         )
     ]
 
-    assert _visible_track_ids(
+    assert visible_track_ids_for_render(
         _config(require_crop_eligible_track=True),
         records,
     ) == {1}
@@ -314,7 +314,7 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
         )
     ]
 
-    assert _visible_track_ids(
+    assert visible_track_ids_for_render(
         _config(
             require_crop_eligible_track=True,
             show_unclassified_tracks=True,

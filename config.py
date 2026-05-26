@@ -24,6 +24,7 @@ class VideoConfig(StrictBaseModel):
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
     batch_size: int = Field(default=32, ge=1)
+    detector_batch_size: int | None = Field(default=None, ge=1)
     min_track_frames: int = 10
     min_box_height_px: int = 160
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
@@ -35,6 +36,7 @@ class AnalysisConfig(StrictBaseModel):
 
 class DetectorConfig(StrictBaseModel):
     model: Literal["rfdetr-small"] = "rfdetr-small"
+    device: Literal["auto", "cpu", "cuda"] = "auto"
     confidence: float = 0.30
     input_size: int = Field(default=512, ge=64)
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])

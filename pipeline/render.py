@@ -65,15 +65,6 @@ def visible_track_ids_by_observation_count(
     return {track_id for track_id, count in counts.items() if count >= min_observations}
 
 
-def crop_eligible_track_ids(records: Iterable[FrameRecord]) -> set[int]:
-    eligible: set[int] = set()
-    for record in records:
-        for track in record.tracks:
-            if track.vehicle_index is not None:
-                eligible.add(track.track_id)
-    return eligible
-
-
 def _read_validated_metadata(config: AppConfig, video_path: Path) -> VideoMetadata:
     metadata = read_video_metadata(video_path)
     validate_video_fps(
@@ -103,17 +94,27 @@ def _uses_smoothed_frames(frames_path: Path, run_store: RunStore) -> bool:
     return frames_path == run_store.render_frames_path
 
 
-def _visible_track_ids(config: AppConfig, records: Iterable[FrameRecord]) -> set[int]:
-    records = list(records)
-    visible_track_ids = visible_track_ids_by_observation_count(
-        records,
-        config.render.min_visible_track_observations,
-    )
+def visible_track_ids_for_render(
+    config: AppConfig, records: Iterable[FrameRecord]
+) -> set[int]:
+    observation_counts: Counter[int] = Counter()
+    crop_eligible_ids: set[int] = set()
+    for record in records:
+        for track in record.tracks:
+            observation_counts.update([track.track_id])
+            if track.vehicle_index is not None:
+                crop_eligible_ids.add(track.track_id)
+
+    visible_track_ids = {
+        track_id
+        for track_id, count in observation_counts.items()
+        if count >= config.render.min_visible_track_observations
+    }
     if (
         config.render.require_crop_eligible_track
         and not config.render.show_unclassified_tracks
     ):
-        visible_track_ids &= crop_eligible_track_ids(records)
+        visible_track_ids &= crop_eligible_ids
     return visible_track_ids
 
 
@@ -215,8 +216,9 @@ def render_video(
     smooth_render_tracks: SmoothRenderTracks | None = None,
 ) -> Path:
     metadata = _read_validated_metadata(config, video_path)
-    raw_records = run_store.frames.read_all(smoothed=False)
-    visible_track_ids = _visible_track_ids(config, raw_records)
+    visible_track_ids = visible_track_ids_for_render(
+        config, run_store.frames.iter(smoothed=False)
+    )
     frames_path = _resolve_render_frames_path(
         config, profile, run_store, smooth_render_tracks
     )

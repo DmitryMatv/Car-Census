@@ -11,6 +11,7 @@ import supervision as sv
 
 from config import AppConfig
 from detectors.base import Detector
+from pipeline.analysis_diagnostics import CONFIDENCE_BINS, HistogramAccumulator
 from pipeline.detections import class_names, clip_detections_to_shape, clone_detections
 
 
@@ -41,12 +42,15 @@ class RfDetrSmallDetector(Detector):
             name.lower() for name in config.detector.allowed_class_names
         }
         self._counts: Counter[str] = Counter()
-        self._confidence_values: list[float] = []
+        self._confidence_histogram = HistogramAccumulator(CONFIDENCE_BINS)
 
         weights = config.detector.pretrain_weights
         model_class = _load_rfdetr_small()
+        model_kwargs: dict[str, object] = {"resolution": self.input_size}
+        if config.detector.device != "auto":
+            model_kwargs["device"] = config.detector.device
         if weights is None:
-            self.model = model_class(resolution=self.input_size)
+            self.model = model_class(**model_kwargs)
         else:
             weights_path = Path(weights)
             if not weights_path.is_absolute():
@@ -55,10 +59,7 @@ class RfDetrSmallDetector(Detector):
                 raise FileNotFoundError(
                     f"RF-DETR-S checkpoint not found: {weights_path}"
                 )
-            self.model = model_class(
-                pretrain_weights=str(weights_path),
-                resolution=self.input_size,
-            )
+            self.model = model_class(pretrain_weights=str(weights_path), **model_kwargs)
         self.class_names = _coerce_class_names(getattr(self.model, "class_names", {}))
 
     def detect(self, image: np.ndarray) -> sv.Detections:
@@ -88,7 +89,7 @@ class RfDetrSmallDetector(Detector):
     def detection_diagnostics(self) -> dict[str, object]:
         return {
             "counts": dict(self._counts),
-            "confidence_values": list(self._confidence_values),
+            "confidence_histogram": self._confidence_histogram.payload(),
             "model": "rfdetr-small",
             "input_size": self.input_size,
             "runtime": "rfdetr",
@@ -126,18 +127,21 @@ class RfDetrSmallDetector(Detector):
         detections = clip_detections_to_shape(detections, image_shape)
         self._counts["detections_after_class_filtering"] += len(detections)
         if detections.confidence is not None:
-            self._confidence_values.extend(
+            self._confidence_histogram.extend(
                 float(confidence) for confidence in detections.confidence.tolist()
             )
         return detections
 
     def _ensure_class_names(self, detections: sv.Detections) -> sv.Detections:
         names = class_names(detections)
-        if names and any(names):
+        if names and all(names):
             return detections
         updated = clone_detections(detections)
         resolved_names: list[str] = []
         for index in range(len(detections)):
+            if index < len(names) and names[index]:
+                resolved_names.append(names[index])
+                continue
             class_id = (
                 int(detections.class_id[index])
                 if detections.class_id is not None

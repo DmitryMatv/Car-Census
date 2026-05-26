@@ -1,4 +1,6 @@
-from car_census_cli import _accelerator_overrides
+import pytest
+
+from car_census_cli import _accelerator_overrides, _device_overrides
 
 
 def test_default_accelerator_has_no_overrides() -> None:
@@ -16,9 +18,13 @@ def test_colab_t4_accelerator_enables_auto_nvenc_only() -> None:
 
 
 def test_removed_gpu_accelerator_is_rejected() -> None:
-    try:
+    with pytest.raises(Exception, match="Unsupported accelerator"):
         _accelerator_overrides("gpu")
-    except Exception as exc:
-        assert "Unsupported accelerator" in str(exc)
-    else:
-        raise AssertionError("gpu should be rejected")
+
+
+def test_cpu_device_overrides_detector_device() -> None:
+    assert _device_overrides("cpu") == {"detector": {"device": "cpu"}}
+
+
+def test_auto_device_has_no_overrides() -> None:
+    assert _device_overrides("auto") == {}

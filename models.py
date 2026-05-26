@@ -60,7 +60,6 @@ class CropCandidate(BaseModel):
     sharpness: float
     edge_margin_score: float
     area_score: float
-    total_score: float
 
 
 class CountEvent(BaseModel):
@@ -103,6 +102,7 @@ class TrackSummary(BaseModel):
     first_frame_index: int
     last_frame_index: int
     frames_seen: int
+    min_box_height_px: float | None = None
     max_box_height_px: float
     counted: bool = False
     count_event: CountEvent | None = None

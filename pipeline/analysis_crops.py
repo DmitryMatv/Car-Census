@@ -39,7 +39,7 @@ def score_candidate(
     return sharpness, edge_margin_score, area_score
 
 
-def candidate_target_score(
+def candidate_rank(
     *,
     bbox_height: float,
     sharpness: float,
@@ -49,64 +49,37 @@ def candidate_target_score(
     min_box_height_px: float | None,
     max_box_height_px: float,
     target_ratio: float,
-) -> float:
+) -> tuple[float, float, float, float, int]:
     min_height = (
         min_box_height_px if min_box_height_px is not None else max_box_height_px
     )
     target_height = min_height + ((max_box_height_px - min_height) * target_ratio)
     scale_error = abs(bbox_height - target_height) / max(target_height, 1.0)
     return (
-        (-scale_error * 1_000_000_000.0)
-        + (sharpness * 1_000.0)
-        + (edge_margin_score * 10.0)
-        + area_score
-        - (frame_index * 0.000001)
+        -scale_error,
+        sharpness,
+        edge_margin_score,
+        area_score,
+        -frame_index,
     )
 
 
-def candidate_rank(
+def candidate_rank_for_candidate(
     candidate: CropCandidate,
     min_box_height_px: float | None,
     max_box_height_px: float,
     config: AppConfig,
 ) -> tuple[float, float, float, float, int]:
-    min_height = (
-        min_box_height_px if min_box_height_px is not None else max_box_height_px
-    )
-    target_height = min_height + (
-        (max_box_height_px - min_height) * config.analysis.crop_target_box_range_ratio
-    )
     vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
-    scale_error = abs(vehicle_bbox.height - target_height) / max(target_height, 1.0)
-    return (
-        -scale_error,
-        candidate.sharpness,
-        candidate.edge_margin_score,
-        candidate.area_score,
-        -candidate.frame_index,
-    )
-
-
-def refresh_candidate_score(
-    candidate: CropCandidate,
-    min_box_height_px: float | None,
-    max_box_height_px: float,
-    config: AppConfig,
-) -> CropCandidate:
-    vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
-    return candidate.model_copy(
-        update={
-            "total_score": candidate_target_score(
-                bbox_height=vehicle_bbox.height,
-                sharpness=candidate.sharpness,
-                edge_margin_score=candidate.edge_margin_score,
-                area_score=candidate.area_score,
-                frame_index=candidate.frame_index,
-                min_box_height_px=min_box_height_px,
-                max_box_height_px=max_box_height_px,
-                target_ratio=config.analysis.crop_target_box_range_ratio,
-            )
-        }
+    return candidate_rank(
+        bbox_height=vehicle_bbox.height,
+        sharpness=candidate.sharpness,
+        edge_margin_score=candidate.edge_margin_score,
+        area_score=candidate.area_score,
+        frame_index=candidate.frame_index,
+        min_box_height_px=min_box_height_px,
+        max_box_height_px=max_box_height_px,
+        target_ratio=config.analysis.crop_target_box_range_ratio,
     )
 
 
@@ -163,33 +136,14 @@ def save_candidate(
         sharpness=sharpness,
         edge_margin_score=edge_margin_score,
         area_score=area_score,
-        total_score=candidate_target_score(
-            bbox_height=bbox.height,
-            sharpness=sharpness,
-            edge_margin_score=edge_margin_score,
-            area_score=area_score,
-            frame_index=frame_index,
-            min_box_height_px=track_state.min_box_height_px,
-            max_box_height_px=track_state.max_box_height_px,
-            target_ratio=config.analysis.crop_target_box_range_ratio,
-        ),
     )
-    track_state.candidates = [
-        refresh_candidate_score(
-            existing,
-            track_state.min_box_height_px,
-            track_state.max_box_height_px,
-            config,
-        )
-        for existing in track_state.candidates
-    ]
     current = track_state.candidates[0] if track_state.candidates else None
-    if current is not None and candidate_rank(
+    if current is not None and candidate_rank_for_candidate(
         current,
         track_state.min_box_height_px,
         track_state.max_box_height_px,
         config,
-    ) >= candidate_rank(
+    ) >= candidate_rank_for_candidate(
         candidate,
         track_state.min_box_height_px,
         track_state.max_box_height_px,

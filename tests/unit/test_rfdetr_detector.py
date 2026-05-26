@@ -19,10 +19,14 @@ class FakeRfDetrSmall:
     predictions: object = []
 
     def __init__(
-        self, pretrain_weights: str | None = None, resolution: int | None = None
+        self,
+        pretrain_weights: str | None = None,
+        resolution: int | None = None,
+        device: str | None = None,
     ) -> None:
         self.pretrain_weights = pretrain_weights
         self.resolution = resolution
+        self.device = device
 
     def predict(self, images: list[np.ndarray], **kwargs: Any) -> object:
         self.calls.append({"images": images, "kwargs": kwargs})
@@ -43,7 +47,9 @@ def _detections(
     class_id: list[int],
     class_name: list[str] | None = None,
 ) -> sv.Detections:
-    data = {} if class_name is None else {"class_name": np.array(class_name)}
+    data: dict[str, Any] = (
+        {} if class_name is None else {"class_name": np.array(class_name)}
+    )
     return sv.Detections(
         xyxy=np.array(xyxy, dtype=np.float32),
         confidence=np.array(confidence, dtype=np.float32),
@@ -80,6 +86,13 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
         "include_source_image": False,
     }
     assert call["images"][0][0, 0].tolist() == [30, 20, 10]
+
+
+def test_detector_passes_configured_cpu_device_to_rfdetr() -> None:
+    config = AppConfig.model_validate({"detector": {"device": "cpu"}})
+    detector = RfDetrSmallDetector(config=config, project_root=Path("."))
+
+    assert detector.model.device == "cpu"
 
 
 def test_detect_delegates_to_single_item_batch() -> None:
@@ -161,6 +174,27 @@ def test_detect_batch_falls_back_to_model_class_names() -> None:
     assert class_names(detections[0]) == ["car"]
 
 
+def test_detect_batch_preserves_existing_class_names_when_filling_missing() -> None:
+    FakeRfDetrSmall.predictions = [
+        _detections(
+            xyxy=[[1, 2, 11, 22], [3, 4, 13, 24]],
+            confidence=[0.91, 0.85],
+            class_id=[2, 7],
+            class_name=["automobile", ""],
+        )
+    ]
+    detector = RfDetrSmallDetector(
+        config=AppConfig.model_validate(
+            {"detector": {"allowed_class_names": ["automobile", "truck"]}}
+        ),
+        project_root=Path("."),
+    )
+
+    detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
+
+    assert class_names(detections[0]) == ["automobile", "truck"]
+
+
 def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
     FakeRfDetrSmall.predictions = [
         _detections(
@@ -196,13 +230,22 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
 
     detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
-    assert detector.detection_diagnostics() == {
+    diagnostics = detector.detection_diagnostics()
+    assert diagnostics["counts"] == {
+        "raw_candidate_rows": 2,
+        "detections_after_confidence_filtering": 2,
+        "detections_after_class_filtering": 1,
+    }
+    confidence_histogram = diagnostics["confidence_histogram"]
+    assert isinstance(confidence_histogram, list)
+    assert sum(bucket["count"] for bucket in confidence_histogram) == 1
+    assert diagnostics == {
         "counts": {
             "raw_candidate_rows": 2,
             "detections_after_confidence_filtering": 2,
             "detections_after_class_filtering": 1,
         },
-        "confidence_values": [pytest.approx(0.91)],
+        "confidence_histogram": confidence_histogram,
         "model": "rfdetr-small",
         "input_size": 512,
         "runtime": "rfdetr",

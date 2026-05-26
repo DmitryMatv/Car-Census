@@ -11,12 +11,9 @@ import supervision as sv
 from config import AppConfig, CameraProfile, PolygonZoneConfig
 from models import BBox, FrameRecord
 from pipeline import analyze as analyze_module
-from pipeline.analyze import (
-    MutableTrackState,
-    _render_bbox_for_track,
-    _save_candidate,
-    analyze_video,
-)
+from pipeline.analysis_crops import render_bbox_for_track, save_candidate
+from pipeline.analysis_tracking import MutableTrackState
+from pipeline.analyze import analyze_video
 from pipeline.detections import detection_bboxes
 from pipeline.vehicles import staged_track_crop_dir
 from storage.run_store import RunStore
@@ -93,7 +90,7 @@ def test_save_candidate_stages_crop_under_track_identity(tmp_path) -> None:
     )
     frame = np.full((20, 20, 3), 255, dtype=np.uint8)
 
-    _save_candidate(
+    save_candidate(
         store=store,
         track_state=state,
         frame=frame,
@@ -125,7 +122,7 @@ def test_save_candidate_pads_crop_for_classification(tmp_path) -> None:
         {"analysis": {"crop_padding_ratio": 0.1, "crop_padding_px": 2}}
     )
 
-    _save_candidate(
+    save_candidate(
         store=store,
         track_state=state,
         frame=frame,
@@ -161,7 +158,7 @@ def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> N
         }
     )
 
-    _save_candidate(
+    save_candidate(
         store=store,
         track_state=state,
         frame=frame,
@@ -172,7 +169,7 @@ def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> N
     )
     first_path = state.candidates[0].image_path
 
-    _save_candidate(
+    save_candidate(
         store=store,
         track_state=state,
         frame=frame,
@@ -195,7 +192,7 @@ def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
         {"analysis": {"crop_padding_ratio": 0.1, "crop_padding_px": 2}}
     )
 
-    bbox = _render_bbox_for_track(
+    bbox = render_bbox_for_track(
         BBox(x1=10, y1=10, x2=20, y2=20),
         (30, 30, 3),
         config,
@@ -553,7 +550,11 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
         project_root=tmp_path,
         config=AppConfig.model_validate(
             {
-                "analysis": {"batch_size": 2, "min_track_frames": 1},
+                "analysis": {
+                    "batch_size": 2,
+                    "detector_batch_size": 1,
+                    "min_track_frames": 1,
+                },
                 "tracker": {"ignore_edge_touches": False},
             }
         ),
@@ -566,7 +567,7 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
     )
 
     records = _read_frame_records(store.frames_path)
-    assert detector.received_batch_sizes == [2, 1]
+    assert detector.received_batch_sizes == [1, 1, 1]
     assert [record.frame_index for record in records] == [0, 1, 2]
     assert [record.tracks[0].track_id for record in records] == [1, 2, 3]
     assert len(tracker.received_detections) == 3

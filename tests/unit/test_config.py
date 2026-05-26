@@ -89,6 +89,7 @@ def test_analysis_config_defaults_to_batched_detection() -> None:
 
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
+    assert config.analysis.detector_batch_size is None
     assert config.analysis.min_box_height_px == 160
     assert not hasattr(config.analysis, "crop_limit_per_track")
 
@@ -105,6 +106,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
+    assert config.analysis.detector_batch_size == 4
     assert config.analysis.min_track_frames == 6
     assert config.analysis.min_box_height_px == 160
     assert config.detector.model == "rfdetr-small"
@@ -155,6 +157,7 @@ def test_detector_config_accepts_rfdetr_options() -> None:
         {
             "detector": {
                 "model": "rfdetr-small",
+                "device": "cpu",
                 "input_size": 512,
                 "allowed_class_names": ["car", "truck"],
                 "pretrain_weights": "weights/rfdetr-small.pth",
@@ -164,6 +167,7 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     )
 
     assert config.detector.model == "rfdetr-small"
+    assert config.detector.device == "cpu"
     assert config.detector.input_size == 512
     assert config.detector.allowed_class_names == ["car", "truck"]
     assert config.detector.pretrain_weights == "weights/rfdetr-small.pth"

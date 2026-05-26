@@ -109,7 +109,7 @@ class TrackStateUpdater:
             if tracked.confidence is not None
             else [0.0] * len(tracked.xyxy)
         )
-        self.diagnostics.tracker_confidence_values.extend(
+        self.diagnostics.tracker_confidence_histogram.extend(
             float(value) for value in confidences
         )
 
@@ -136,7 +136,7 @@ class TrackStateUpdater:
                 continue
 
             bottom_center = bbox.bottom_center
-            self.diagnostics.tracker_box_height_values.append(bbox.height)
+            self.diagnostics.tracker_box_height_histogram.observe(bbox.height)
             inside_roi = point_in_polygon(bottom_center, self.profile.polygon.points)
             confidence = float(confidences[index])
             class_id = int(class_ids[index]) if index < len(class_ids) else None

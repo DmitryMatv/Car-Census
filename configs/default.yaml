@@ -9,6 +9,7 @@ video:
 analysis:
   fps: 10
   batch_size: 32
+  # detector_batch_size: 4
   min_track_frames: 6
   min_box_height_px: 160
   crop_padding_ratio: 0.10

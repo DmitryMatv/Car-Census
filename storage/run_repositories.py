@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO
 
 import orjson
 
@@ -14,6 +16,27 @@ from storage.json_artifacts import (
     write_jsonl,
 )
 from storage.run_layout import RunLayout
+
+
+class JsonlModelWriter:
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._handle: BinaryIO | None = None
+
+    def __enter__(self) -> "JsonlModelWriter":
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self._path.open("wb")
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        if self._handle is not None:
+            self._handle.close()
+
+    def write(self, model: FrameRecord) -> None:
+        if self._handle is None:
+            raise RuntimeError("JSONL writer is not open")
+        self._handle.write(orjson.dumps(model.model_dump(mode="json")))
+        self._handle.write(b"\n")
 
 
 class ManifestRepository:
@@ -46,6 +69,10 @@ class FrameRecordRepository:
     ) -> None:
         path = self._layout.render_frames_path if smoothed else self._layout.frames_path
         write_jsonl(path, (record.model_dump(mode="json") for record in records))
+
+    def open_writer(self, *, smoothed: bool = False) -> JsonlModelWriter:
+        path = self._layout.render_frames_path if smoothed else self._layout.frames_path
+        return JsonlModelWriter(path)
 
     def rewrite_vehicle_indices(self, vehicle_index_by_track: dict[int, int]) -> None:
         temp_path = self._layout.frames_path.with_suffix(

@@ -64,7 +64,8 @@ def test_run_store_repositories_round_trip_artifacts(tmp_path) -> None:
 
     store.manifest.write(manifest)
     store.frames.append(frame)
-    store.frames.write_all([frame], smoothed=True)
+    with store.frames.open_writer(smoothed=True) as writer:
+        writer.write(frame)
     store.counts.append(event)
     store.labels.write({10: result})
     store.detection_stats.write({"raw_candidate_rows": 3})

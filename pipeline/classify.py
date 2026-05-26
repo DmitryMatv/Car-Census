@@ -6,7 +6,8 @@ from pathlib import Path
 
 from config import AppConfig
 from mmr.trafficeye import TrafficEyeClient
-from models import MMRResult, TrackSummary
+from models import CropCandidate, MMRResult, TrackSummary
+from pipeline.analysis_crops import candidate_rank_for_candidate
 from storage.run_store import RunStore
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,36 @@ def _recognize_tasks(
     return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
 
 
+def _candidate_rank_for_summary(
+    summary: TrackSummary,
+    candidate: CropCandidate,
+    config: AppConfig,
+) -> tuple[float, float, float, float, int]:
+    return candidate_rank_for_candidate(
+        candidate,
+        summary.min_box_height_px,
+        summary.max_box_height_px,
+        config,
+    )
+
+
+def _best_candidate_for_summaries(
+    summaries: list[TrackSummary], config: AppConfig
+) -> CropCandidate | None:
+    ranked_candidates = [
+        (summary, candidate)
+        for summary in summaries
+        for candidate in summary.candidates
+    ]
+    if not ranked_candidates:
+        return None
+    _summary, candidate = max(
+        ranked_candidates,
+        key=lambda item: _candidate_rank_for_summary(item[0], item[1], config),
+    )
+    return candidate
+
+
 def _collect_classification_tasks(
     config: AppConfig, run_store: RunStore
 ) -> tuple[list[_ClassificationTask], dict[int, MMRResult]]:
@@ -80,12 +111,7 @@ def _collect_classification_tasks(
             )
             continue
 
-        candidates = [
-            candidate for summary in summaries for candidate in summary.candidates
-        ]
-        best_candidate = (
-            max(candidates, key=lambda item: item.total_score) if candidates else None
-        )
+        best_candidate = _best_candidate_for_summaries(summaries, config)
         if best_candidate is None:
             result = _apply_identity(
                 MMRResult(

@@ -1,11 +1,62 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from typing import Any
 
 from detectors.base import Detector
+
+CONFIDENCE_BINS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01)
+BOX_HEIGHT_BINS = (
+    0.0,
+    40.0,
+    80.0,
+    120.0,
+    160.0,
+    200.0,
+    300.0,
+    400.0,
+    600.0,
+    800.0,
+    float("inf"),
+)
+
+
+@dataclass(slots=True)
+class HistogramAccumulator:
+    bins: tuple[float, ...]
+    counts: list[int] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.counts:
+            self.counts = [0 for _ in range(max(0, len(self.bins) - 1))]
+
+    def observe(self, value: float) -> None:
+        for index, (lower, upper) in enumerate(
+            zip(self.bins, self.bins[1:], strict=True)
+        ):
+            if lower <= value < upper or (
+                index == len(self.counts) - 1 and value == upper
+            ):
+                self.counts[index] += 1
+                break
+
+    def extend(self, values: Iterable[float]) -> None:
+        for value in values:
+            self.observe(value)
+
+    def payload(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "min": lower,
+                "max": upper if upper != float("inf") else None,
+                "count": count,
+            }
+            for lower, upper, count in zip(
+                self.bins[:-1], self.bins[1:], self.counts, strict=True
+            )
+        ]
 
 
 @dataclass(slots=True)
@@ -20,8 +71,12 @@ class AnalysisDiagnostics:
     tracks_without_crop_due_to_height: int = 0
     tracks_without_crop_due_to_short_lifetime: int = 0
     tracks_hidden_from_render_crop_eligibility: int = 0
-    tracker_confidence_values: list[float] = field(default_factory=list)
-    tracker_box_height_values: list[float] = field(default_factory=list)
+    tracker_confidence_histogram: HistogramAccumulator = field(
+        default_factory=lambda: HistogramAccumulator(CONFIDENCE_BINS)
+    )
+    tracker_box_height_histogram: HistogramAccumulator = field(
+        default_factory=lambda: HistogramAccumulator(BOX_HEIGHT_BINS)
+    )
 
 
 def histogram(
@@ -75,7 +130,16 @@ def analysis_diagnostics_payload(
     detector_confidences = diagnostic_float_values(
         detector_snapshot.get("confidence_values")
     )
-    confidence_values = detector_confidences or diagnostics.tracker_confidence_values
+    detector_confidence_histogram = detector_snapshot.get("confidence_histogram")
+    confidence_histogram = (
+        detector_confidence_histogram
+        if isinstance(detector_confidence_histogram, list)
+        else (
+            histogram(detector_confidences, CONFIDENCE_BINS)
+            if detector_confidences
+            else diagnostics.tracker_confidence_histogram.payload()
+        )
+    )
 
     return {
         "total_sampled_frames": diagnostics.total_sampled_frames,
@@ -109,25 +173,7 @@ def analysis_diagnostics_payload(
         "tracks_hidden_from_render_due_to_crop_eligibility": (
             diagnostics.tracks_hidden_from_render_crop_eligibility
         ),
-        "confidence_histogram": histogram(
-            confidence_values,
-            [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01],
-        ),
-        "box_height_histogram": histogram(
-            diagnostics.tracker_box_height_values,
-            [
-                0.0,
-                40.0,
-                80.0,
-                120.0,
-                160.0,
-                200.0,
-                300.0,
-                400.0,
-                600.0,
-                800.0,
-                float("inf"),
-            ],
-        ),
+        "confidence_histogram": confidence_histogram,
+        "box_height_histogram": diagnostics.tracker_box_height_histogram.payload(),
         "detector": detector_snapshot,
     }
