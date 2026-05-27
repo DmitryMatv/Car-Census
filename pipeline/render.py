@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from config import AppConfig, CameraProfile
-from models import FrameRecord, MMRResult, TrackedObject
+from models import FrameRecord, MMRResult, TrackedObject, TrackSummary
 from render.annotators import VideoAnnotator
 from storage.run_store import RunStore
 from utils.video import (
@@ -95,7 +95,9 @@ def _uses_smoothed_frames(frames_path: Path, run_store: RunStore) -> bool:
 
 
 def visible_track_ids_for_render(
-    config: AppConfig, records: Iterable[FrameRecord]
+    config: AppConfig,
+    records: Iterable[FrameRecord],
+    track_summaries: Iterable[TrackSummary] = (),
 ) -> set[int]:
     observation_counts: Counter[int] = Counter()
     crop_eligible_ids: set[int] = set()
@@ -115,7 +117,23 @@ def visible_track_ids_for_render(
         and not config.render.show_unclassified_tracks
     ):
         visible_track_ids &= crop_eligible_ids
+
+    summaries = list(track_summaries)
+    if summaries:
+        size_eligible_ids = size_eligible_track_ids(config, summaries)
+        visible_track_ids &= size_eligible_ids
     return visible_track_ids
+
+
+def size_eligible_track_ids(
+    config: AppConfig,
+    summaries: Iterable[TrackSummary],
+) -> set[int]:
+    return {
+        summary.track_id
+        for summary in summaries
+        if summary.max_box_height_px >= config.analysis.min_box_height_px
+    }
 
 
 def _label_text_by_track(
@@ -216,8 +234,11 @@ def render_video(
     smooth_render_tracks: SmoothRenderTracks | None = None,
 ) -> Path:
     metadata = _read_validated_metadata(config, video_path)
+    track_summaries = run_store.tracks.read_all()
     visible_track_ids = visible_track_ids_for_render(
-        config, run_store.frames.iter(smoothed=False)
+        config,
+        run_store.frames.iter(smoothed=False),
+        track_summaries=track_summaries,
     )
     frames_path = _resolve_render_frames_path(
         config, profile, run_store, smooth_render_tracks

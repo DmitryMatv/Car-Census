@@ -291,6 +291,65 @@ def iter_observed_render_records(
     yield from iter_causal_average_analysis_records(records, config, profile)
 
 
+def iter_missing_analysis_gap_filled_records(
+    records: Iterable[FrameRecord],
+    config: AppConfig,
+    profile: CameraProfile,
+) -> Iterator[FrameRecord]:
+    materialized = list(records)
+    if not materialized:
+        return
+
+    observed_positions_by_track: dict[int, list[int]] = {}
+    for record_position, record in enumerate(materialized):
+        for track in record.tracks:
+            observed_positions_by_track.setdefault(track.track_id, []).append(
+                record_position
+            )
+
+    tracks_by_record = [list(record.tracks) for record in materialized]
+    for track_id, observed_positions in observed_positions_by_track.items():
+        for previous_position, current_position in zip(
+            observed_positions, observed_positions[1:], strict=False
+        ):
+            missing_count = current_position - previous_position - 1
+            if (
+                missing_count < 1
+                or missing_count
+                > config.render.smoothing.max_missing_analysis_gap_frames
+            ):
+                continue
+
+            previous_record = materialized[previous_position]
+            current_record = materialized[current_position]
+            previous_point = _track_points_by_id(previous_record).get(track_id)
+            current_point = _track_points_by_id(current_record).get(track_id)
+            if previous_point is None or current_point is None:
+                continue
+            for record_position in range(previous_position + 1, current_position):
+                if any(
+                    track.track_id == track_id
+                    for track in tracks_by_record[record_position]
+                ):
+                    continue
+                target_record = materialized[record_position]
+                tracks_by_record[record_position].append(
+                    _interpolate_track(
+                        previous=previous_point,
+                        current=current_point,
+                        frame_index=target_record.frame_index,
+                        timestamp_seconds=target_record.timestamp_seconds,
+                        profile=profile,
+                        config=config,
+                    )
+                )
+
+    for record, tracks in zip(materialized, tracks_by_record, strict=True):
+        yield record.model_copy(
+            update={"tracks": sorted(tracks, key=lambda track: track.track_id)}
+        )
+
+
 def smooth_render_tracks(
     config: AppConfig,
     profile: CameraProfile,
@@ -302,6 +361,10 @@ def smooth_render_tracks(
     render_records: Iterable[FrameRecord] = iter_observed_render_records(
         run_store.frames.iter(smoothed=False), config, profile
     )
+    if config.render.smoothing.bridge_missing_analysis_frames:
+        render_records = iter_missing_analysis_gap_filled_records(
+            render_records, config, profile
+        )
     if config.render.smoothing.interpolate_source_frames:
         render_records = iter_interpolated_source_frame_records(
             render_records, config, profile

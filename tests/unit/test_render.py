@@ -6,7 +6,14 @@ import orjson
 import pytest
 
 from config import AppConfig, build_full_frame_profile
-from models import BBox, FrameRecord, MMRResult, RunManifest, TrackedObject
+from models import (
+    BBox,
+    FrameRecord,
+    MMRResult,
+    RunManifest,
+    TrackedObject,
+    TrackSummary,
+)
 from pipeline import render as render_module
 from pipeline.render import (
     _output_fps,
@@ -21,6 +28,14 @@ from storage.run_store import RunStore
 from utils.video import VideoMetadata
 
 
+class DummyTracksFile:
+    def __init__(self, store: "DummyRunStore") -> None:
+        self.store = store
+
+    def read_all(self) -> list[TrackSummary]:
+        return list(self.store.track_summaries)
+
+
 class DummyRunStore:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -31,6 +46,8 @@ class DummyRunStore:
         self.output_video_path = root / "annotated.mp4"
         self.labels = self
         self.frames = self
+        self.tracks = DummyTracksFile(self)
+        self.track_summaries: list[TrackSummary] = []
         self.manifest = RunManifest(
             run_id="test",
             video_path=root / "input.mp4",
@@ -116,6 +133,22 @@ def _track(
         centroid=bbox.center,
         bottom_center=bbox.bottom_center,
         inside_roi=True,
+    )
+
+
+def _summary(
+    track_id: int,
+    max_box_height_px: float,
+    vehicle_index: int | None = None,
+) -> TrackSummary:
+    return TrackSummary(
+        track_id=track_id,
+        vehicle_index=vehicle_index,
+        first_frame_index=0,
+        last_frame_index=0,
+        frames_seen=1,
+        min_box_height_px=max_box_height_px,
+        max_box_height_px=max_box_height_px,
     )
 
 
@@ -323,6 +356,49 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
     ) == {1, 2}
 
 
+def test_visible_track_ids_applies_min_box_height_when_summaries_exist() -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, vehicle_index=1),
+                _track(2, vehicle_index=2),
+            ],
+        )
+    ]
+    summaries = [
+        _summary(1, max_box_height_px=160),
+        _summary(2, max_box_height_px=159),
+    ]
+
+    assert visible_track_ids_for_render(
+        AppConfig.model_validate(
+            {
+                "analysis": {"min_box_height_px": 160},
+                "render": {"min_visible_track_observations": 1},
+            }
+        ),
+        records,
+        track_summaries=summaries,
+    ) == {1}
+
+
+def test_visible_track_ids_keeps_old_behavior_when_summaries_missing() -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, vehicle_index=1),
+                _track(2, vehicle_index=2),
+            ],
+        )
+    ]
+
+    assert visible_track_ids_for_render(_config(), records) == {1, 2}
+
+
 def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
     tmp_path,
 ) -> None:
@@ -458,6 +534,102 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
 
     assert [1] in DummyAnnotator.seen_track_ids
     assert [2] not in DummyAnnotator.seen_track_ids
+
+
+def test_render_hides_labeled_track_below_min_box_height(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    store.track_summaries = [
+        _summary(1, max_box_height_px=120, vehicle_index=1),
+        _summary(2, max_box_height_px=180, vehicle_index=2),
+    ]
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, 0, vehicle_index=1),
+                    _track(2, 0, vehicle_index=2),
+                ],
+            )
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(vehicle_index=1).model_dump(mode="json"),
+                "2": MMRResult(vehicle_index=2).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_box_height_px": 160},
+                "render": {
+                    "min_visible_track_observations": 1,
+                    "smoothing": {"enabled": False},
+                },
+            }
+        ),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert [2] in DummyAnnotator.seen_track_ids
+    assert [1] not in DummyAnnotator.seen_track_ids
+
+
+def test_render_min_box_height_applies_when_showing_unclassified_tracks(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    store.track_summaries = [
+        _summary(1, max_box_height_px=120, vehicle_index=1),
+        _summary(2, max_box_height_px=180, vehicle_index=2),
+    ]
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, 0, vehicle_index=1),
+                    _track(2, 0, vehicle_index=2),
+                ],
+            )
+        ],
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_box_height_px": 160},
+                "render": {
+                    "min_visible_track_observations": 1,
+                    "show_unclassified_tracks": True,
+                    "smoothing": {"enabled": False},
+                },
+            }
+        ),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert [2] in DummyAnnotator.seen_track_ids
+    assert [1] not in DummyAnnotator.seen_track_ids
 
 
 def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(

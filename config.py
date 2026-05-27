@@ -68,6 +68,8 @@ class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool = True
     observed_box_smoothing: Literal["none", "causal_average"] = "none"
     history_length: int = Field(default=1, ge=1)
+    bridge_missing_analysis_frames: bool = True
+    max_missing_analysis_gap_frames: int = Field(default=3, ge=0)
     interpolate_source_frames: bool = True
     interpolation_method: Literal["linear"] = "linear"
     max_interpolation_gap_seconds: float | None = Field(default=None, gt=0.0)

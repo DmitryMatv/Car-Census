@@ -415,6 +415,127 @@ def test_smooth_render_tracks_does_not_interpolate_absent_tracks(tmp_path) -> No
     assert smoothed[3].tracks == []
 
 
+def test_smooth_render_tracks_bridges_missing_analysis_frame(tmp_path) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[3].tracks[0].track_id == 1
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(30)
+    assert smoothed[3].tracks[0].crossed_line is False
+    assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
+    assert smoothed[5].tracks[0].bbox.x1 == pytest.approx(50)
+
+
+def test_smooth_render_tracks_bridges_three_missing_analysis_frames(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, []),
+        _record(9, 0.3, []),
+        _record(12, 0.4, [_track(1, 12, 0.4, BBox(x1=120, y1=10, x2=140, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(30)
+    assert smoothed[6].tracks[0].bbox.x1 == pytest.approx(60)
+    assert smoothed[9].tracks[0].bbox.x1 == pytest.approx(90)
+
+
+def test_smooth_render_tracks_does_not_bridge_four_missing_analysis_frames(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, []),
+        _record(9, 0.3, []),
+        _record(12, 0.4, []),
+        _record(15, 0.5, [_track(1, 15, 0.5, BBox(x1=150, y1=10, x2=170, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[3].tracks == []
+    assert smoothed[6].tracks == []
+    assert smoothed[9].tracks == []
+    assert smoothed[12].tracks == []
+
+
+def test_smooth_render_tracks_can_disable_missing_analysis_frame_bridge(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"bridge_missing_analysis_frames": False}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[3].tracks == []
+
+
+def test_smooth_render_tracks_bridges_multiple_tracks_independently_and_sorts(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(
+            0,
+            0.0,
+            [
+                _track(2, 0, 0.0, BBox(x1=100, y1=10, x2=120, y2=30)),
+                _track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30)),
+            ],
+        ),
+        _record(3, 0.1, []),
+        _record(
+            6,
+            0.2,
+            [
+                _track(2, 6, 0.2, BBox(x1=160, y1=10, x2=180, y2=30)),
+                _track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30)),
+            ],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    tracks = _records_by_frame(_read_records(store.render_frames_path))[3].tracks
+    assert [track.track_id for track in tracks] == [1, 2]
+    assert tracks[0].bbox.x1 == pytest.approx(30)
+    assert tracks[1].bbox.x1 == pytest.approx(130)
+
+
 def test_smooth_render_tracks_drops_smoother_history_when_track_absent(
     tmp_path,
 ) -> None:
