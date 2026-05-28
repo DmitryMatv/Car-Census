@@ -2,6 +2,7 @@
 output/
 input_data/
 weights/
+.pyscn/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

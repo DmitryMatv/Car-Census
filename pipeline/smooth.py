@@ -23,6 +23,13 @@ class _TrackRenderPoint:
     source: TrackedObject
 
 
+@dataclass(slots=True)
+class _ObservedTrackPoint:
+    record_position: int
+    frame_index: int
+    track: TrackedObject
+
+
 def _tracks_to_detections(tracks: Sequence[TrackedObject]) -> sv.Detections:
     if not tracks:
         return sv.Detections(
@@ -52,6 +59,33 @@ def _tracks_to_detections(tracks: Sequence[TrackedObject]) -> sv.Detections:
 def _bbox_from_xyxy(xyxy: np.ndarray) -> BBox:
     x1, y1, x2, y2 = [float(value) for value in xyxy]
     return BBox(x1=x1, y1=y1, x2=x2, y2=y2)
+
+
+def _bbox_to_center_size(bbox: BBox) -> tuple[float, float, float, float]:
+    center_x, center_y = bbox.center
+    return center_x, center_y, bbox.width, bbox.height
+
+
+def _center_size_to_bbox(
+    center_x: float,
+    center_y: float,
+    width: float,
+    height: float,
+) -> BBox:
+    width = max(1.0, width)
+    height = max(1.0, height)
+    half_width = width / 2.0
+    half_height = height / 2.0
+    return BBox(
+        x1=center_x - half_width,
+        y1=center_y - half_height,
+        x2=center_x + half_width,
+        y2=center_y + half_height,
+    )
+
+
+def _clamp_float(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
 
 
 def _smoothed_tracks_for_record(
@@ -279,16 +313,207 @@ def iter_causal_average_analysis_records(
         )
 
 
+def _window_around_index(
+    points: list[_ObservedTrackPoint],
+    target_index: int,
+    window_size: int,
+) -> list[_ObservedTrackPoint]:
+    window_size = min(window_size, len(points))
+    before = window_size // 2
+    start = target_index - before
+    start = max(0, min(start, len(points) - window_size))
+    return points[start : start + window_size]
+
+
+def _fit_linear_at_frame(
+    points: list[_ObservedTrackPoint],
+    frame_index: int,
+    values: list[float],
+    fallback: float,
+) -> float:
+    if len(points) < 2:
+        return fallback
+
+    base_frame_index = points[0].frame_index
+    x_values = np.array(
+        [point.frame_index - base_frame_index for point in points],
+        dtype=np.float64,
+    )
+    if np.unique(x_values).size < 2:
+        return fallback
+
+    y_values = np.array(values, dtype=np.float64)
+    try:
+        slope, intercept = np.polyfit(x_values, y_values, deg=1)
+    except np.linalg.LinAlgError:
+        return fallback
+    return float((slope * (frame_index - base_frame_index)) + intercept)
+
+
+def _smoothed_local_linear_bbox(
+    point: _ObservedTrackPoint,
+    window: list[_ObservedTrackPoint],
+    config: AppConfig,
+) -> BBox:
+    raw_center_x, raw_center_y, raw_width, raw_height = _bbox_to_center_size(
+        point.track.bbox
+    )
+    if len(window) < 2:
+        return point.track.bbox
+
+    center_x_values: list[float] = []
+    center_y_values: list[float] = []
+    width_values: list[float] = []
+    height_values: list[float] = []
+    for window_point in window:
+        center_x, center_y, width, height = _bbox_to_center_size(
+            window_point.track.bbox
+        )
+        center_x_values.append(center_x)
+        center_y_values.append(center_y)
+        width_values.append(width)
+        height_values.append(height)
+
+    fitted_center_x = _fit_linear_at_frame(
+        window, point.frame_index, center_x_values, raw_center_x
+    )
+    fitted_center_y = _fit_linear_at_frame(
+        window, point.frame_index, center_y_values, raw_center_y
+    )
+    fitted_width = _fit_linear_at_frame(
+        window, point.frame_index, width_values, raw_width
+    )
+    fitted_height = _fit_linear_at_frame(
+        window, point.frame_index, height_values, raw_height
+    )
+
+    shift_ratio = config.render.smoothing.observed_smoothing_max_shift_ratio
+    max_center_x_delta = raw_width * shift_ratio
+    max_center_y_delta = raw_height * shift_ratio
+    max_width_delta = raw_width * shift_ratio
+    max_height_delta = raw_height * shift_ratio
+
+    center_x = _clamp_float(
+        fitted_center_x,
+        raw_center_x - max_center_x_delta,
+        raw_center_x + max_center_x_delta,
+    )
+    center_y = _clamp_float(
+        fitted_center_y,
+        raw_center_y - max_center_y_delta,
+        raw_center_y + max_center_y_delta,
+    )
+    width = _clamp_float(
+        fitted_width,
+        raw_width - max_width_delta,
+        raw_width + max_width_delta,
+    )
+    height = _clamp_float(
+        fitted_height,
+        raw_height - max_height_delta,
+        raw_height + max_height_delta,
+    )
+    return _center_size_to_bbox(center_x, center_y, width, height)
+
+
+def _segment_observed_points(
+    points: list[_ObservedTrackPoint],
+    config: AppConfig,
+) -> Iterator[list[_ObservedTrackPoint]]:
+    if not points:
+        return
+
+    segment = [points[0]]
+    max_gap = config.render.smoothing.max_missing_analysis_gap_frames
+    for previous, current in zip(points, points[1:], strict=False):
+        missing_count = current.record_position - previous.record_position - 1
+        if missing_count > max_gap:
+            yield segment
+            segment = [current]
+        else:
+            segment.append(current)
+    yield segment
+
+
+def _local_linear_track_updates(
+    points: list[_ObservedTrackPoint],
+    config: AppConfig,
+    profile: CameraProfile,
+) -> dict[int, TrackedObject]:
+    updates: dict[int, TrackedObject] = {}
+    window_size = config.render.smoothing.observed_smoothing_window
+    for segment in _segment_observed_points(points, config):
+        for index, point in enumerate(segment):
+            window = _window_around_index(segment, index, window_size)
+            bbox = _smoothed_local_linear_bbox(point, window, config)
+            bottom_center = bbox.bottom_center
+            updates[point.record_position] = point.track.model_copy(
+                update={
+                    "bbox": bbox,
+                    "centroid": bbox.center,
+                    "bottom_center": bottom_center,
+                    "inside_roi": point_in_polygon(
+                        bottom_center, profile.polygon.points
+                    ),
+                }
+            )
+    return updates
+
+
+def iter_local_linear_analysis_records(
+    records: Iterable[FrameRecord],
+    config: AppConfig,
+    profile: CameraProfile,
+) -> Iterator[FrameRecord]:
+    materialized = list(records)
+    if not materialized:
+        return
+
+    points_by_track: dict[int, list[_ObservedTrackPoint]] = {}
+    for record_position, record in enumerate(materialized):
+        for track in record.tracks:
+            points_by_track.setdefault(track.track_id, []).append(
+                _ObservedTrackPoint(
+                    record_position=record_position,
+                    frame_index=record.frame_index,
+                    track=track,
+                )
+            )
+
+    updates_by_track: dict[int, dict[int, TrackedObject]] = {
+        track_id: _local_linear_track_updates(points, config, profile)
+        for track_id, points in points_by_track.items()
+    }
+
+    for record_position, record in enumerate(materialized):
+        tracks = [
+            updates_by_track.get(track.track_id, {}).get(record_position, track)
+            for track in record.tracks
+        ]
+        yield record.model_copy(
+            update={"tracks": sorted(tracks, key=lambda track: track.track_id)}
+        )
+
+
 def iter_observed_render_records(
     records: Iterable[FrameRecord],
     config: AppConfig,
     profile: CameraProfile,
 ) -> Iterator[FrameRecord]:
-    if config.render.smoothing.observed_box_smoothing == "none":
+    mode = config.render.smoothing.observed_box_smoothing
+    if mode == "none":
         yield from records
         return
 
-    yield from iter_causal_average_analysis_records(records, config, profile)
+    if mode == "causal_average":
+        yield from iter_causal_average_analysis_records(records, config, profile)
+        return
+
+    if mode == "local_linear":
+        yield from iter_local_linear_analysis_records(records, config, profile)
+        return
+
+    raise ValueError(f"Unsupported observed box smoothing mode: {mode}")
 
 
 def iter_missing_analysis_gap_filled_records(

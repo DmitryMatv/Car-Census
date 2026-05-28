@@ -280,6 +280,254 @@ def test_smooth_render_tracks_preserves_semantic_fields(tmp_path) -> None:
     assert track.crossed_line is True
 
 
+def test_smooth_render_tracks_local_linear_smooths_jittery_observed_boxes(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=300, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "observed_smoothing_window": 5,
+                    "observed_smoothing_max_shift_ratio": 1.0,
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=110, y1=10, x2=130, y2=30))]),
+        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=90, y1=10, x2=110, y2=30))]),
+        _record(
+            12,
+            0.4,
+            [_track(1, 12, 0.4, BBox(x1=120, y1=10, x2=140, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[6].tracks[0].bbox.center[0] < records[2].tracks[0].bbox.center[0]
+    assert smoothed[6].tracks[0].bbox.center[0] == pytest.approx(100)
+    assert smoothed[0].tracks[0].bbox.center[0] == pytest.approx(20)
+    assert smoothed[12].tracks[0].bbox.center[0] == pytest.approx(140)
+
+
+def test_smooth_render_tracks_local_linear_default_clamps_large_adjustment(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=300, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "observed_smoothing_window": 5,
+                    "observed_smoothing_max_shift_ratio": 0.10,
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=160, y1=0, x2=240, y2=80))]),
+        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=90, y1=10, x2=110, y2=30))]),
+        _record(
+            12,
+            0.4,
+            [_track(1, 12, 0.4, BBox(x1=120, y1=10, x2=140, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    raw_bbox = records[2].tracks[0].bbox
+    smoothed_bbox = (
+        _records_by_frame(_read_records(store.render_frames_path))[6].tracks[0].bbox
+    )
+    assert abs(smoothed_bbox.center[0] - raw_bbox.center[0]) <= (raw_bbox.width * 0.10)
+    assert abs(smoothed_bbox.center[1] - raw_bbox.center[1]) <= (raw_bbox.height * 0.10)
+    assert abs(smoothed_bbox.width - raw_bbox.width) <= (raw_bbox.width * 0.10)
+    assert abs(smoothed_bbox.height - raw_bbox.height) <= (raw_bbox.height * 0.10)
+
+
+def test_smooth_render_tracks_local_linear_preserves_semantic_fields(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = CameraProfile(
+        camera_id="test",
+        polygon=PolygonZoneConfig(points=[[0, 0], [60, 0], [60, 30], [0, 30]]),
+    )
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "observed_smoothing_window": 5,
+                    "observed_smoothing_max_shift_ratio": 1.0,
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=5, x2=20, y2=25))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=20, y1=10, x2=40, y2=30))]),
+        _record(
+            6,
+            0.2,
+            [
+                _track(
+                    1,
+                    6,
+                    0.2,
+                    BBox(x1=80, y1=20, x2=100, y2=40),
+                    vehicle_index=7,
+                    class_id=5,
+                    class_name="bus",
+                    counted=True,
+                    crossed_line=True,
+                )
+            ],
+        ),
+        _record(9, 0.3, [_track(1, 9, 0.3, BBox(x1=60, y1=30, x2=80, y2=50))]),
+        _record(
+            12,
+            0.4,
+            [_track(1, 12, 0.4, BBox(x1=80, y1=35, x2=100, y2=55))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    track = _records_by_frame(_read_records(store.render_frames_path))[6].tracks[0]
+    assert track.track_id == 1
+    assert track.vehicle_index == 7
+    assert track.frame_index == 6
+    assert track.timestamp_seconds == 0.2
+    assert track.class_id == 5
+    assert track.class_name == "bus"
+    assert track.counted is True
+    assert track.crossed_line is True
+    assert track.centroid == track.bbox.center
+    assert track.bottom_center == track.bbox.bottom_center
+    assert track.inside_roi is False
+
+
+def test_smooth_render_tracks_local_linear_does_not_cross_large_absence_gap(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=300, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, []),
+        _record(9, 0.3, []),
+        _record(12, 0.4, []),
+        _record(
+            15,
+            0.5,
+            [_track(1, 15, 0.5, BBox(x1=150, y1=10, x2=170, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
+    assert smoothed[15].tracks[0].bbox == records[5].tracks[0].bbox
+
+
+def test_smooth_render_tracks_local_linear_with_too_few_points_keeps_raw_box(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=300, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [_record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))])]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    assert (
+        _read_records(store.render_frames_path)[0].tracks[0].bbox
+        == records[0].tracks[0].bbox
+    )
+
+
+def test_smooth_render_tracks_local_linear_keeps_raw_boxes_for_duplicate_frame_indices(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=300, height=100)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "local_linear",
+                    "observed_smoothing_window": 5,
+                    "observed_smoothing_max_shift_ratio": 1.0,
+                    "bridge_missing_analysis_frames": False,
+                    "interpolate_source_frames": False,
+                }
+            }
+        }
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=40, y1=10, x2=60, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _read_records(store.render_frames_path)
+    assert len(smoothed) == len(records)
+    for smoothed_record, raw_record in zip(smoothed, records, strict=True):
+        track = smoothed_record.tracks[0]
+        assert track.bbox == raw_record.tracks[0].bbox
+        assert track.centroid == track.bbox.center
+        assert track.bottom_center == track.bbox.bottom_center
+
+
 def test_smooth_render_tracks_recomputes_geometry_on_interpolated_tracks(
     tmp_path,
 ) -> None:
@@ -711,7 +959,16 @@ def test_smooth_render_tracks_history_length_one_preserves_observed_boxes(
 ) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate({"render": {"smoothing": {"history_length": 1}}})
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "smoothing": {
+                    "observed_box_smoothing": "none",
+                    "history_length": 1,
+                }
+            }
+        }
+    )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=70, y1=10, x2=90, y2=30))]),
@@ -740,9 +997,9 @@ def test_smooth_render_tracks_default_preserves_observed_boxes_and_interpolates(
     smooth_render_tracks(AppConfig(), profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
-    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
-    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
+    assert smoothed[0].tracks[0].bbox.x1 == pytest.approx(records[0].tracks[0].bbox.x1)
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(records[1].tracks[0].bbox.x1)
+    assert smoothed[6].tracks[0].bbox.x1 == pytest.approx(records[2].tracks[0].bbox.x1)
     assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
     assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
     assert smoothed[4].tracks[0].bbox.x1 == pytest.approx(40)
@@ -765,9 +1022,9 @@ def test_smooth_render_tracks_history_length_without_causal_average_preserves_ob
     smooth_render_tracks(config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
-    assert smoothed[0].tracks[0].bbox == records[0].tracks[0].bbox
-    assert smoothed[3].tracks[0].bbox == records[1].tracks[0].bbox
-    assert smoothed[6].tracks[0].bbox == records[2].tracks[0].bbox
+    assert smoothed[0].tracks[0].bbox.x1 == pytest.approx(records[0].tracks[0].bbox.x1)
+    assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(records[1].tracks[0].bbox.x1)
+    assert smoothed[6].tracks[0].bbox.x1 == pytest.approx(records[2].tracks[0].bbox.x1)
     assert smoothed[1].tracks[0].bbox.x1 == pytest.approx(10)
     assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
 

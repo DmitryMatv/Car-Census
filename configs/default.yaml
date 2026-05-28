@@ -81,8 +81,10 @@ render:
   unknown_label: Unknown
   smoothing:
     enabled: true
-    observed_box_smoothing: none
+    observed_box_smoothing: local_linear
     history_length: 1
+    observed_smoothing_window: 5
+    observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
     max_missing_analysis_gap_frames: 3
     interpolate_source_frames: true

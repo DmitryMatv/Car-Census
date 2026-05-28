@@ -141,8 +141,12 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_bg_color == "#101820"
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.enabled is True
-    assert config.render.smoothing.observed_box_smoothing == "none"
+    assert config.render.smoothing.observed_box_smoothing == "local_linear"
     assert config.render.smoothing.history_length == 1
+    assert config.render.smoothing.observed_smoothing_window == 5
+    assert config.render.smoothing.observed_smoothing_max_shift_ratio == 0.10
+    assert config.render.smoothing.bridge_missing_analysis_frames is True
+    assert config.render.smoothing.max_missing_analysis_gap_frames == 3
     assert config.render.smoothing.interpolate_source_frames is True
     assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
@@ -264,6 +268,20 @@ def test_render_smoothing_rejects_unknown_interpolation_method() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate(
             {"render": {"smoothing": {"interpolation_method": "smoothstep"}}}
+        )
+
+
+def test_render_smoothing_rejects_invalid_observed_smoothing_window() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {"render": {"smoothing": {"observed_smoothing_window": 0}}}
+        )
+
+
+def test_render_smoothing_rejects_negative_observed_smoothing_shift_ratio() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {"render": {"smoothing": {"observed_smoothing_max_shift_ratio": -0.1}}}
         )
 
 

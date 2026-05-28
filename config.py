@@ -66,8 +66,12 @@ class TrackerConfig(StrictBaseModel):
 
 class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool = True
-    observed_box_smoothing: Literal["none", "causal_average"] = "none"
+    observed_box_smoothing: Literal["none", "causal_average", "local_linear"] = (
+        "local_linear"
+    )
     history_length: int = Field(default=1, ge=1)
+    observed_smoothing_window: int = Field(default=5, ge=1)
+    observed_smoothing_max_shift_ratio: float = Field(default=0.10, ge=0.0)
     bridge_missing_analysis_frames: bool = True
     max_missing_analysis_gap_frames: int = Field(default=3, ge=0)
     interpolate_source_frames: bool = True
