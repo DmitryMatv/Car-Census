@@ -10,12 +10,12 @@ analysis:
   fps: 10
   batch_size: 32
   detector_batch_size: 32
-  min_track_frames: 6
-  min_box_height_px: 160
-  crop_padding_ratio: 0.08
+  min_track_frames: 7
+  min_box_height_px: 130
+  crop_padding_ratio: 0.06
   crop_padding_px: 0
-  crop_target_box_range_ratio: 0.55
-  crop_min_spacing_seconds: 0.5
+  crop_target_box_range_ratio: 0.73
+  crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
 
 detector:
@@ -24,7 +24,7 @@ detector:
   input_size: 512
   allowed_class_names:
     - car
-    # - truck
+    - truck
     # - bus
     # - motorcycle
   pretrain_weights: null
@@ -34,10 +34,10 @@ detector:
   compile_for_inference: false
 
 tracker:
-  lost_track_buffer: 45
+  lost_track_buffer: 35 # of analysis frames to keep "lost" tracks in memory for potential re-association
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.08
+  minimum_iou_threshold_first_assoc: 0.12 # tracker matching threshold
   minimum_iou_threshold_second_assoc: 0.5
   minimum_iou_threshold_unconfirmed_assoc: 0.10
   high_conf_det_threshold: 0.30
@@ -66,18 +66,23 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 6
+  min_visible_track_observations: 7
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
-  label_font_scale: 0.7
-  label_thickness: 2
+  box_enabled: true
+  box_alpha: 0.5
+  box_thickness: 2
+  label_font_scale: 0.5
+  label_thickness: 1
   label_padding_px: 4
-  label_gap_px: 8
+  label_gap_px: 4
   label_text_color: "#FFFFFF"
-  label_bg_color: "#101820"
-  corner_thickness: 4
-  corner_length: 20
+  label_bg_color: "#000000"
+  corner_thickness: 2
+  corner_length: 14
+  counter_enabled: true
+  counter_position: top_left
   unknown_label: Unknown
   smoothing:
     enabled: true
@@ -86,7 +91,7 @@ render:
     observed_smoothing_window: 5
     observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
-    max_missing_analysis_gap_frames: 3
+    max_missing_analysis_gap_frames: 6
     interpolate_source_frames: true
     interpolation_method: linear
     max_interpolation_gap_seconds: 0.25

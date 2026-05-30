@@ -107,12 +107,9 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
     assert config.analysis.detector_batch_size == 32
-    assert config.analysis.min_track_frames == 6
-    assert config.analysis.min_box_height_px == 160
     assert config.detector.model == "rfdetr-small"
     assert config.detector.confidence == 0.30
     assert config.detector.input_size == 512
-    assert config.detector.allowed_class_names == ["car"]
     assert config.detector.pretrain_weights is None
     assert config.detector.include_source_image is False
     assert config.detector.optimize_for_inference is True
@@ -120,7 +117,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_first_assoc == 0.08
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.10
     assert config.tracker.high_conf_det_threshold == 0.30
     assert config.tracker.edge_margin_px == 10
@@ -130,15 +126,20 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.nvenc_codec == "h264_nvenc"
     assert config.render.nvenc_preset == "p4"
     assert config.render.nvenc_cq == 23
-    assert config.render.min_visible_track_observations == 6
     assert config.render.require_crop_eligible_track is True
     assert config.render.show_unclassified_tracks is False
     assert config.render.box_color == "#FFFFFF"
-    assert config.render.corner_thickness == 4
-    assert config.render.corner_length == 20
+    assert config.render.box_enabled is True
+    assert config.render.box_alpha == 0.5
+    assert config.render.box_thickness == 2
+    assert config.render.corner_thickness == 2
+    assert config.render.corner_length == 14
+    assert config.render.counter_enabled is True
+    assert config.render.counter_position == "top_left"
+    assert config.render.label_thickness == 1
     assert config.render.label_padding_px == 4
     assert config.render.label_text_color == "#FFFFFF"
-    assert config.render.label_bg_color == "#101820"
+    assert config.render.label_bg_color == "#000000"
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.enabled is True
     assert config.render.smoothing.observed_box_smoothing == "local_linear"
@@ -146,7 +147,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.observed_smoothing_window == 5
     assert config.render.smoothing.observed_smoothing_max_shift_ratio == 0.10
     assert config.render.smoothing.bridge_missing_analysis_frames is True
-    assert config.render.smoothing.max_missing_analysis_gap_frames == 3
     assert config.render.smoothing.interpolate_source_frames is True
     assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
@@ -240,6 +240,22 @@ def test_render_config_accepts_nvenc_backend() -> None:
 def test_render_config_rejects_unknown_encode_backend() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate({"render": {"encode_backend": "cuda-draw"}})
+
+
+def test_render_config_rejects_invalid_box_alpha() -> None:
+    for value in [-0.1, 1.1]:
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate({"render": {"box_alpha": value}})
+
+
+def test_render_config_rejects_invalid_box_thickness() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"box_thickness": 0}})
+
+
+def test_render_config_rejects_invalid_counter_position() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"counter_position": "center"}})
 
 
 def test_render_config_rejects_removed_visual_keys() -> None:

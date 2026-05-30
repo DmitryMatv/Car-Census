@@ -99,6 +99,7 @@ def _as_run_store(store: DummyRunStore) -> RunStore:
 class DummyAnnotator:
     seen_track_ids: list[list[int]] = []
     seen_labels_by_track: list[dict[int, str]] = []
+    seen_counter_values: list[int | None] = []
 
     def __init__(self, config: AppConfig) -> None:
         _ = config
@@ -108,9 +109,11 @@ class DummyAnnotator:
         frame: np.ndarray,
         tracks: list[TrackedObject],
         labels_by_track: dict[int, str],
+        counter_value: int | None = None,
     ) -> np.ndarray:
         self.seen_track_ids.append([track.track_id for track in tracks])
         self.seen_labels_by_track.append(dict(labels_by_track))
+        self.seen_counter_values.append(counter_value)
         return frame
 
 
@@ -119,6 +122,7 @@ def _track(
     frame_index: int = 0,
     vehicle_index: int | None = None,
     bbox: BBox | None = None,
+    counted: bool = False,
 ) -> TrackedObject:
     bbox = bbox or BBox(x1=4, y1=5, x2=22, y2=24)
     return TrackedObject(
@@ -133,6 +137,7 @@ def _track(
         centroid=bbox.center,
         bottom_center=bbox.bottom_center,
         inside_roi=True,
+        counted=counted,
     )
 
 
@@ -257,6 +262,94 @@ def test_video_annotator_accepts_fixed_configured_colors() -> None:
     assert int(annotated.max()) > 0
 
 
+def test_video_annotator_draws_transparent_rectangle_box() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "box_color": "#00FF00",
+                "box_alpha": 0.5,
+                "box_thickness": 2,
+                "counter_enabled": False,
+            }
+        }
+    )
+    frame = np.full((120, 120, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[_track(1, bbox=BBox(x1=20, y1=20, x2=80, y2=60))],
+        labels_by_track={1: "Toyota Corolla"},
+    )
+
+    assert np.any(annotated[20:23, 20:81] != frame[20:23, 20:81])
+
+
+def test_video_annotator_can_disable_rectangle_box() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "box_enabled": False,
+                "box_color": "#00FF00",
+                "counter_enabled": False,
+            }
+        }
+    )
+    frame = np.full((140, 140, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[_track(1, bbox=BBox(x1=20, y1=20, x2=80, y2=60))],
+        labels_by_track={1: "Toyota Corolla"},
+    )
+
+    assert np.array_equal(annotated[20:61, 20:81], frame[20:61, 20:81])
+
+
+def test_video_annotator_draws_counter() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_bg_color": "#000000",
+                "label_text_color": "#FFFFFF",
+                "counter_enabled": True,
+            }
+        }
+    )
+    frame = np.full((80, 120, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        counter_value=6,
+    )
+
+    assert annotated.shape == frame.shape
+    assert np.any(annotated[:30, :80] != frame[:30, :80])
+
+
+def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_bg_color": "#000000",
+                "label_gap_px": 4,
+                "label_padding_px": 4,
+            }
+        }
+    )
+    frame = np.full((80, 120, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[_track(1, bbox=BBox(x1=10, y1=40, x2=70, y2=70))],
+        labels_by_track={1: "VW Passat\nMk VI (2010)"},
+    )
+
+    label_pixels = np.where(np.any(annotated < 255, axis=2))
+    assert int(label_pixels[0].min()) >= 74
+
+
 def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:
     annotator = VideoAnnotator(AppConfig())
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
@@ -267,7 +360,7 @@ def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:
     assert np.array_equal(second, frame)
 
 
-def test_format_label_text_uses_single_line_vehicle_index_only() -> None:
+def test_format_label_text_uses_clean_multiline_label() -> None:
     assert (
         format_label_text(
             MMRResult(
@@ -280,7 +373,7 @@ def test_format_label_text_uses_single_line_vehicle_index_only() -> None:
             ),
             "unknown",
         )
-        == "4 | Toyota Corolla | E210 | Hybrid"
+        == "Toyota Corolla\nE210\nHybrid"
     )
     assert format_label_text(MMRResult(api_classification_index=3), "unknown") == (
         "unknown"
@@ -304,7 +397,7 @@ def test_visible_track_label_text_only_uses_vehicle_indexed_tracks(tmp_path) -> 
         records,
     )
 
-    assert visible_track_label_text_by_track(records, "unknown") == {2: "7 | unknown"}
+    assert visible_track_label_text_by_track(records, "unknown") == {2: "unknown"}
 
 
 def test_output_fps_caps_configured_render_fps_at_source_fps() -> None:
@@ -483,6 +576,7 @@ def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
     writer = DummyWriter()
     DummyAnnotator.seen_track_ids = []
     DummyAnnotator.seen_labels_by_track = []
+    DummyAnnotator.seen_counter_values = []
     _patch_render_io(monkeypatch, writer)
 
     render_video(
@@ -664,7 +758,52 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
 
     assert [1] in DummyAnnotator.seen_track_ids
     assert [2] not in DummyAnnotator.seen_track_ids
-    assert DummyAnnotator.seen_labels_by_track[-1] == {1: "8 | UNKNOWN"}
+    assert DummyAnnotator.seen_labels_by_track[-1] == {1: "UNKNOWN"}
+
+
+def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, 0, vehicle_index=1, counted=True)],
+            ),
+            FrameRecord(
+                frame_index=1,
+                timestamp_seconds=1 / 30.0,
+                tracks=[
+                    _track(1, 1, vehicle_index=1, counted=True),
+                    _track(2, 1, vehicle_index=2, counted=True),
+                ],
+            ),
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(make="Toyota", vehicle_index=1).model_dump(mode="json"),
+                "2": MMRResult(make="VW", vehicle_index=2).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    DummyAnnotator.seen_counter_values = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert DummyAnnotator.seen_counter_values == [1, 2, 2]
 
 
 def test_render_uses_injected_smoother_when_smoothing_is_enabled(

@@ -16,6 +16,7 @@ from mmr.trafficeye import (
 )
 from mmr.trafficeye_batch_grid import (
     BatchCell,
+    _resize_for_batch_cell,
     batch_request_payload,
     build_batch_image,
     decode_image,
@@ -61,6 +62,37 @@ def test_decode_image_raises_for_invalid_image_bytes(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="Could not decode crop for MMR request"):
         decode_image(b"not-an-image", image_path)
+
+
+def test_resize_for_batch_cell_uses_lanczos_when_resampling(monkeypatch) -> None:
+    image = np.full((10, 20, 3), 100, dtype=np.uint8)
+    captured: dict[str, object] = {}
+
+    def fake_resize(image_arg, size, *, interpolation):
+        captured["image"] = image_arg
+        captured["size"] = size
+        captured["interpolation"] = interpolation
+        return np.full((size[1], size[0], 3), 50, dtype=np.uint8)
+
+    monkeypatch.setattr(cv2, "resize", fake_resize)
+
+    resized = _resize_for_batch_cell(image, (40, 20))
+
+    assert resized.shape[:2] == (20, 40)
+    assert captured["image"] is image
+    assert captured["size"] == (40, 20)
+    assert captured["interpolation"] == cv2.INTER_LANCZOS4
+
+
+def test_resize_for_batch_cell_skips_exact_size_resampling(monkeypatch) -> None:
+    image = np.full((10, 20, 3), 100, dtype=np.uint8)
+
+    def fail_resize(*args, **kwargs):
+        raise AssertionError("exact-size batch crops should not be resampled")
+
+    monkeypatch.setattr(cv2, "resize", fail_resize)
+
+    assert _resize_for_batch_cell(image, (20, 10)) is image
 
 
 def test_build_batch_image_rejects_empty_image_paths() -> None:

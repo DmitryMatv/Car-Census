@@ -84,8 +84,12 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
                 model="Corolla",
                 generation="E210",
                 variation="Hybrid",
+                view="rear",
+                view8="rear+left",
                 vehicle_index=1,
                 accepted=True,
+                view_confidence=0.76,
+                view8_confidence=0.74,
                 tags=[{"name": "taxi", "value": "true", "score": 0.87}],
             )
         }
@@ -98,25 +102,27 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
         reader = csv.DictReader(handle)
         csv_rows = list(reader)
 
-    assert reader.fieldnames[:7] == [
+    assert reader.fieldnames[:6] == [
         "vehicle_index",
         "track_id",
-        "api_classification_index",
         "make",
         "model",
         "generation",
         "variation",
     ]
+    assert "api_classification_index" not in reader.fieldnames
     assert "color" in reader.fieldnames
+    assert "view" in reader.fieldnames
+    assert "view8" in reader.fieldnames
     assert "category" not in reader.fieldnames
-    assert "view" not in reader.fieldnames
-    assert "view8" not in reader.fieldnames
     assert "category_confidence" not in reader.fieldnames
     assert "color_confidence" not in reader.fieldnames
     assert "view_confidence" not in reader.fieldnames
     assert "view8_confidence" not in reader.fieldnames
     assert "detection_confidence" not in reader.fieldnames
     assert "source_image" not in reader.fieldnames
+    assert csv_rows[0]["view"] == "rear"
+    assert csv_rows[0]["view8"] == "rear+left"
     assert "tag_taxi" in reader.fieldnames
     assert "tag_taxi_confidence" in reader.fieldnames
     assert csv_rows[0]["accepted"] == "True"

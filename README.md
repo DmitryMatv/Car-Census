@@ -1,6 +1,6 @@
 # Car-Census
 
-Offline vehicle tracking and make/model census for roadside video.
+Car counting and make/model/year identification from video footage.
 
 ## What It Does
 

@@ -104,14 +104,21 @@ class RenderConfig(StrictBaseModel):
     require_crop_eligible_track: bool = False
     show_unclassified_tracks: bool = False
     box_color: str = "#FFFFFF"
+    box_enabled: bool = True
+    box_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
+    box_thickness: int = Field(default=2, ge=1)
     label_font_scale: float = 1.0
     label_thickness: int = 1
     label_padding_px: int = 4
     label_gap_px: int = 5
     label_text_color: str = "#FFFFFF"
-    label_bg_color: str = "#101820"
+    label_bg_color: str = "#000000"
     corner_thickness: int = 2
     corner_length: int = 32
+    counter_enabled: bool = True
+    counter_position: Literal[
+        "top_left", "top_right", "bottom_left", "bottom_right"
+    ] = "top_left"
     unknown_label: str = "UNKNOWN"
     smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
 

@@ -32,13 +32,12 @@ def format_label_text(result: MMRResult, unknown_label: str) -> str:
         for part in [result.make or None, result.model or None]
         if part and part.strip()
     ).strip()
-    parts = [make_model or unknown_label]
+    first_line = make_model or unknown_label
+    parts = [first_line]
     for part in [result.generation, result.variation]:
         if part and part.strip():
             parts.append(part.strip())
-    if result.vehicle_index is not None:
-        parts.insert(0, str(result.vehicle_index))
-    return " | ".join(parts)
+    return "\n".join(parts)
 
 
 def visible_track_label_text_by_track(
@@ -207,11 +206,15 @@ def _render_annotated_frames(
 ) -> None:
     current_record = next(record_iter, None)
     latest_tracks: list[TrackedObject] = []
+    live_count = 0
 
     for frame_index, _timestamp_seconds, frame in frame_iter:
         while current_record is not None and current_record.frame_index <= frame_index:
             latest_tracks = current_record.tracks
             current_record = next(record_iter, None)
+        for track in latest_tracks:
+            if track.counted and track.vehicle_index is not None:
+                live_count = max(live_count, track.vehicle_index)
         render_tracks = [
             track
             for track in latest_tracks
@@ -221,6 +224,7 @@ def _render_annotated_frames(
             frame=frame,
             tracks=render_tracks,
             labels_by_track=label_text,
+            counter_value=live_count,
         )
         writer.write(annotated)
 

@@ -34,6 +34,21 @@ def decode_image(image_bytes: bytes, image_path: Path) -> cv2.typing.MatLike:
     return image
 
 
+def _resize_for_batch_cell(
+    image: cv2.typing.MatLike,
+    size: tuple[int, int],
+) -> cv2.typing.MatLike:
+    height, width = image.shape[:2]
+    resized_width, resized_height = size
+    if (width, height) == (resized_width, resized_height):
+        return image
+    return cv2.resize(
+        image,
+        size,
+        interpolation=cv2.INTER_LANCZOS4,
+    )
+
+
 def build_batch_image(
     image_paths: list[Path],
     *,
@@ -61,11 +76,7 @@ def build_batch_image(
         scale = min(cell_size_px / width, cell_size_px / height)
         resized_width = max(1, int(round(width * scale)))
         resized_height = max(1, int(round(height * scale)))
-        resized = cv2.resize(
-            image,
-            (resized_width, resized_height),
-            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
-        )
+        resized = _resize_for_batch_cell(image, (resized_width, resized_height))
         row, column = divmod(index, grid_columns)
         cell_x1 = column * cell_size_px
         cell_y1 = row * cell_size_px

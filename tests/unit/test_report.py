@@ -26,6 +26,8 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
             generation="E210 (2018)",
             variation="Hybrid Touring Sports",
             color="white",
+            view="rear",
+            view8="rear+left",
             accepted=True,
             vehicle_index=1,
             api_classification_index=1,
@@ -71,15 +73,14 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     assert rows[0]["generation"] == "E210 (2018)"
     assert rows[0]["variation"] == "Hybrid Touring Sports"
     assert rows[0]["color"] == "white"
+    assert rows[0]["view"] == "rear"
+    assert rows[0]["view8"] == "rear+left"
     assert rows[0]["accepted"] == "True"
     assert rows[0]["model_confidence"] == "0.91"
+    assert "api_classification_index" not in rows[0]
     assert "category" not in rows[0]
-    assert "view" not in rows[0]
-    assert "view8" not in rows[0]
     assert "category_confidence" not in rows[0]
     assert "color_confidence" not in rows[0]
-    assert "view_confidence" not in rows[0]
-    assert "view8_confidence" not in rows[0]
     assert "detection_confidence" not in rows[0]
     assert "source_image" not in rows[0]
     assert rows[0]["tag_taxi"] == "True"

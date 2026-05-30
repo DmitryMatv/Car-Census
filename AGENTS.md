@@ -6,6 +6,10 @@ Never use `unittest` for backend testing. Always use Python's built-in `pytest` 
 
 Use Virtual Environment `source .venv/bin/activate` because `pytest` and everything else needed is installed there already probably.
 
+## Project Snapshot
+
+Car-Census is a video analysis and annotation tool for conducting real-world, on-the-road car make and model visual surveys. It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
+
 ## Type Safety
 
 Maintain a strict type-safety direction for the project.
@@ -32,7 +36,5 @@ Maintain a strict type-safety direction for the project.
 - Edge-touch suppression cannot rely only on BoT-SORT's emitted track box. The
   tracker may output a smoothed/inset box while the matched detector box already
   touches the source frame, ROI crop, or polygon edge.
-
-## Project Snapshot
 
 ## Tech Stack

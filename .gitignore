@@ -1,7 +1,6 @@
 # Custom ignore rules for this project
 output/
-input_data/
-weights/
+input_data
 .pyscn/
 
 # Byte-compiled / optimized / DLL files
