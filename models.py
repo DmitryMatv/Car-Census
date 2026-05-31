@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class BBox(BaseModel):
@@ -102,12 +102,24 @@ class TrackSummary(BaseModel):
     first_frame_index: int
     last_frame_index: int
     frames_seen: int
-    min_box_height_px: float | None = None
-    max_box_height_px: float
+    min_box_width_px: float | None = None
+    max_box_width_px: float
     counted: bool = False
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = Field(default_factory=list)
     final_label: MMRResult | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_height_metric(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        migrated = dict(data)
+        if "min_box_width_px" not in migrated and "min_box_height_px" in migrated:
+            migrated["min_box_width_px"] = migrated["min_box_height_px"]
+        if "max_box_width_px" not in migrated and "max_box_height_px" in migrated:
+            migrated["max_box_width_px"] = migrated["max_box_height_px"]
+        return migrated
 
 
 class FrameRecord(BaseModel):

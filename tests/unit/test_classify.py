@@ -109,7 +109,7 @@ def test_legacy_candidate_and_summary_payloads_still_parse(tmp_path) -> None:
 
     summary = TrackSummary.model_validate(payload)
 
-    assert summary.min_box_height_px is None
+    assert summary.min_box_width_px is None
     assert len(summary.candidates) == 1
     assert not hasattr(summary.candidates[0], "total_score")
 
@@ -146,7 +146,7 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
                 first_frame_index=1,
                 last_frame_index=4,
                 frames_seen=4,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(short_crop, track_id=1, vehicle_index=99)],
             ),
             TrackSummary(
@@ -155,7 +155,7 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(long_crop, track_id=2, vehicle_index=1)],
             ),
         ],
@@ -217,7 +217,7 @@ def test_classify_tracks_assigns_api_classification_index(
                 first_frame_index=1,
                 last_frame_index=4,
                 frames_seen=4,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(skipped_crop, track_id=1, vehicle_index=99)],
             ),
             TrackSummary(
@@ -226,7 +226,7 @@ def test_classify_tracks_assigns_api_classification_index(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(rejected_crop, track_id=2, vehicle_index=1)],
             ),
             TrackSummary(
@@ -235,7 +235,7 @@ def test_classify_tracks_assigns_api_classification_index(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(accepted_crop, track_id=3, vehicle_index=2)],
             ),
         ],
@@ -292,8 +292,8 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=1,
                 last_frame_index=5,
                 frames_seen=5,
-                min_box_height_px=40,
-                max_box_height_px=100,
+                min_box_width_px=40,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         weak_crop,
@@ -309,8 +309,8 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=9,
                 last_frame_index=13,
                 frames_seen=5,
-                min_box_height_px=40,
-                max_box_height_px=100,
+                min_box_width_px=40,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         best_crop,
@@ -326,8 +326,8 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
                 first_frame_index=20,
                 last_frame_index=29,
                 frames_seen=10,
-                min_box_height_px=40,
-                max_box_height_px=100,
+                min_box_width_px=40,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         other_crop,
@@ -395,8 +395,8 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                min_box_height_px=50,
-                max_box_height_px=100,
+                min_box_width_px=50,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         crops["scale"],
@@ -412,8 +412,8 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
                 first_frame_index=11,
                 last_frame_index=20,
                 frames_seen=10,
-                min_box_height_px=50,
-                max_box_height_px=100,
+                min_box_width_px=50,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         crops["sharpness"],
@@ -435,8 +435,8 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
                 first_frame_index=21,
                 last_frame_index=30,
                 frames_seen=10,
-                min_box_height_px=100,
-                max_box_height_px=100,
+                min_box_width_px=100,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         crops["edge"],
@@ -458,8 +458,8 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
                 first_frame_index=31,
                 last_frame_index=40,
                 frames_seen=10,
-                min_box_height_px=100,
-                max_box_height_px=100,
+                min_box_width_px=100,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         crops["area"],
@@ -481,8 +481,8 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
                 first_frame_index=41,
                 last_frame_index=50,
                 frames_seen=10,
-                min_box_height_px=100,
-                max_box_height_px=100,
+                min_box_width_px=100,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         crops["later"],
@@ -560,7 +560,7 @@ def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> N
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(first_crop, track_id=1, vehicle_index=1)],
             ),
             TrackSummary(
@@ -569,7 +569,7 @@ def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> N
                 first_frame_index=11,
                 last_frame_index=20,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(second_crop, track_id=2, vehicle_index=2)],
             ),
             TrackSummary(
@@ -578,7 +578,7 @@ def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> N
                 first_frame_index=21,
                 last_frame_index=30,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(third_crop, track_id=3, vehicle_index=3)],
             ),
         ],
@@ -625,7 +625,7 @@ def test_classify_tracks_uses_relocated_crop_when_track_path_is_stale(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(stale_crop, track_id=1, vehicle_index=1)],
             ),
         ],
@@ -664,7 +664,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=50,
+                max_box_width_px=50,
                 candidates=[],
             ),
             TrackSummary(
@@ -673,7 +673,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
                 first_frame_index=20,
                 last_frame_index=29,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[
                     _candidate(
                         tmp_path / "vehicle.jpg",
@@ -715,7 +715,7 @@ def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
                 first_frame_index=1,
                 last_frame_index=10,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(crops[0], track_id=1, vehicle_index=1)],
             ),
             TrackSummary(
@@ -724,7 +724,7 @@ def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
                 first_frame_index=11,
                 last_frame_index=20,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(crops[1], track_id=2, vehicle_index=2)],
             ),
             TrackSummary(
@@ -733,7 +733,7 @@ def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
                 first_frame_index=21,
                 last_frame_index=30,
                 frames_seen=10,
-                max_box_height_px=100,
+                max_box_width_px=100,
                 candidates=[_candidate(crops[2], track_id=3, vehicle_index=3)],
             ),
         ],

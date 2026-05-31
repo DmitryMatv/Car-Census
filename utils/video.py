@@ -186,6 +186,8 @@ def iter_sampled_frames(
     video_path: Path,
     source_fps: float,
     target_fps: float,
+    *,
+    include_terminal_frame: bool = False,
 ) -> Iterator[tuple[int, float, np.ndarray]]:
     if source_fps <= 0:
         raise RuntimeError(f"Invalid source FPS for video: {video_path}")
@@ -198,15 +200,31 @@ def iter_sampled_frames(
         next_sample_time = 0.0
         sample_interval = 1.0 / min(target_fps, source_fps)
         epsilon = 1e-9
+        last_decoded_frame_index: int | None = None
+        last_decoded_timestamp: float | None = None
+        last_decoded_frame: np.ndarray | None = None
+        last_yielded_frame_index: int | None = None
         while True:
             ok, frame = capture.read()
             if not ok or frame is None:
                 break
             timestamp = frame_index / source_fps
+            last_decoded_frame_index = frame_index
+            last_decoded_timestamp = timestamp
+            last_decoded_frame = frame
             if timestamp + epsilon >= next_sample_time:
                 yield frame_index, timestamp, frame
+                last_yielded_frame_index = frame_index
                 next_sample_time += sample_interval
             frame_index += 1
+        if (
+            include_terminal_frame
+            and last_decoded_frame_index is not None
+            and last_decoded_timestamp is not None
+            and last_decoded_frame is not None
+            and last_decoded_frame_index != last_yielded_frame_index
+        ):
+            yield last_decoded_frame_index, last_decoded_timestamp, last_decoded_frame
     finally:
         capture.release()
 

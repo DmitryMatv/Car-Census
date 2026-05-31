@@ -144,8 +144,8 @@ def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> N
         track_id=42,
         first_frame_index=1,
         last_frame_index=1,
-        min_box_height_px=40,
-        max_box_height_px=140,
+        min_box_width_px=40,
+        max_box_width_px=140,
     )
     frame = np.full((200, 200, 3), 255, dtype=np.uint8)
     config = AppConfig.model_validate(
@@ -441,11 +441,13 @@ def _prepare_analyze_frames_test(
     monkeypatch.setattr(
         analyze_module,
         "iter_sampled_frames",
-        lambda video_path, source_fps, target_fps: iter(
-            [
-                (frame_index, frame_index / 30.0, frame)
-                for frame_index, frame in enumerate(frames)
-            ]
+        lambda video_path, source_fps, target_fps, *, include_terminal_frame=False: (
+            iter(
+                [
+                    (frame_index, frame_index / 30.0, frame)
+                    for frame_index, frame in enumerate(frames)
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
@@ -542,12 +544,14 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
     monkeypatch.setattr(
         analyze_module,
         "iter_sampled_frames",
-        lambda video_path, source_fps, target_fps: iter(
-            [
-                (0, 0.0, frames[0]),
-                (1, 1 / 30, frames[1]),
-                (2, 2 / 30, frames[2]),
-            ]
+        lambda video_path, source_fps, target_fps, *, include_terminal_frame=False: (
+            iter(
+                [
+                    (0, 0.0, frames[0]),
+                    (1, 1 / 30, frames[1]),
+                    (2, 2 / 30, frames[2]),
+                ]
+            )
         ),
     )
     monkeypatch.setattr(
@@ -610,6 +614,63 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     assert tracker.frame_rate == 10.0
     assert manifest.source_fps == 30.0
     assert manifest.analysis_fps == 10.0
+
+
+def test_analyze_requests_terminal_frame_sampling(tmp_path, monkeypatch) -> None:
+    store = RunStore(tmp_path / "run")
+    store.ensure_directories()
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(_empty_tracks())
+    include_terminal_frame_values: list[bool] = []
+
+    monkeypatch.setattr(
+        analyze_module,
+        "read_video_metadata",
+        lambda video_path: VideoMetadata(
+            width=100, height=100, fps=30.0, frame_count=1
+        ),
+    )
+
+    def fake_iter_sampled_frames(
+        video_path,
+        source_fps,
+        target_fps,
+        *,
+        include_terminal_frame=False,
+    ):
+        _ = video_path, source_fps, target_fps
+        include_terminal_frame_values.append(include_terminal_frame)
+        frame = np.full((100, 100, 3), 255, dtype=np.uint8)
+        return iter([(0, 0.0, frame)])
+
+    monkeypatch.setattr(
+        analyze_module,
+        "iter_sampled_frames",
+        fake_iter_sampled_frames,
+    )
+    monkeypatch.setattr(
+        analyze_module, "create_detector", lambda config, project_root: detector
+    )
+
+    def create_tracker(config, frame_rate):
+        _ = config
+        tracker.frame_rate = frame_rate
+        return tracker
+
+    monkeypatch.setattr(analyze_module, "BotSortAdapter", create_tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig(),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    assert include_terminal_frame_values == [True]
 
 
 def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observation(
@@ -1012,7 +1073,7 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
         {
             "analysis": {
                 "min_track_frames": 1,
-                "min_box_height_px": 1,
+                "min_box_width_px": 1,
                 "crop_padding_ratio": 0,
                 "crop_padding_px": 0,
                 "crop_min_spacing_seconds": 0,
@@ -1041,17 +1102,17 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
     assert tracker.drop_calls == []
 
 
-def test_track_between_160_and_199_px_gets_crop_candidate(
+def test_track_between_160_and_199_px_wide_gets_crop_candidate(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_single_track(BBox(x1=20, y1=10, x2=80, y2=180)))
+    tracker = FakeTrackerAdapter(_single_track(BBox(x1=10, y1=20, x2=180, y2=80)))
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
         detector=detector,
         tracker=tracker,
-        frames=[np.full((200, 100, 3), 255, dtype=np.uint8)],
+        frames=[np.full((100, 200, 3), 255, dtype=np.uint8)],
     )
     config = AppConfig.model_validate(
         {
@@ -1069,7 +1130,7 @@ def test_track_between_160_and_199_px_gets_crop_candidate(
         config=config,
         profile=CameraProfile(
             camera_id="full",
-            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 199], [0, 199]]),
+            polygon=PolygonZoneConfig(points=[[0, 0], [199, 0], [199, 99], [0, 99]]),
         ),
         video_path=tmp_path / "input.mp4",
         run_store=store,
@@ -1080,7 +1141,7 @@ def test_track_between_160_and_199_px_gets_crop_candidate(
         for line in store.tracks_path.read_bytes().splitlines()
         if line.strip()
     ]
-    assert summaries[0]["max_box_height_px"] == 170.0
+    assert summaries[0]["max_box_width_px"] == 170.0
     assert [candidate["frame_index"] for candidate in summaries[0]["candidates"]] == [0]
 
 
@@ -1144,7 +1205,7 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
         project_root=tmp_path,
         config=AppConfig.model_validate(
             {
-                "analysis": {"min_track_frames": 1, "min_box_height_px": 1},
+                "analysis": {"min_track_frames": 1, "min_box_width_px": 1},
                 "tracker": {"ignore_edge_touches": False},
                 "render": {"min_visible_track_observations": 1},
             }
@@ -1168,11 +1229,11 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
     assert stats["edge_observations_skipped"] == 0
     assert stats["tracks_discarded_min_track_frames"] == 0
     assert stats["tracks_without_crop_candidates"] == 0
-    assert stats["tracks_without_crop_due_to_height"] == 0
+    assert stats["tracks_without_crop_due_to_width"] == 0
     assert stats["tracks_without_crop_due_to_short_lifetime"] == 0
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 0
     assert sum(bucket["count"] for bucket in stats["confidence_histogram"]) == 2
-    assert sum(bucket["count"] for bucket in stats["box_height_histogram"]) == 1
+    assert sum(bucket["count"] for bucket in stats["box_width_histogram"]) == 1
 
 
 def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
@@ -1219,7 +1280,7 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
         project_root=tmp_path,
         config=AppConfig.model_validate(
             {
-                "analysis": {"min_track_frames": 2, "min_box_height_px": 100},
+                "analysis": {"min_track_frames": 2, "min_box_width_px": 100},
                 "render": {
                     "require_crop_eligible_track": True,
                     "min_visible_track_observations": 1,
@@ -1239,7 +1300,7 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
     assert stats["edge_observations_skipped"] == 1
     assert stats["tracks_discarded_min_track_frames"] == 2
     assert stats["tracks_without_crop_candidates"] == 2
-    assert stats["tracks_without_crop_due_to_height"] == 2
+    assert stats["tracks_without_crop_due_to_width"] == 2
     assert stats["tracks_without_crop_due_to_short_lifetime"] == 2
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 2
 
@@ -1279,7 +1340,7 @@ def test_analyze_discards_crops_and_vehicle_index_for_short_tracks(
     tracker = FakeTrackerAdapter(_single_track(BBox(x1=20, y1=20, x2=80, y2=80)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
     config = AppConfig.model_validate(
-        {"analysis": {"min_track_frames": 2, "min_box_height_px": 1}}
+        {"analysis": {"min_track_frames": 2, "min_box_width_px": 1}}
     )
 
     analyze_video(

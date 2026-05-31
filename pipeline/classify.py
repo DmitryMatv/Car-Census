@@ -61,8 +61,8 @@ def _best_candidate_for_summaries(
         ranked_candidates,
         key=lambda item: rank_crop_candidate(
             item[1],
-            item[0].min_box_height_px,
-            item[0].max_box_height_px,
+            item[0].min_box_width_px,
+            item[0].max_box_width_px,
             config,
         ),
     )

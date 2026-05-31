@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class StrictBaseModel(BaseModel):
@@ -26,7 +26,10 @@ class AnalysisConfig(StrictBaseModel):
     batch_size: int = Field(default=32, ge=1)
     detector_batch_size: int | None = Field(default=None, ge=1)
     min_track_frames: int = 10
-    min_box_height_px: int = 160
+    min_box_width_px: int = Field(
+        default=160,
+        validation_alias=AliasChoices("min_box_width_px", "min_box_height_px"),
+    )
     crop_padding_ratio: float = Field(default=0.08, ge=0.0)
     crop_padding_px: int = Field(default=0, ge=0)
     crop_target_box_range_ratio: float = Field(default=0.70, ge=0.0, le=1.0)

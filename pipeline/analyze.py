@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+
+import numpy as np
 
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
@@ -35,6 +37,19 @@ from utils.video import iter_sampled_frames, read_video_metadata, validate_video
 logger = logging.getLogger(__name__)
 
 
+def _iter_analysis_sampled_frames(
+    video_path: Path,
+    source_fps: float,
+    target_fps: float,
+) -> Iterator[tuple[int, float, np.ndarray]]:
+    return iter_sampled_frames(
+        video_path,
+        source_fps,
+        target_fps,
+        include_terminal_frame=True,
+    )
+
+
 def _finalize_analysis(
     *,
     run_store: RunStore,
@@ -46,11 +61,11 @@ def _finalize_analysis(
     diagnostics.tracks_without_crop_candidates = sum(
         1 for state in track_states if not state.candidates
     )
-    diagnostics.tracks_without_crop_due_to_height = sum(
+    diagnostics.tracks_without_crop_due_to_width = sum(
         1
         for state in track_states
         if not state.candidates
-        and state.max_box_height_px < config.analysis.min_box_height_px
+        and state.max_box_width_px < config.analysis.min_box_width_px
     )
     diagnostics.tracks_without_crop_due_to_short_lifetime = sum(
         1
@@ -126,7 +141,7 @@ def analyze_video(
         target_fps=analysis_fps,
         profile=profile,
         batch_size=config.analysis.detector_batch_size or config.analysis.batch_size,
-        iter_sampled_frames_func=iter_sampled_frames,
+        iter_sampled_frames_func=_iter_analysis_sampled_frames,
     ):
         diagnostics.total_sampled_frames += 1
         global_detections = map_detections_to_global(detections, sampled_frame.offset)

@@ -11,10 +11,10 @@ analysis:
   batch_size: 32
   detector_batch_size: 32
   min_track_frames: 7
-  min_box_height_px: 130
+  min_box_width_px: 160
   crop_padding_ratio: 0.06
   crop_padding_px: 0
-  crop_target_box_range_ratio: 0.73
+  crop_target_box_range_ratio: 0.69
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
 

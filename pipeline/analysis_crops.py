@@ -15,8 +15,8 @@ from utils.image_quality import laplacian_sharpness
 
 class CandidateTrackState(Protocol):
     track_id: int
-    min_box_height_px: float | None
-    max_box_height_px: float
+    min_box_width_px: float | None
+    max_box_width_px: float
     candidates: list[CropCandidate]
     last_candidate_time: float | None
 
@@ -51,20 +51,18 @@ def score_candidate(
 
 def crop_candidate_rank(
     *,
-    bbox_height: float,
+    bbox_width: float,
     sharpness: float,
     edge_margin_score: float,
     area_score: float,
     frame_index: int,
-    min_box_height_px: float | None,
-    max_box_height_px: float,
+    min_box_width_px: float | None,
+    max_box_width_px: float,
     target_ratio: float,
 ) -> CropCandidateRank:
-    min_height = (
-        min_box_height_px if min_box_height_px is not None else max_box_height_px
-    )
-    target_height = min_height + ((max_box_height_px - min_height) * target_ratio)
-    scale_error = abs(bbox_height - target_height) / max(target_height, 1.0)
+    min_width = min_box_width_px if min_box_width_px is not None else max_box_width_px
+    target_width = min_width + ((max_box_width_px - min_width) * target_ratio)
+    scale_error = abs(bbox_width - target_width) / max(target_width, 1.0)
     return CropCandidateRank(
         scale_score=-scale_error,
         sharpness=sharpness,
@@ -76,19 +74,19 @@ def crop_candidate_rank(
 
 def rank_crop_candidate(
     candidate: CropCandidate,
-    min_box_height_px: float | None,
-    max_box_height_px: float,
+    min_box_width_px: float | None,
+    max_box_width_px: float,
     config: AppConfig,
 ) -> CropCandidateRank:
     vehicle_bbox = candidate.vehicle_bbox or candidate.bbox
     return crop_candidate_rank(
-        bbox_height=vehicle_bbox.height,
+        bbox_width=vehicle_bbox.width,
         sharpness=candidate.sharpness,
         edge_margin_score=candidate.edge_margin_score,
         area_score=candidate.area_score,
         frame_index=candidate.frame_index,
-        min_box_height_px=min_box_height_px,
-        max_box_height_px=max_box_height_px,
+        min_box_width_px=min_box_width_px,
+        max_box_width_px=max_box_width_px,
         target_ratio=config.analysis.crop_target_box_range_ratio,
     )
 
@@ -150,13 +148,13 @@ def save_candidate(
     current = track_state.candidates[0] if track_state.candidates else None
     if current is not None and rank_crop_candidate(
         current,
-        track_state.min_box_height_px,
-        track_state.max_box_height_px,
+        track_state.min_box_width_px,
+        track_state.max_box_width_px,
         config,
     ) >= rank_crop_candidate(
         candidate,
-        track_state.min_box_height_px,
-        track_state.max_box_height_px,
+        track_state.min_box_width_px,
+        track_state.max_box_width_px,
         config,
     ):
         return
@@ -194,7 +192,7 @@ class CropCandidateSelector:
         frame_index: int,
         timestamp_seconds: float,
     ) -> None:
-        if bbox.height < self.config.analysis.min_box_height_px:
+        if bbox.width < self.config.analysis.min_box_width_px:
             return
         save_candidate(
             store=self.store,

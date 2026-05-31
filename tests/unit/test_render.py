@@ -143,7 +143,7 @@ def _track(
 
 def _summary(
     track_id: int,
-    max_box_height_px: float,
+    max_box_width_px: float,
     vehicle_index: int | None = None,
 ) -> TrackSummary:
     return TrackSummary(
@@ -152,8 +152,8 @@ def _summary(
         first_frame_index=0,
         last_frame_index=0,
         frames_seen=1,
-        min_box_height_px=max_box_height_px,
-        max_box_height_px=max_box_height_px,
+        min_box_width_px=max_box_width_px,
+        max_box_width_px=max_box_width_px,
     )
 
 
@@ -383,6 +383,21 @@ def test_format_label_text_uses_clean_multiline_label() -> None:
     )
 
 
+def test_format_label_text_hides_all_old_vehicle_details() -> None:
+    assert (
+        format_label_text(
+            MMRResult(
+                make="Mercedes",
+                model="OLD",
+                generation=" old ",
+                variation="OLD",
+            ),
+            "unknown",
+        )
+        == "Mercedes"
+    )
+
+
 def test_visible_track_label_text_only_uses_vehicle_indexed_tracks(tmp_path) -> None:
     frames_path = tmp_path / "frames.jsonl"
     records = [
@@ -449,7 +464,7 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
     ) == {1, 2}
 
 
-def test_visible_track_ids_applies_min_box_height_when_summaries_exist() -> None:
+def test_visible_track_ids_applies_min_box_width_when_summaries_exist() -> None:
     records = [
         FrameRecord(
             frame_index=0,
@@ -461,14 +476,14 @@ def test_visible_track_ids_applies_min_box_height_when_summaries_exist() -> None
         )
     ]
     summaries = [
-        _summary(1, max_box_height_px=160),
-        _summary(2, max_box_height_px=159),
+        _summary(1, max_box_width_px=160),
+        _summary(2, max_box_width_px=159),
     ]
 
     assert visible_track_ids_for_render(
         AppConfig.model_validate(
             {
-                "analysis": {"min_box_height_px": 160},
+                "analysis": {"min_box_width_px": 160},
                 "render": {"min_visible_track_observations": 1},
             }
         ),
@@ -630,11 +645,11 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
     assert [2] not in DummyAnnotator.seen_track_ids
 
 
-def test_render_hides_labeled_track_below_min_box_height(tmp_path, monkeypatch) -> None:
+def test_render_hides_labeled_track_below_min_box_width(tmp_path, monkeypatch) -> None:
     store = DummyRunStore(tmp_path)
     store.track_summaries = [
-        _summary(1, max_box_height_px=120, vehicle_index=1),
-        _summary(2, max_box_height_px=180, vehicle_index=2),
+        _summary(1, max_box_width_px=120, vehicle_index=1),
+        _summary(2, max_box_width_px=180, vehicle_index=2),
     ]
     _write_records(
         store.frames_path,
@@ -665,7 +680,7 @@ def test_render_hides_labeled_track_below_min_box_height(tmp_path, monkeypatch) 
     render_video(
         config=AppConfig.model_validate(
             {
-                "analysis": {"min_box_height_px": 160},
+                "analysis": {"min_box_width_px": 160},
                 "render": {
                     "min_visible_track_observations": 1,
                     "smoothing": {"enabled": False},
@@ -681,13 +696,13 @@ def test_render_hides_labeled_track_below_min_box_height(tmp_path, monkeypatch) 
     assert [1] not in DummyAnnotator.seen_track_ids
 
 
-def test_render_min_box_height_applies_when_showing_unclassified_tracks(
+def test_render_min_box_width_applies_when_showing_unclassified_tracks(
     tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     store.track_summaries = [
-        _summary(1, max_box_height_px=120, vehicle_index=1),
-        _summary(2, max_box_height_px=180, vehicle_index=2),
+        _summary(1, max_box_width_px=120, vehicle_index=1),
+        _summary(2, max_box_width_px=180, vehicle_index=2),
     ]
     _write_records(
         store.frames_path,
@@ -709,7 +724,7 @@ def test_render_min_box_height_applies_when_showing_unclassified_tracks(
     render_video(
         config=AppConfig.model_validate(
             {
-                "analysis": {"min_box_height_px": 160},
+                "analysis": {"min_box_width_px": 160},
                 "render": {
                     "min_visible_track_observations": 1,
                     "show_unclassified_tracks": True,

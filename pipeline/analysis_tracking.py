@@ -27,8 +27,8 @@ class MutableTrackState:
     last_frame_index: int
     vehicle_index: int | None = None
     frames_seen: int = 0
-    min_box_height_px: float | None = None
-    max_box_height_px: float = 0.0
+    min_box_width_px: float | None = None
+    max_box_width_px: float = 0.0
     previous_bottom_center: tuple[float, float] | None = None
     counted: bool = False
     count_event: CountEvent | None = None
@@ -162,9 +162,7 @@ class TrackStateUpdater:
                 self.diagnostics.tracks_discarded_edge_contact += 1
                 continue
 
-            self.diagnostics.tracker_box_height_histogram.observe(
-                observation.bbox.height
-            )
+            self.diagnostics.tracker_box_width_histogram.observe(observation.bbox.width)
             inside_roi = point_in_polygon(
                 observation.bottom_center, self.profile.polygon.points
             )
@@ -275,12 +273,12 @@ class TrackStateUpdater:
     ) -> None:
         state.frames_seen += 1
         state.last_frame_index = frame_index
-        state.min_box_height_px = (
-            observation.bbox.height
-            if state.min_box_height_px is None
-            else min(state.min_box_height_px, observation.bbox.height)
+        state.min_box_width_px = (
+            observation.bbox.width
+            if state.min_box_width_px is None
+            else min(state.min_box_width_px, observation.bbox.width)
         )
-        state.max_box_height_px = max(state.max_box_height_px, observation.bbox.height)
+        state.max_box_width_px = max(state.max_box_width_px, observation.bbox.width)
         state.previous_bottom_center = observation.bottom_center
 
     def _update_crop_state(

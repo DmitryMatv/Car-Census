@@ -14,8 +14,8 @@ class TrackStateProtocol(Protocol):
     last_frame_index: int
     vehicle_index: int | None
     frames_seen: int
-    min_box_height_px: float | None
-    max_box_height_px: float
+    min_box_width_px: float | None
+    max_box_width_px: float
     counted: bool
     count_event: CountEvent | None
     candidates: list[CropCandidate]
@@ -50,8 +50,8 @@ def track_summary_from_state(state: TrackStateProtocol) -> TrackSummary:
         first_frame_index=state.first_frame_index,
         last_frame_index=state.last_frame_index,
         frames_seen=state.frames_seen,
-        min_box_height_px=state.min_box_height_px,
-        max_box_height_px=state.max_box_height_px,
+        min_box_width_px=state.min_box_width_px,
+        max_box_width_px=state.max_box_width_px,
         counted=state.counted,
         count_event=state.count_event,
         candidates=state.candidates,

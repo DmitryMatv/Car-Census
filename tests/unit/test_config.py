@@ -90,7 +90,7 @@ def test_analysis_config_defaults_to_batched_detection() -> None:
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
     assert config.analysis.detector_batch_size is None
-    assert config.analysis.min_box_height_px == 160
+    assert config.analysis.min_box_width_px == 160
     assert not hasattr(config.analysis, "crop_limit_per_track")
 
 

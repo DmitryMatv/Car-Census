@@ -73,6 +73,69 @@ def test_iter_sampled_frames_uses_configured_analysis_fps(tmp_path: Path) -> Non
     )
 
 
+def test_iter_sampled_frames_can_include_unsampled_terminal_frame(
+    tmp_path: Path,
+) -> None:
+    video_path = tmp_path / "sample.mp4"
+    writer = build_video_writer(
+        output_path=video_path,
+        fps=30.0,
+        width=16,
+        height=16,
+        codec="mp4v",
+    )
+    try:
+        for index in range(8):
+            frame = np.full((16, 16, 3), index * 10, dtype=np.uint8)
+            writer.write(frame)
+    finally:
+        writer.release()
+
+    frames = list(
+        iter_sampled_frames(
+            video_path,
+            source_fps=30.0,
+            target_fps=10.0,
+            include_terminal_frame=True,
+        )
+    )
+
+    assert [frame_index for frame_index, _timestamp, _frame in frames] == [0, 3, 6, 7]
+    assert [timestamp for _frame_index, timestamp, _frame in frames] == pytest.approx(
+        [0.0, 0.1, 0.2, 7 / 30]
+    )
+
+
+def test_iter_sampled_frames_does_not_duplicate_terminal_frame(
+    tmp_path: Path,
+) -> None:
+    video_path = tmp_path / "sample.mp4"
+    writer = build_video_writer(
+        output_path=video_path,
+        fps=30.0,
+        width=16,
+        height=16,
+        codec="mp4v",
+    )
+    try:
+        for index in range(10):
+            frame = np.full((16, 16, 3), index * 10, dtype=np.uint8)
+            writer.write(frame)
+    finally:
+        writer.release()
+
+    frames = list(
+        iter_sampled_frames(
+            video_path,
+            source_fps=30.0,
+            target_fps=10.0,
+            include_terminal_frame=True,
+        )
+    )
+
+    assert [frame_index for frame_index, _timestamp, _frame in frames] == [0, 3, 6, 9]
+
+
 def test_iter_sampled_frames_uses_all_frames_when_analysis_fps_exceeds_source(
     tmp_path: Path,
 ) -> None:

@@ -26,15 +26,38 @@ logger = logging.getLogger(__name__)
 SmoothRenderTracks = Callable[[AppConfig, CameraProfile, RunStore], Path]
 
 
+def _is_old_vehicle_placeholder(value: str | None) -> bool:
+    return bool(value and value.strip().upper() == "OLD")
+
+
+def _has_only_old_vehicle_details(result: MMRResult) -> bool:
+    return all(
+        _is_old_vehicle_placeholder(part)
+        for part in [result.model, result.generation, result.variation]
+    )
+
+
 def format_label_text(result: MMRResult, unknown_label: str) -> str:
+    has_only_old_vehicle_details = _has_only_old_vehicle_details(result)
     make_model = " ".join(
         part.strip()
-        for part in [result.make or None, result.model or None]
+        for part in [
+            result.make or None,
+            None if has_only_old_vehicle_details else result.model,
+        ]
         if part and part.strip()
     ).strip()
     first_line = make_model or unknown_label
     parts = [first_line]
-    for part in [result.generation, result.variation]:
+    detail_parts = (
+        []
+        if has_only_old_vehicle_details
+        else [
+            result.generation,
+            result.variation,
+        ]
+    )
+    for part in detail_parts:
         if part and part.strip():
             parts.append(part.strip())
     return "\n".join(parts)
@@ -131,7 +154,7 @@ def size_eligible_track_ids(
     return {
         summary.track_id
         for summary in summaries
-        if summary.max_box_height_px >= config.analysis.min_box_height_px
+        if summary.max_box_width_px >= config.analysis.min_box_width_px
     }
 
 

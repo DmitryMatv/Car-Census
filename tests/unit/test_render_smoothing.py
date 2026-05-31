@@ -842,6 +842,30 @@ def test_smooth_render_tracks_does_not_tail_extrapolate_after_last_observation(
     ] == list(range(7))
 
 
+def test_smooth_render_tracks_uses_terminal_observation_without_tail_extrapolation(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10, frame_count=8)
+    profile = build_full_frame_profile(width=200, height=100)
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
+        _record(6, 0.2, [_track(1, 6, 0.2, BBox(x1=60, y1=10, x2=80, y2=30))]),
+        _record(
+            7,
+            7 / 30,
+            [_track(1, 7, 7 / 30, BBox(x1=70, y1=10, x2=90, y2=30))],
+        ),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(AppConfig(), profile, store)
+
+    assert [
+        record.frame_index for record in _read_records(store.render_frames_path)
+    ] == list(range(8))
+
+
 def test_smooth_render_tracks_does_not_bridge_large_gaps_by_default(
     tmp_path,
 ) -> None:

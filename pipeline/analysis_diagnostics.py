@@ -8,7 +8,7 @@ from typing import Any
 from detectors.base import Detector
 
 CONFIDENCE_BINS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01)
-BOX_HEIGHT_BINS = (
+BOX_WIDTH_BINS = (
     0.0,
     40.0,
     80.0,
@@ -68,14 +68,14 @@ class AnalysisDiagnostics:
     edge_observations_skipped: int = 0
     tracks_discarded_min_track_frames: int = 0
     tracks_without_crop_candidates: int = 0
-    tracks_without_crop_due_to_height: int = 0
+    tracks_without_crop_due_to_width: int = 0
     tracks_without_crop_due_to_short_lifetime: int = 0
     tracks_hidden_from_render_crop_eligibility: int = 0
     tracker_confidence_histogram: HistogramAccumulator = field(
         default_factory=lambda: HistogramAccumulator(CONFIDENCE_BINS)
     )
-    tracker_box_height_histogram: HistogramAccumulator = field(
-        default_factory=lambda: HistogramAccumulator(BOX_HEIGHT_BINS)
+    tracker_box_width_histogram: HistogramAccumulator = field(
+        default_factory=lambda: HistogramAccumulator(BOX_WIDTH_BINS)
     )
 
 
@@ -164,8 +164,8 @@ def analysis_diagnostics_payload(
         "edge_observations_skipped": diagnostics.edge_observations_skipped,
         "tracks_discarded_min_track_frames": diagnostics.tracks_discarded_min_track_frames,
         "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,
-        "tracks_without_crop_due_to_height": (
-            diagnostics.tracks_without_crop_due_to_height
+        "tracks_without_crop_due_to_width": (
+            diagnostics.tracks_without_crop_due_to_width
         ),
         "tracks_without_crop_due_to_short_lifetime": (
             diagnostics.tracks_without_crop_due_to_short_lifetime
@@ -174,6 +174,6 @@ def analysis_diagnostics_payload(
             diagnostics.tracks_hidden_from_render_crop_eligibility
         ),
         "confidence_histogram": confidence_histogram,
-        "box_height_histogram": diagnostics.tracker_box_height_histogram.payload(),
+        "box_width_histogram": diagnostics.tracker_box_width_histogram.payload(),
         "detector": detector_snapshot,
     }

@@ -171,8 +171,8 @@ def test_track_summary_from_state_preserves_vehicle_index(tmp_path) -> None:
         first_frame_index=1,
         last_frame_index=3,
         frames_seen=3,
-        min_box_height_px=40,
-        max_box_height_px=100,
+        min_box_width_px=40,
+        max_box_width_px=100,
         counted=True,
     )
 
@@ -183,8 +183,8 @@ def test_track_summary_from_state_preserves_vehicle_index(tmp_path) -> None:
     assert summary.first_frame_index == 1
     assert summary.last_frame_index == 3
     assert summary.frames_seen == 3
-    assert summary.min_box_height_px == 40
-    assert summary.max_box_height_px == 100
+    assert summary.min_box_width_px == 40
+    assert summary.max_box_width_px == 100
     assert summary.counted is True
     assert summary.candidates == []
     assert store.crops_dir.exists()
