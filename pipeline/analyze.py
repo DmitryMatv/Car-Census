@@ -166,6 +166,8 @@ def analyze_video(
             ),
             edge_detection_bboxes=edge_detection_bboxes,
         )
+        if update_result.duplicate_track_ids_dropped:
+            tracker.drop_tracks(update_result.duplicate_track_ids_dropped)
         run_store.frames.append(update_result.frame_record)
         for count_event in update_result.counted_events:
             run_store.counts.append(count_event)

@@ -49,12 +49,37 @@ def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
     assert config.tracker.cmc_method == "sparseOptFlow"
     assert config.tracker.cmc_downscale == 2
     assert config.tracker.instant_first_frame_activation is True
+    assert config.tracker.suppress_duplicate_tracks is True
+    assert config.tracker.duplicate_track_iou_threshold == 0.90
+    assert config.tracker.duplicate_track_containment_threshold == 0.98
+    assert config.tracker.duplicate_track_min_area_ratio == 0.30
+    assert config.tracker.duplicate_track_center_distance_ratio == 0.30
 
 
 def test_tracker_config_accepts_supported_cmc_methods() -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
         config = AppConfig.model_validate({"tracker": {"cmc_method": cmc_method}})
         assert config.tracker.cmc_method == cmc_method
+
+
+def test_tracker_config_accepts_duplicate_suppression_options() -> None:
+    config = AppConfig.model_validate(
+        {
+            "tracker": {
+                "suppress_duplicate_tracks": False,
+                "duplicate_track_iou_threshold": 0.95,
+                "duplicate_track_containment_threshold": 0.99,
+                "duplicate_track_min_area_ratio": 0.40,
+                "duplicate_track_center_distance_ratio": 0.20,
+            }
+        }
+    )
+
+    assert config.tracker.suppress_duplicate_tracks is False
+    assert config.tracker.duplicate_track_iou_threshold == 0.95
+    assert config.tracker.duplicate_track_containment_threshold == 0.99
+    assert config.tracker.duplicate_track_min_area_ratio == 0.40
+    assert config.tracker.duplicate_track_center_distance_ratio == 0.20
 
 
 def test_tracker_config_rejects_null_cmc_method() -> None:
@@ -120,6 +145,11 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.10
     assert config.tracker.high_conf_det_threshold == 0.30
     assert config.tracker.edge_margin_px == 10
+    assert config.tracker.suppress_duplicate_tracks is True
+    assert config.tracker.duplicate_track_iou_threshold == 0.90
+    assert config.tracker.duplicate_track_containment_threshold == 0.98
+    assert config.tracker.duplicate_track_min_area_ratio == 0.30
+    assert config.tracker.duplicate_track_center_distance_ratio == 0.30
     assert config.render.encode_backend == "opencv"
     assert config.render.output_fps is None
     assert config.render.ffmpeg_path == "ffmpeg"
@@ -209,6 +239,7 @@ def test_detector_config_rejects_removed_runtime_keys() -> None:
     for key, value in [
         ("weights", "weights/legacy-detector.bin"),
         ("iou", 0.45),
+        ("nms_iou_threshold", 0.90),
         ("execution_providers", ["CPUExecutionProvider"]),
         ("require_gpu", False),
         ("input_dtype", "auto"),

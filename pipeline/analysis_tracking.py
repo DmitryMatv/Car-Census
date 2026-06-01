@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 
@@ -17,6 +18,7 @@ from models import (
 from pipeline.analysis_crops import CropCandidateSelector
 from pipeline.analysis_diagnostics import AnalysisDiagnostics
 from pipeline.analysis_edges import EdgeSuppression
+from pipeline.vehicles import discard_track_artifacts
 from roi.geometry import line_crossing_direction, point_in_polygon
 
 
@@ -34,6 +36,7 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
+    suppressed_duplicate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +53,7 @@ class FrameTrackingInput:
 class TrackUpdateResult:
     frame_record: FrameRecord
     counted_events: list[CountEvent] = field(default_factory=list)
+    duplicate_track_ids_dropped: set[int] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +105,38 @@ def _iter_track_observations(tracked: sv.Detections) -> list[TrackObservation]:
     return observations
 
 
+def _bbox_intersection_area(a: BBox, b: BBox) -> float:
+    width = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
+    height = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
+    return width * height
+
+
+def _bbox_iou(a: BBox, b: BBox) -> float:
+    intersection = _bbox_intersection_area(a, b)
+    union = a.area + b.area - intersection
+    return intersection / union if union > 0.0 else 0.0
+
+
+def _bbox_smaller_coverage(a: BBox, b: BBox) -> float:
+    smaller_area = min(a.area, b.area)
+    if smaller_area <= 0.0:
+        return 0.0
+    return _bbox_intersection_area(a, b) / smaller_area
+
+
+def _bbox_area_ratio(a: BBox, b: BBox) -> float:
+    larger_area = max(a.area, b.area)
+    if larger_area <= 0.0:
+        return 0.0
+    return min(a.area, b.area) / larger_area
+
+
+def _center_distance(a: BBox, b: BBox) -> float:
+    ax, ay = a.center
+    bx, by = b.center
+    return math.hypot(ax - bx, ay - by)
+
+
 class TrackStateUpdater:
     def __init__(
         self,
@@ -117,6 +153,7 @@ class TrackStateUpdater:
         self.edge_suppression = edge_suppression
         self.diagnostics = diagnostics
         self._track_states: dict[int, MutableTrackState] = {}
+        self._suppressed_duplicate_track_ids: set[int] = set()
         self._count_line = profile.count_line
         self._line_start: tuple[float, float] | None = None
         self._line_end: tuple[float, float] | None = None
@@ -149,19 +186,16 @@ class TrackStateUpdater:
             value for value in confidences
         )
 
-        for observation in _iter_track_observations(tracked):
-            touches_suppression_edge = self._should_skip_observation(
-                observation, frame_input, edge_detection_bboxes
-            )
-            if observation.track_id < 0:
-                if touches_suppression_edge:
-                    self.diagnostics.edge_observations_skipped += 1
-                continue
-            if touches_suppression_edge:
-                self.diagnostics.edge_observations_skipped += 1
-                self.diagnostics.tracks_discarded_edge_contact += 1
-                continue
+        observations = self._filter_edge_observations(
+            _iter_track_observations(tracked),
+            frame_input,
+            edge_detection_bboxes,
+        )
+        duplicate_track_ids_dropped = self._suppress_duplicate_observations(
+            observations
+        )
 
+        for observation in observations:
             self.diagnostics.tracker_box_width_histogram.observe(observation.bbox.width)
             inside_roi = point_in_polygon(
                 observation.bottom_center, self.profile.polygon.points
@@ -192,7 +226,139 @@ class TrackStateUpdater:
                 tracks=frame_tracks,
             ),
             counted_events=counted_events,
+            duplicate_track_ids_dropped=duplicate_track_ids_dropped,
         )
+
+    def _filter_edge_observations(
+        self,
+        observations: list[TrackObservation],
+        frame_input: FrameTrackingInput,
+        edge_detection_bboxes: SequenceABC[BBox],
+    ) -> list[TrackObservation]:
+        filtered: list[TrackObservation] = []
+        for observation in observations:
+            touches_suppression_edge = self._should_skip_observation(
+                observation, frame_input, edge_detection_bboxes
+            )
+            if observation.track_id < 0:
+                if touches_suppression_edge:
+                    self.diagnostics.edge_observations_skipped += 1
+                continue
+            if touches_suppression_edge:
+                self.diagnostics.edge_observations_skipped += 1
+                self.diagnostics.tracks_discarded_edge_contact += 1
+                continue
+            filtered.append(observation)
+        return filtered
+
+    def _suppress_duplicate_observations(
+        self, observations: list[TrackObservation]
+    ) -> set[int]:
+        if not self.config.tracker.suppress_duplicate_tracks:
+            return set()
+
+        duplicate_track_ids_dropped: set[int] = set()
+        suppressed_this_frame: set[int] = set()
+        for observation in observations:
+            if observation.track_id in self._suppressed_duplicate_track_ids:
+                suppressed_this_frame.add(observation.track_id)
+                duplicate_track_ids_dropped.add(observation.track_id)
+
+        for left_index, left in enumerate(observations):
+            if left.track_id in suppressed_this_frame:
+                continue
+            for right in observations[left_index + 1 :]:
+                if right.track_id in suppressed_this_frame:
+                    continue
+                if not self._is_duplicate_observation_pair(left, right):
+                    continue
+
+                loser = self._duplicate_loser(left, right)
+                if loser is None:
+                    continue
+                self._suppress_duplicate_track(loser.track_id)
+                suppressed_this_frame.add(loser.track_id)
+                duplicate_track_ids_dropped.add(loser.track_id)
+                if loser == left:
+                    break
+
+        if not suppressed_this_frame:
+            return duplicate_track_ids_dropped
+
+        observations[:] = [
+            observation
+            for observation in observations
+            if observation.track_id not in suppressed_this_frame
+        ]
+        self.diagnostics.duplicate_track_observations_suppressed += len(
+            suppressed_this_frame
+        )
+        return duplicate_track_ids_dropped
+
+    def _is_duplicate_observation_pair(
+        self, left: TrackObservation, right: TrackObservation
+    ) -> bool:
+        if left.track_id == right.track_id or left.track_id < 0 or right.track_id < 0:
+            return False
+
+        tracker_config = self.config.tracker
+        if (
+            _bbox_iou(left.bbox, right.bbox)
+            >= tracker_config.duplicate_track_iou_threshold
+        ):
+            return True
+
+        coverage = _bbox_smaller_coverage(left.bbox, right.bbox)
+        if coverage < tracker_config.duplicate_track_containment_threshold:
+            return False
+        if (
+            _bbox_area_ratio(left.bbox, right.bbox)
+            < tracker_config.duplicate_track_min_area_ratio
+        ):
+            return False
+        larger_area = max(left.bbox.area, right.bbox.area)
+        max_center_distance = (
+            tracker_config.duplicate_track_center_distance_ratio
+            * math.sqrt(larger_area)
+        )
+        return _center_distance(left.bbox, right.bbox) <= max_center_distance
+
+    def _duplicate_loser(
+        self, left: TrackObservation, right: TrackObservation
+    ) -> TrackObservation | None:
+        left_score = self._duplicate_survivor_score(left)
+        right_score = self._duplicate_survivor_score(right)
+        loser = right if left_score >= right_score else left
+        state = self._track_states.get(loser.track_id)
+        if state is not None and (state.counted or state.count_event is not None):
+            self.diagnostics.duplicate_track_suppression_blocked_counted += 1
+            return None
+        return loser
+
+    def _duplicate_survivor_score(
+        self, observation: TrackObservation
+    ) -> tuple[int, int, int, int, float, float, float, int]:
+        state = self._track_states.get(observation.track_id)
+        return (
+            1 if state is not None else 0,
+            1 if state is not None and state.counted else 0,
+            state.frames_seen if state is not None else 0,
+            1 if state is not None and state.candidates else 0,
+            state.max_box_width_px if state is not None else 0.0,
+            observation.confidence,
+            observation.bbox.area,
+            -observation.track_id,
+        )
+
+    def _suppress_duplicate_track(self, track_id: int) -> None:
+        state = self._track_states.get(track_id)
+        if state is not None:
+            discard_track_artifacts(state, self.crop_selector.store.crops_dir)
+            state.candidates = []
+            state.suppressed_duplicate = True
+        if track_id not in self._suppressed_duplicate_track_ids:
+            self._suppressed_duplicate_track_ids.add(track_id)
+            self.diagnostics.duplicate_track_ids_dropped += 1
 
     def _should_skip_observation(
         self,
@@ -324,6 +490,10 @@ class TrackStateUpdater:
 
     def sorted_track_states(self) -> list[MutableTrackState]:
         return sorted(
-            self._track_states.values(),
+            (
+                state
+                for state in self._track_states.values()
+                if not state.suppressed_duplicate
+            ),
             key=lambda item: (item.first_frame_index, item.track_id),
         )

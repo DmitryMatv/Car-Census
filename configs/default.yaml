@@ -44,10 +44,15 @@ tracker:
   enable_cmc: false
   cmc_method: sparseOptFlow
   cmc_downscale: 2
-  instant_first_frame_activation: true
+  instant_first_frame_activation: false
   frame_rate: 0
   ignore_edge_touches: true
   edge_margin_px: 10
+  suppress_duplicate_tracks: true
+  duplicate_track_iou_threshold: 0.90
+  duplicate_track_containment_threshold: 0.98
+  duplicate_track_min_area_ratio: 0.30
+  duplicate_track_center_distance_ratio: 0.30
 
 mmr:
   api_url: https://trafficeye.ai/recognition

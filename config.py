@@ -65,6 +65,13 @@ class TrackerConfig(StrictBaseModel):
     frame_rate: int = 0
     ignore_edge_touches: bool = True
     edge_margin_px: int = 0
+    suppress_duplicate_tracks: bool = True
+    duplicate_track_iou_threshold: float = Field(default=0.90, gt=0.0, le=1.0)
+    duplicate_track_containment_threshold: float = Field(
+        default=0.98, gt=0.0, le=1.0
+    )
+    duplicate_track_min_area_ratio: float = Field(default=0.30, ge=0.0, le=1.0)
+    duplicate_track_center_distance_ratio: float = Field(default=0.30, ge=0.0)
 
 
 class RenderSmoothingConfig(StrictBaseModel):

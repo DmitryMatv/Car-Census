@@ -66,8 +66,14 @@ class BotSortAdapter:
             return
         suppressed_ids = set(track_ids)
         filtered_tracks = [
-            track
-            for track in tracks
-            if getattr(track, "tracker_id", None) not in suppressed_ids
+            track for track in tracks if _track_identity(track) not in suppressed_ids
         ]
         setattr(self.tracker, "tracks", filtered_tracks)
+
+
+def _track_identity(track: object) -> int | None:
+    tracker_id = getattr(track, "tracker_id", None)
+    if isinstance(tracker_id, int):
+        return tracker_id
+    track_id = getattr(track, "track_id", None)
+    return track_id if isinstance(track_id, int) else None

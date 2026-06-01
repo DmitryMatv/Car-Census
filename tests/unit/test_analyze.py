@@ -8,7 +8,7 @@ import numpy as np
 import orjson
 import supervision as sv
 
-from config import AppConfig, CameraProfile, PolygonZoneConfig
+from config import AppConfig, CameraProfile, CountLineConfig, PolygonZoneConfig
 from models import BBox, FrameRecord
 from pipeline import analyze as analyze_module
 from pipeline.analysis_crops import render_bbox_for_track, save_candidate
@@ -383,6 +383,21 @@ def _single_track(bbox: BBox) -> sv.Detections:
     )
 
 
+def _tracks(rows: list[tuple[int, BBox, float]]) -> sv.Detections:
+    return sv.Detections(
+        xyxy=np.array(
+            [[bbox.x1, bbox.y1, bbox.x2, bbox.y2] for _, bbox, _ in rows],
+            dtype=np.float32,
+        ),
+        confidence=np.array(
+            [confidence for _, _, confidence in rows], dtype=np.float32
+        ),
+        class_id=np.array([2 for _ in rows], dtype=np.int32),
+        tracker_id=np.array([track_id for track_id, _, _ in rows], dtype=np.int32),
+        data={"class_name": np.array(["car" for _ in rows], dtype=object)},
+    )
+
+
 def test_iter_track_observations_uses_missing_field_fallbacks() -> None:
     tracked = sv.Detections(
         xyxy=np.array([[10, 20, 30, 40]], dtype=np.float32),
@@ -402,6 +417,29 @@ def _profile_with_slanted_polygon() -> CameraProfile:
     return CameraProfile(
         camera_id="slanted",
         polygon=PolygonZoneConfig(points=[[10, 10], [90, 30], [90, 90], [10, 90]]),
+    )
+
+
+def _full_profile(width: int = 100, height: int = 100) -> CameraProfile:
+    return CameraProfile(
+        camera_id="full",
+        polygon=PolygonZoneConfig(
+            points=[[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]
+        ),
+    )
+
+
+def _full_profile_with_count_line(width: int = 100, height: int = 100) -> CameraProfile:
+    return CameraProfile(
+        camera_id="full",
+        polygon=PolygonZoneConfig(
+            points=[[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]
+        ),
+        count_line=CountLineConfig(
+            start=[0, height - 1],
+            end=[width - 1, height - 1],
+            direction="A_TO_B",
+        ),
     )
 
 
@@ -501,6 +539,257 @@ def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
 
     records = _read_frame_records(store.frames_path)
     assert [track.track_id for track in records[0].tracks] == [7]
+
+
+def test_analyze_suppresses_identical_duplicate_tracker_outputs(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(
+        _tracks(
+            [
+                (7, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
+                (8, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
+            ]
+        )
+    )
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+    assert [[track.track_id for track in record.tracks] for record in records] == [[7]]
+    assert tracker.drop_calls == [{8}]
+    assert stats["duplicate_track_observations_suppressed"] == 1
+    assert stats["duplicate_track_ids_dropped"] == 1
+
+
+def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks([(7, BBox(x1=20, y1=20, x2=70, y2=70), 0.7)]),
+            _tracks(
+                [
+                    (7, BBox(x1=22, y1=20, x2=72, y2=70), 0.7),
+                    (8, BBox(x1=22, y1=20, x2=72, y2=70), 0.99),
+                ]
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [7],
+    ]
+    assert tracker.drop_calls == [{8}]
+
+
+def test_analyze_suppresses_strongly_contained_duplicate_track(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(
+        _tracks(
+            [
+                (7, BBox(x1=10, y1=10, x2=90, y2=90), 0.9),
+                (8, BBox(x1=20, y1=20, x2=80, y2=80), 0.8),
+            ]
+        )
+    )
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    assert [[track.track_id for track in record.tracks] for record in records] == [[7]]
+    assert tracker.drop_calls == [{8}]
+
+
+def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTrackerAdapter(
+        _tracks(
+            [
+                (7, BBox(x1=10, y1=20, x2=70, y2=80), 0.9),
+                (8, BBox(x1=50, y1=20, x2=99, y2=80), 0.8),
+            ]
+        )
+    )
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7, 8]
+    ]
+    assert tracker.drop_calls == []
+    assert stats["duplicate_track_observations_suppressed"] == 0
+
+
+def test_analyze_does_not_suppress_counted_duplicate_loser(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks(
+                [
+                    (7, BBox(x1=10, y1=20, x2=40, y2=50), 0.9),
+                    (8, BBox(x1=60, y1=20, x2=90, y2=50), 0.8),
+                ]
+            ),
+            _tracks(
+                [
+                    (7, BBox(x1=20, y1=20, x2=70, y2=70), 0.9),
+                    (8, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
+                ]
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7, 8],
+        [7, 8],
+    ]
+    assert tracker.drop_calls == []
+    assert stats["duplicate_track_suppression_blocked_counted"] == 1
+
+
+def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks([(7, BBox(x1=20, y1=20, x2=220, y2=220), 0.9)]),
+            _tracks(
+                [
+                    (7, BBox(x1=20, y1=20, x2=220, y2=220), 0.9),
+                    (8, BBox(x1=30, y1=30, x2=230, y2=230), 0.8),
+                ]
+            ),
+            _tracks(
+                [
+                    (7, BBox(x1=25, y1=25, x2=225, y2=225), 0.9),
+                    (8, BBox(x1=25, y1=25, x2=225, y2=225), 0.8),
+                ]
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((300, 300, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {
+                    "crop_min_spacing_seconds": 0,
+                    "min_track_frames": 1,
+                    "min_box_width_px": 1,
+                },
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile_with_count_line(width=300, height=300),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    assert [summary["track_id"] for summary in summaries] == [7]
+    assert not staged_track_crop_dir(store.crops_dir, 8).exists()
 
 
 def test_analyze_batches_detection_but_updates_tracker_in_frame_order(

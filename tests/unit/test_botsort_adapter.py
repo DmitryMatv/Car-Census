@@ -26,6 +26,11 @@ class FakeInternalTrack:
         self.tracker_id = tracker_id
 
 
+class FakeLegacyInternalTrack:
+    def __init__(self, track_id: int) -> None:
+        self.track_id = track_id
+
+
 class FakeTrackListTracker:
     def __init__(self) -> None:
         self.tracks = [
@@ -94,6 +99,20 @@ def test_botsort_adapter_drop_tracks_removes_matching_internal_tracklets() -> No
     adapter.drop_tracks({2})
 
     assert [track.tracker_id for track in tracker.tracks] == [1, -1]
+
+
+def test_botsort_adapter_drop_tracks_also_supports_track_id_attribute() -> None:
+    tracker = FakeTrackListTracker()
+    tracker.tracks = [
+        FakeLegacyInternalTrack(1),
+        FakeLegacyInternalTrack(2),
+        FakeLegacyInternalTrack(3),
+    ]
+    adapter = BotSortAdapter(AppConfig(), tracker=tracker)
+
+    adapter.drop_tracks({2})
+
+    assert [track.track_id for track in tracker.tracks] == [1, 3]
 
 
 def test_botsort_adapter_drop_tracks_ignores_wrappers_without_track_list() -> None:

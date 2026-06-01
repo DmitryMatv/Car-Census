@@ -71,6 +71,9 @@ class AnalysisDiagnostics:
     tracks_without_crop_due_to_width: int = 0
     tracks_without_crop_due_to_short_lifetime: int = 0
     tracks_hidden_from_render_crop_eligibility: int = 0
+    duplicate_track_observations_suppressed: int = 0
+    duplicate_track_ids_dropped: int = 0
+    duplicate_track_suppression_blocked_counted: int = 0
     tracker_confidence_histogram: HistogramAccumulator = field(
         default_factory=lambda: HistogramAccumulator(CONFIDENCE_BINS)
     )
@@ -162,6 +165,13 @@ def analysis_diagnostics_payload(
         "tracker_outputs": diagnostics.tracker_outputs,
         "tracks_discarded_edge_contact": diagnostics.tracks_discarded_edge_contact,
         "edge_observations_skipped": diagnostics.edge_observations_skipped,
+        "duplicate_track_observations_suppressed": (
+            diagnostics.duplicate_track_observations_suppressed
+        ),
+        "duplicate_track_ids_dropped": diagnostics.duplicate_track_ids_dropped,
+        "duplicate_track_suppression_blocked_counted": (
+            diagnostics.duplicate_track_suppression_blocked_counted
+        ),
         "tracks_discarded_min_track_frames": diagnostics.tracks_discarded_min_track_frames,
         "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,
         "tracks_without_crop_due_to_width": (

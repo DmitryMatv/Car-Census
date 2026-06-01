@@ -13,7 +13,11 @@ import supervision as sv
 from config import AppConfig
 from detectors.base import Detector
 from pipeline.analysis_diagnostics import CONFIDENCE_BINS, HistogramAccumulator
-from pipeline.detections import class_names, clip_detections_to_shape, clone_detections
+from pipeline.detections import (
+    class_names,
+    clip_detections_to_shape,
+    clone_detections,
+)
 
 logger = logging.getLogger(__name__)
 
