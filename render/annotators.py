@@ -27,7 +27,9 @@ class VideoAnnotator:
             label = labels_by_track.get(
                 track.track_id, self.config.render.unknown_label
             )
-            _draw_track_label(annotated, track, label, self.config)
+            display_label = _label_for_track_size(track, label, self.config)
+            if display_label is not None:
+                _draw_track_label(annotated, track, display_label, self.config)
         if self.config.render.counter_enabled and counter_value is not None:
             _draw_counter(annotated, counter_value, self.config)
         return annotated
@@ -61,6 +63,41 @@ def _label_line_sizes(
         )
         sizes.append(((int(size[0]), int(size[1])), int(baseline)))
     return sizes
+
+
+def _first_label_line(label: str) -> str | None:
+    for line in label.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _tiny_id_label(track: TrackedObject, config: AppConfig) -> str:
+    if (
+        config.render.label_tiny_id_source == "vehicle_index"
+        and track.vehicle_index is not None
+    ):
+        return f"#{track.vehicle_index}"
+    return f"#{track.track_id}"
+
+
+def _label_for_track_size(
+    track: TrackedObject,
+    label: str,
+    config: AppConfig,
+) -> str | None:
+    if not config.render.label_simplification_enabled:
+        return label
+
+    width = track.bbox.width
+    if width >= config.render.label_full_min_box_width_px:
+        return label
+    if width >= config.render.label_make_model_min_box_width_px:
+        return _first_label_line(label)
+    if config.render.label_tiny_mode == "id":
+        return _tiny_id_label(track, config)
+    return None
 
 
 def _draw_track_box(

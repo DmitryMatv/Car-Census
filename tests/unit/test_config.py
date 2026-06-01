@@ -170,6 +170,11 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_padding_px == 4
     assert config.render.label_text_color == "#FFFFFF"
     assert config.render.label_bg_color == "#000000"
+    assert config.render.label_simplification_enabled is True
+    assert config.render.label_full_min_box_width_px == 80
+    assert config.render.label_make_model_min_box_width_px == 35
+    assert config.render.label_tiny_mode == "box_only"
+    assert config.render.label_tiny_id_source == "vehicle_index"
     assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.enabled is True
     assert config.render.smoothing.observed_box_smoothing == "local_linear"
@@ -287,6 +292,23 @@ def test_render_config_rejects_invalid_box_thickness() -> None:
 def test_render_config_rejects_invalid_counter_position() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate({"render": {"counter_position": "center"}})
+
+
+def test_render_config_rejects_inverted_label_simplification_thresholds() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(
+            {
+                "render": {
+                    "label_full_min_box_width_px": 34,
+                    "label_make_model_min_box_width_px": 35,
+                }
+            }
+        )
+
+
+def test_render_config_rejects_unknown_label_tiny_mode() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"label_tiny_mode": "dot"}})
 
 
 def test_render_config_rejects_removed_visual_keys() -> None:

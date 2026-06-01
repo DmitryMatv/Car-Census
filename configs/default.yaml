@@ -11,7 +11,7 @@ analysis:
   batch_size: 32
   detector_batch_size: 32
   min_track_frames: 7
-  min_box_width_px: 160
+  min_box_width_px: 180
   crop_padding_ratio: 0.06
   crop_padding_px: 0
   crop_target_box_range_ratio: 0.69
@@ -84,11 +84,16 @@ render:
   label_gap_px: 4
   label_text_color: "#FFFFFF"
   label_bg_color: "#000000"
+  label_simplification_enabled: true
+  label_tiny_id_source: vehicle_index
+  label_tiny_mode: box_only
+  label_make_model_min_box_width_px: 45
+  label_full_min_box_width_px: 90
   corner_thickness: 2
   corner_length: 14
   counter_enabled: true
   counter_position: top_left
-  unknown_label: Unknown
+  unknown_label: UNKNOWN
   smoothing:
     enabled: true
     observed_box_smoothing: local_linear

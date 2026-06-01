@@ -23,6 +23,7 @@ from pipeline.render import (
     visible_track_ids_for_render,
     visible_track_label_text_by_track,
 )
+from render import annotators as annotators_module
 from render.annotators import VideoAnnotator
 from storage.run_store import RunStore
 from utils.video import VideoMetadata
@@ -348,6 +349,180 @@ def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
 
     label_pixels = np.where(np.any(annotated < 255, axis=2))
     assert int(label_pixels[0].min()) >= 74
+
+
+def test_video_annotator_keeps_full_label_at_full_width_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_full_min_box_width_px": 80,
+                "label_make_model_min_box_width_px": 35,
+            }
+        }
+    )
+
+    VideoAnnotator(config).annotate(
+        np.zeros((120, 160, 3), dtype=np.uint8),
+        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=90, y2=50))],
+        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == ["Toyota Corolla\nE210\nHybrid"]
+
+
+def test_video_annotator_uses_make_model_label_between_width_thresholds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_full_min_box_width_px": 80,
+                "label_make_model_min_box_width_px": 35,
+            }
+        }
+    )
+
+    VideoAnnotator(config).annotate(
+        np.zeros((120, 160, 3), dtype=np.uint8),
+        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=60, y2=50))],
+        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == ["Toyota Corolla"]
+
+
+def test_video_annotator_draws_box_only_below_make_model_width_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_full_min_box_width_px": 80,
+                "label_make_model_min_box_width_px": 35,
+                "box_color": "#00FF00",
+                "box_alpha": 0.5,
+                "counter_enabled": False,
+            }
+        }
+    )
+    frame = np.full((120, 160, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
+        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == []
+    assert np.any(annotated[10:13, 10:41] != frame[10:13, 10:41])
+
+
+def test_video_annotator_preserves_full_label_when_simplification_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_simplification_enabled": False,
+                "label_full_min_box_width_px": 80,
+                "label_make_model_min_box_width_px": 35,
+            }
+        }
+    )
+
+    VideoAnnotator(config).annotate(
+        np.zeros((120, 160, 3), dtype=np.uint8),
+        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
+        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == ["Toyota Corolla\nE210\nHybrid"]
+
+
+def test_video_annotator_can_draw_tiny_vehicle_id_below_width_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_make_model_min_box_width_px": 35,
+                "label_tiny_mode": "id",
+            }
+        }
+    )
+
+    VideoAnnotator(config).annotate(
+        np.zeros((120, 160, 3), dtype=np.uint8),
+        tracks=[_track(1, vehicle_index=7, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
+        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == ["#7"]
+
+
+def test_video_annotator_tiny_id_falls_back_to_track_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config):
+        _ = frame, track, config
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_make_model_min_box_width_px": 35,
+                "label_tiny_mode": "id",
+            }
+        }
+    )
+
+    VideoAnnotator(config).annotate(
+        np.zeros((120, 160, 3), dtype=np.uint8),
+        tracks=[_track(12, vehicle_index=None, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
+        labels_by_track={12: "Toyota Corolla\nE210\nHybrid"},
+    )
+
+    assert labels == ["#12"]
 
 
 def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:
