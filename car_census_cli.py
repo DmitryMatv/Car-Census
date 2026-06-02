@@ -249,6 +249,9 @@ def run(
     skip_classify: bool = typer.Option(
         False, "--skip-classify", help="Skip make/model API calls."
     ),
+    skip_render: bool = typer.Option(
+        False, "--skip-render", help="Skip annotated video rendering."
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
@@ -264,6 +267,7 @@ def run(
         video_path=video,
         stages=default_pipeline_stages(),
         skip_classification=skip_classify,
+        skip_render=skip_render,
     )
     typer.echo(str(store.root))
 

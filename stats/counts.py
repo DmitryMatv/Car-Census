@@ -12,6 +12,7 @@ BASE_REPORT_COLUMNS = [
     "track_id",
     "make",
     "model",
+    "category",
     "generation",
     "variation",
     "color",
@@ -20,6 +21,7 @@ BASE_REPORT_COLUMNS = [
     "accepted",
     "make_confidence",
     "model_confidence",
+    "category_confidence",
     "generation_confidence",
     "variation_confidence",
 ]
@@ -79,6 +81,7 @@ def _base_report_row(track_id: int, label: MMRResult) -> dict[str, Any]:
         "track_id": track_id,
         "make": _empty_if_none(label.make),
         "model": _empty_if_none(label.model),
+        "category": _empty_if_none(label.category),
         "generation": _empty_if_none(label.generation),
         "variation": _empty_if_none(label.variation),
         "color": _empty_if_none(label.color),
@@ -87,6 +90,7 @@ def _base_report_row(track_id: int, label: MMRResult) -> dict[str, Any]:
         "accepted": label.accepted,
         "make_confidence": _empty_if_none(label.make_confidence),
         "model_confidence": _empty_if_none(label.model_confidence),
+        "category_confidence": _empty_if_none(label.category_confidence),
         "generation_confidence": _empty_if_none(label.generation_confidence),
         "variation_confidence": _empty_if_none(label.variation_confidence),
     }

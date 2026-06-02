@@ -46,6 +46,13 @@ pip install -e .
 Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
 ```
 
+To run analysis, classification, and report export in Colab without rendering an
+annotated video, add `--skip-render`:
+
+```bash
+Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4 --skip-render
+```
+
 Colab FFmpeg builds vary. `--accelerator colab-t4` enables `auto-nvenc` for the
 final video encode, which uses NVENC when FFmpeg exposes it and falls back to
 the current OpenCV writer when it does not.
@@ -87,6 +94,12 @@ Run without make/model API calls:
 
 ```bash
 Car-Census run input_data/test_vid.MP4 --skip-classify
+```
+
+Run without annotated video rendering:
+
+```bash
+Car-Census run input_data/test_vid.MP4 --skip-render
 ```
 
 Artifacts are written to `output/<run-id>/`.

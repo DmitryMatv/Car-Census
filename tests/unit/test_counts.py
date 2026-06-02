@@ -82,6 +82,8 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
             1: MMRResult(
                 make="Toyota",
                 model="Corolla",
+                category="Car",
+                category_confidence=0.93,
                 generation="E210",
                 variation="Hybrid",
                 view="rear",
@@ -102,11 +104,12 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
         reader = csv.DictReader(handle)
         csv_rows = list(reader)
 
-    assert reader.fieldnames[:6] == [
+    assert reader.fieldnames[:7] == [
         "vehicle_index",
         "track_id",
         "make",
         "model",
+        "category",
         "generation",
         "variation",
     ]
@@ -114,13 +117,14 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
     assert "color" in reader.fieldnames
     assert "view" in reader.fieldnames
     assert "view8" in reader.fieldnames
-    assert "category" not in reader.fieldnames
-    assert "category_confidence" not in reader.fieldnames
+    assert "category_confidence" in reader.fieldnames
     assert "color_confidence" not in reader.fieldnames
     assert "view_confidence" not in reader.fieldnames
     assert "view8_confidence" not in reader.fieldnames
     assert "detection_confidence" not in reader.fieldnames
     assert "source_image" not in reader.fieldnames
+    assert csv_rows[0]["category"] == "Car"
+    assert csv_rows[0]["category_confidence"] == "0.93"
     assert csv_rows[0]["view"] == "rear"
     assert csv_rows[0]["view8"] == "rear+left"
     assert "tag_taxi" in reader.fieldnames

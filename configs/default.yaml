@@ -14,7 +14,7 @@ analysis:
   min_box_width_px: 180
   crop_padding_ratio: 0.06
   crop_padding_px: 0
-  crop_target_box_range_ratio: 0.69
+  crop_target_box_range_ratio: 0.777
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
 

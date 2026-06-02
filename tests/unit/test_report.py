@@ -23,6 +23,8 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
         7: MMRResult(
             make="Toyota",
             model="Corolla",
+            category="Car",
+            category_confidence=0.88,
             generation="E210 (2018)",
             variation="Hybrid Touring Sports",
             color="white",
@@ -70,6 +72,7 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     assert rows[0]["track_id"] == "7"
     assert rows[0]["make"] == "Toyota"
     assert rows[0]["model"] == "Corolla"
+    assert rows[0]["category"] == "Car"
     assert rows[0]["generation"] == "E210 (2018)"
     assert rows[0]["variation"] == "Hybrid Touring Sports"
     assert rows[0]["color"] == "white"
@@ -77,9 +80,8 @@ def test_generate_reports_writes_detailed_vehicle_csv(tmp_path) -> None:
     assert rows[0]["view8"] == "rear+left"
     assert rows[0]["accepted"] == "True"
     assert rows[0]["model_confidence"] == "0.91"
+    assert rows[0]["category_confidence"] == "0.88"
     assert "api_classification_index" not in rows[0]
-    assert "category" not in rows[0]
-    assert "category_confidence" not in rows[0]
     assert "color_confidence" not in rows[0]
     assert "detection_confidence" not in rows[0]
     assert "source_image" not in rows[0]

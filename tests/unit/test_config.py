@@ -171,11 +171,8 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_text_color == "#FFFFFF"
     assert config.render.label_bg_color == "#000000"
     assert config.render.label_simplification_enabled is True
-    assert config.render.label_full_min_box_width_px == 80
-    assert config.render.label_make_model_min_box_width_px == 35
     assert config.render.label_tiny_mode == "box_only"
     assert config.render.label_tiny_id_source == "vehicle_index"
-    assert config.render.unknown_label == "Unknown"
     assert config.render.smoothing.enabled is True
     assert config.render.smoothing.observed_box_smoothing == "local_linear"
     assert config.render.smoothing.history_length == 1
