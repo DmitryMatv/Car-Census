@@ -23,13 +23,19 @@ class VideoAnnotator:
         annotated = frame.copy()
         for track in tracks:
             _draw_track_box(annotated, track, self.config)
-        for track in tracks:
+        label_draw_items: list[tuple[float, int, TrackedObject, str]] = []
+        for index, track in enumerate(tracks):
             label = labels_by_track.get(
                 track.track_id, self.config.render.unknown_label
             )
-            display_label = _label_for_track_size(track, label, self.config)
-            if display_label is not None:
-                _draw_track_label(annotated, track, display_label, self.config)
+            label_draw_items.append((track.bbox.area, index, track, label))
+        for _, _, track, display_label in sorted(label_draw_items):
+            _draw_track_label(
+                annotated,
+                track,
+                display_label,
+                self.config,
+            )
         if self.config.render.counter_enabled and counter_value is not None:
             _draw_counter(annotated, counter_value, self.config)
         return annotated
@@ -65,39 +71,8 @@ def _label_line_sizes(
     return sizes
 
 
-def _first_label_line(label: str) -> str | None:
-    for line in label.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return None
-
-
-def _tiny_id_label(track: TrackedObject, config: AppConfig) -> str:
-    if (
-        config.render.label_tiny_id_source == "vehicle_index"
-        and track.vehicle_index is not None
-    ):
-        return f"#{track.vehicle_index}"
-    return f"#{track.track_id}"
-
-
-def _label_for_track_size(
-    track: TrackedObject,
-    label: str,
-    config: AppConfig,
-) -> str | None:
-    if not config.render.label_simplification_enabled:
-        return label
-
-    width = track.bbox.width
-    if width >= config.render.label_full_min_box_width_px:
-        return label
-    if width >= config.render.label_make_model_min_box_width_px:
-        return _first_label_line(label)
-    if config.render.label_tiny_mode == "id":
-        return _tiny_id_label(track, config)
-    return None
+def _label_scale_factor(track: TrackedObject, config: AppConfig) -> float:
+    return track.bbox.width / config.render.label_scale_reference_box_width_px
 
 
 def _draw_track_box(
@@ -140,17 +115,24 @@ def _draw_track_label(
     track: TrackedObject,
     label: str,
     config: AppConfig,
+    *,
+    scale_factor: float | None = None,
 ) -> None:
     lines = [line.strip() for line in label.splitlines() if line.strip()]
     if not lines:
         return
+    if track.bbox.width <= 0:
+        return
 
+    scale_factor = (
+        scale_factor if scale_factor is not None else _label_scale_factor(track, config)
+    )
     font = cv2.FONT_HERSHEY_DUPLEX
-    scale = config.render.label_font_scale
+    scale = config.render.label_font_scale * scale_factor
     normal_thickness = max(1, config.render.label_thickness)
-    padding = config.render.label_padding_px
-    gap = config.render.label_gap_px
-    line_gap = max(2, int(round(4 * scale)))
+    padding = max(0, int(round(config.render.label_padding_px * scale_factor)))
+    gap = max(0, int(round(config.render.label_gap_px * scale_factor)))
+    line_gap = max(0, int(round(4 * scale)))
     sizes = _label_line_sizes(
         lines,
         font=font,
@@ -160,7 +142,10 @@ def _draw_track_label(
     )
 
     text_width = max(size[0][0] for size in sizes)
-    text_height = sum(size[0][1] + size[1] for size in sizes)
+    interline_descent = sum(size[1] for size in sizes[:-1])
+    final_descent = max(0, sizes[-1][1] - padding)
+    text_height = sum(size[0][1] for size in sizes)
+    text_height += interline_descent + final_descent
     text_height += line_gap * (len(lines) - 1)
     box_width = text_width + padding * 2
     box_height = text_height + padding * 2
@@ -168,23 +153,34 @@ def _draw_track_label(
     frame_height, frame_width = frame.shape[:2]
     x1 = int(round(track.bbox.x1))
     y1 = int(round(track.bbox.y2)) + gap
-    x1 = min(max(0, x1), max(0, frame_width - box_width))
     y1 = max(0, y1)
-    if y1 >= frame_height:
-        return
     x2 = x1 + box_width
-    y2 = min(frame_height, y1 + box_height)
+    y2 = y1 + box_height
+    if x2 <= 0 or x1 >= frame_width or y2 <= 0 or y1 >= frame_height:
+        return
 
-    label_region = frame[y1:y2, x1:x2]
+    clipped_x1 = max(0, x1)
+    clipped_y1 = max(0, y1)
+    clipped_x2 = min(frame_width, x2)
+    clipped_y2 = min(frame_height, y2)
+
+    label_region = frame[clipped_y1:clipped_y2, clipped_x1:clipped_x2]
     overlay = label_region.copy()
     cv2.rectangle(
         overlay,
         (0, 0),
-        (box_width, y2 - y1),
+        (clipped_x2 - clipped_x1, clipped_y2 - clipped_y1),
         _hex_to_bgr(config.render.label_bg_color),
         -1,
     )
-    cv2.addWeighted(overlay, 0.5, label_region, 0.5, 0, dst=label_region)
+    cv2.addWeighted(
+        overlay,
+        config.render.label_bg_alpha,
+        label_region,
+        1.0 - config.render.label_bg_alpha,
+        0,
+        dst=label_region,
+    )
 
     text_color = _hex_to_bgr(config.render.label_text_color)
     baseline_y = y1 + padding
@@ -261,7 +257,14 @@ def _draw_counter(frame: np.ndarray, value: int, config: AppConfig) -> None:
         _hex_to_bgr(config.render.label_bg_color),
         -1,
     )
-    cv2.addWeighted(overlay, 0.5, counter_region, 0.5, 0, dst=counter_region)
+    cv2.addWeighted(
+        overlay,
+        config.render.label_bg_alpha,
+        counter_region,
+        1.0 - config.render.label_bg_alpha,
+        0,
+        dst=counter_region,
+    )
     cv2.putText(
         frame,
         text,

@@ -348,181 +348,171 @@ def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
     )
 
     label_pixels = np.where(np.any(annotated < 255, axis=2))
-    assert int(label_pixels[0].min()) >= 74
+    assert int(label_pixels[0].min()) >= 73
 
 
-def test_video_annotator_keeps_full_label_at_full_width_threshold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    labels: list[str] = []
-
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
-        labels.append(label)
-
-    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+def test_draw_track_label_clips_past_right_edge_without_shifting_left() -> None:
     config = AppConfig.model_validate(
         {
             "render": {
-                "label_full_min_box_width_px": 80,
-                "label_make_model_min_box_width_px": 35,
-            }
-        }
-    )
-
-    VideoAnnotator(config).annotate(
-        np.zeros((120, 160, 3), dtype=np.uint8),
-        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=90, y2=50))],
-        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
-    )
-
-    assert labels == ["Toyota Corolla\nE210\nHybrid"]
-
-
-def test_video_annotator_uses_make_model_label_between_width_thresholds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    labels: list[str] = []
-
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
-        labels.append(label)
-
-    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "label_full_min_box_width_px": 80,
-                "label_make_model_min_box_width_px": 35,
-            }
-        }
-    )
-
-    VideoAnnotator(config).annotate(
-        np.zeros((120, 160, 3), dtype=np.uint8),
-        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=60, y2=50))],
-        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
-    )
-
-    assert labels == ["Toyota Corolla"]
-
-
-def test_video_annotator_draws_box_only_below_make_model_width_threshold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    labels: list[str] = []
-
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
-        labels.append(label)
-
-    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "label_full_min_box_width_px": 80,
-                "label_make_model_min_box_width_px": 35,
-                "box_color": "#00FF00",
-                "box_alpha": 0.5,
+                "box_enabled": False,
                 "counter_enabled": False,
+                "label_bg_color": "#000000",
+                "label_font_scale": 0.8,
+                "label_scale_reference_box_width_px": 90,
             }
         }
     )
-    frame = np.full((120, 160, 3), 255, dtype=np.uint8)
+    frame = np.full((90, 120, 3), 255, dtype=np.uint8)
 
     annotated = VideoAnnotator(config).annotate(
         frame,
-        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
-        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+        tracks=[_track(1, bbox=BBox(x1=90, y1=10, x2=180, y2=50))],
+        labels_by_track={1: "Renault Master Extra Long Label"},
     )
 
-    assert labels == []
-    assert np.any(annotated[10:13, 10:41] != frame[10:13, 10:41])
+    assert np.array_equal(annotated[:, :90], frame[:, :90])
+    assert np.any(annotated[55:80, 90:120] != frame[55:80, 90:120])
 
 
-def test_video_annotator_preserves_full_label_when_simplification_disabled(
+def test_video_annotator_always_passes_full_label_for_tiny_box(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     labels: list[str] = []
 
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
+    def capture_label(frame, track, label, config, **kwargs):
+        _ = frame, track, config, kwargs
         labels.append(label)
 
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "label_simplification_enabled": False,
-                "label_full_min_box_width_px": 80,
-                "label_make_model_min_box_width_px": 35,
-            }
-        }
-    )
 
-    VideoAnnotator(config).annotate(
+    VideoAnnotator(AppConfig()).annotate(
         np.zeros((120, 160, 3), dtype=np.uint8),
-        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
+        tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=30, y2=50))],
         labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
     )
 
     assert labels == ["Toyota Corolla\nE210\nHybrid"]
 
 
-def test_video_annotator_can_draw_tiny_vehicle_id_below_width_threshold(
+def test_label_scale_factor_uses_box_width_proportion() -> None:
+    config = AppConfig.model_validate(
+        {"render": {"label_scale_reference_box_width_px": 90}}
+    )
+
+    assert annotators_module._label_scale_factor(
+        _track(1, bbox=BBox(x1=10, y1=10, x2=55, y2=50)),
+        config,
+    ) == pytest.approx(0.5)
+    assert annotators_module._label_scale_factor(
+        _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
+        config,
+    ) == pytest.approx(1.0)
+    assert annotators_module._label_scale_factor(
+        _track(1, bbox=BBox(x1=10, y1=10, x2=190, y2=50)),
+        config,
+    ) == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize(
+    ("box_width", "expected_scale"),
+    [
+        (45, 0.25),
+        (180, 1.0),
+    ],
+)
+def test_draw_track_label_scales_simplex_font_by_box_width(
     monkeypatch: pytest.MonkeyPatch,
+    box_width: int,
+    expected_scale: float,
 ) -> None:
-    labels: list[str] = []
+    scales: list[float] = []
+    font_faces: list[int] = []
+    thicknesses: list[int] = []
 
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
-        labels.append(label)
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = text, org, color, line_type
+        font_faces.append(font_face)
+        scales.append(font_scale)
+        thicknesses.append(thickness)
+        return img
 
-    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
     config = AppConfig.model_validate(
         {
             "render": {
-                "label_make_model_min_box_width_px": 35,
-                "label_tiny_mode": "id",
+                "label_font_scale": 0.5,
+                "label_thickness": 2,
+                "label_scale_reference_box_width_px": 90,
             }
         }
     )
 
-    VideoAnnotator(config).annotate(
+    annotators_module._draw_track_label(
         np.zeros((120, 160, 3), dtype=np.uint8),
-        tracks=[_track(1, vehicle_index=7, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
-        labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
+        _track(1, bbox=BBox(x1=10, y1=10, x2=10 + box_width, y2=50)),
+        "Toyota Corolla",
+        config,
     )
 
-    assert labels == ["#7"]
+    assert font_faces == [annotators_module.cv2.FONT_HERSHEY_DUPLEX]
+    assert scales == [pytest.approx(expected_scale)]
+    assert thicknesses == [2]
 
 
-def test_video_annotator_tiny_id_falls_back_to_track_id(
+def test_video_annotator_draws_larger_box_label_after_smaller_box_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     labels: list[str] = []
 
-    def capture_label(frame, track, label, config):
-        _ = frame, track, config
+    def capture_label(frame, track, label, config, **kwargs):
+        _ = frame, track, config, kwargs
         labels.append(label)
 
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
-    config = AppConfig.model_validate(
-        {
-            "render": {
-                "label_make_model_min_box_width_px": 35,
-                "label_tiny_mode": "id",
-            }
-        }
+
+    VideoAnnotator(AppConfig()).annotate(
+        np.zeros((160, 180, 3), dtype=np.uint8),
+        tracks=[
+            _track(1, bbox=BBox(x1=10, y1=10, x2=110, y2=70)),
+            _track(2, bbox=BBox(x1=20, y1=80, x2=60, y2=95)),
+        ],
+        labels_by_track={1: "Large box", 2: "Small box"},
     )
 
-    VideoAnnotator(config).annotate(
-        np.zeros((120, 160, 3), dtype=np.uint8),
-        tracks=[_track(12, vehicle_index=None, bbox=BBox(x1=10, y1=10, x2=40, y2=50))],
-        labels_by_track={12: "Toyota Corolla\nE210\nHybrid"},
+    assert labels == ["Small box", "Large box"]
+
+
+def test_video_annotator_preserves_label_order_for_equal_box_areas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[str] = []
+
+    def capture_label(frame, track, label, config, **kwargs):
+        _ = frame, track, config, kwargs
+        labels.append(label)
+
+    monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
+
+    VideoAnnotator(AppConfig()).annotate(
+        np.zeros((160, 180, 3), dtype=np.uint8),
+        tracks=[
+            _track(1, bbox=BBox(x1=10, y1=10, x2=70, y2=50)),
+            _track(2, bbox=BBox(x1=20, y1=80, x2=60, y2=140)),
+        ],
+        labels_by_track={1: "First equal area", 2: "Second equal area"},
     )
 
-    assert labels == ["#12"]
+    assert labels == ["First equal area", "Second equal area"]
 
 
 def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class StrictBaseModel(BaseModel):
@@ -121,11 +121,8 @@ class RenderConfig(StrictBaseModel):
     label_gap_px: int = 5
     label_text_color: str = "#FFFFFF"
     label_bg_color: str = "#000000"
-    label_simplification_enabled: bool = True
-    label_full_min_box_width_px: int = Field(default=80, ge=0)
-    label_make_model_min_box_width_px: int = Field(default=35, ge=0)
-    label_tiny_mode: Literal["box_only", "id"] = "box_only"
-    label_tiny_id_source: Literal["vehicle_index", "track_id"] = "vehicle_index"
+    label_bg_alpha: float = Field(default=0.35, ge=0.0, le=1.0)
+    label_scale_reference_box_width_px: int = Field(default=90, gt=0)
     corner_thickness: int = 2
     corner_length: int = 32
     counter_enabled: bool = True
@@ -134,15 +131,6 @@ class RenderConfig(StrictBaseModel):
     ] = "top_left"
     unknown_label: str = "UNKNOWN"
     smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
-
-    @model_validator(mode="after")
-    def validate_label_simplification_thresholds(self) -> RenderConfig:
-        if self.label_full_min_box_width_px < self.label_make_model_min_box_width_px:
-            raise ValueError(
-                "label_full_min_box_width_px must be greater than or equal to "
-                "label_make_model_min_box_width_px"
-            )
-        return self
 
 
 class PolygonZoneConfig(StrictBaseModel):

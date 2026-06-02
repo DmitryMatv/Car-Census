@@ -80,15 +80,12 @@ render:
   box_thickness: 2
   label_font_scale: 0.5
   label_thickness: 1
-  label_padding_px: 4
+  label_padding_px: 6
   label_gap_px: 4
   label_text_color: "#FFFFFF"
   label_bg_color: "#000000"
-  label_simplification_enabled: true
-  label_tiny_id_source: vehicle_index
-  label_tiny_mode: box_only
-  label_make_model_min_box_width_px: 45
-  label_full_min_box_width_px: 90
+  label_bg_alpha: 0.35
+  label_scale_reference_box_width_px: 100
   corner_thickness: 2
   corner_length: 14
   counter_enabled: true
