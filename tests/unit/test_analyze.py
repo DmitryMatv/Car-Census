@@ -686,7 +686,7 @@ def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> Non
     assert stats["duplicate_track_observations_suppressed"] == 0
 
 
-def test_analyze_does_not_suppress_counted_duplicate_loser(
+def test_analyze_does_not_suppress_count_event_duplicate_loser(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
@@ -696,6 +696,12 @@ def test_analyze_does_not_suppress_counted_duplicate_loser(
                 [
                     (7, BBox(x1=10, y1=20, x2=40, y2=50), 0.9),
                     (8, BBox(x1=60, y1=20, x2=90, y2=50), 0.8),
+                ]
+            ),
+            _tracks(
+                [
+                    (7, BBox(x1=60, y1=20, x2=90, y2=50), 0.9),
+                    (8, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
                 ]
             ),
             _tracks(
@@ -711,7 +717,7 @@ def test_analyze_does_not_suppress_counted_duplicate_loser(
         monkeypatch=monkeypatch,
         detector=detector,
         tracker=tracker,
-        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
     )
 
     analyze_video(
@@ -722,7 +728,15 @@ def test_analyze_does_not_suppress_counted_duplicate_loser(
                 "tracker": {"ignore_edge_touches": False},
             }
         ),
-        profile=_full_profile(),
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+            count_line=CountLineConfig(
+                start=[50, 0],
+                end=[50, 99],
+                direction="BOTH",
+            ),
+        ),
         video_path=tmp_path / "input.mp4",
         run_store=store,
     )
@@ -732,9 +746,65 @@ def test_analyze_does_not_suppress_counted_duplicate_loser(
     assert [[track.track_id for track in record.tracks] for record in records] == [
         [7, 8],
         [7, 8],
+        [7, 8],
     ]
     assert tracker.drop_calls == []
     assert stats["duplicate_track_suppression_blocked_counted"] == 1
+
+
+def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks([(7, BBox(x1=1220, y1=322, x2=1270, y2=360), 0.47)]),
+            _tracks(
+                [
+                    (7, BBox(x1=1217, y1=332, x2=1268, y2=369), 0.47),
+                    (8, BBox(x1=1212, y1=321, x2=1268, y2=355), 0.32),
+                ]
+            ),
+            _tracks(
+                [
+                    (7, BBox(x1=1207, y1=326, x2=1265, y2=368), 0.38),
+                    (8, BBox(x1=1207, y1=326, x2=1265, y2=368), 0.38),
+                ]
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((1440, 2560, 3), 255, dtype=np.uint8) for _ in range(3)],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {"ignore_edge_touches": False},
+            }
+        ),
+        profile=_full_profile(width=2560, height=1440),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [7, 8],
+        [7],
+    ]
+    assert tracker.drop_calls == [{8}]
+    assert stats["duplicate_track_observations_suppressed"] == 1
+    assert stats["duplicate_track_ids_dropped"] == 1
+    assert stats["duplicate_track_suppression_blocked_counted"] == 0
 
 
 def test_suppressed_duplicate_discards_staged_crop_and_track_summary(

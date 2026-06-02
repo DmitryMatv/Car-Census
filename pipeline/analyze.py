@@ -20,10 +20,10 @@ from pipeline.analysis_frames import (
     iter_detected_sampled_frames,
     map_detections_to_global,
 )
+from pipeline.analysis_track_state import MutableTrackState
 from pipeline.analysis_tracking import (
     FrameTrackingInput,
-    MutableTrackState,
-    TrackStateUpdater,
+    build_track_state_updater,
 )
 from pipeline.vehicles import (
     discard_track_artifacts,
@@ -126,7 +126,7 @@ def analyze_video(
     diagnostics = AnalysisDiagnostics()
     crop_selector = CropCandidateSelector(config, run_store)
     edge_suppression = EdgeSuppression(config, profile)
-    track_updater = TrackStateUpdater(
+    track_updater = build_track_state_updater(
         config=config,
         profile=profile,
         crop_selector=crop_selector,

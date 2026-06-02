@@ -30,6 +30,13 @@ class _ObservedTrackPoint:
     track: TrackedObject
 
 
+@dataclass(frozen=True, slots=True)
+class _MissingAnalysisGap:
+    track_id: int
+    previous_position: int
+    current_position: int
+
+
 def _tracks_to_detections(tracks: Sequence[TrackedObject]) -> sv.Detections:
     if not tracks:
         return sv.Detections(
@@ -516,6 +523,91 @@ def iter_observed_render_records(
     raise ValueError(f"Unsupported observed box smoothing mode: {mode}")
 
 
+def _track_positions_by_id(
+    records: Sequence[FrameRecord],
+) -> dict[int, list[int]]:
+    positions_by_track: dict[int, list[int]] = {}
+    for record_position, record in enumerate(records):
+        for track in record.tracks:
+            positions_by_track.setdefault(track.track_id, []).append(record_position)
+    return positions_by_track
+
+
+def _tracks_by_record(records: Sequence[FrameRecord]) -> list[list[TrackedObject]]:
+    return [list(record.tracks) for record in records]
+
+
+def _track_ids_by_record(
+    tracks_by_record: Sequence[Sequence[TrackedObject]],
+) -> list[set[int]]:
+    return [{track.track_id for track in tracks} for tracks in tracks_by_record]
+
+
+def _iter_missing_analysis_gaps(
+    observed_positions_by_track: dict[int, list[int]],
+    max_missing_frames: int,
+) -> Iterator[_MissingAnalysisGap]:
+    for track_id, observed_positions in observed_positions_by_track.items():
+        for previous_position, current_position in zip(
+            observed_positions, observed_positions[1:], strict=False
+        ):
+            missing_count = current_position - previous_position - 1
+            if 1 <= missing_count <= max_missing_frames:
+                yield _MissingAnalysisGap(
+                    track_id=track_id,
+                    previous_position=previous_position,
+                    current_position=current_position,
+                )
+
+
+def _record_track_points_by_id(
+    records: Sequence[FrameRecord],
+) -> list[dict[int, _TrackRenderPoint]]:
+    return [_track_points_by_id(record) for record in records]
+
+
+def _fill_missing_analysis_gap(
+    gap: _MissingAnalysisGap,
+    records: Sequence[FrameRecord],
+    tracks_by_record: list[list[TrackedObject]],
+    track_ids_by_record: list[set[int]],
+    points_by_record: Sequence[dict[int, _TrackRenderPoint]],
+    config: AppConfig,
+    profile: CameraProfile,
+) -> None:
+    previous_point = points_by_record[gap.previous_position].get(gap.track_id)
+    current_point = points_by_record[gap.current_position].get(gap.track_id)
+    if previous_point is None or current_point is None:
+        return
+
+    for record_position in range(gap.previous_position + 1, gap.current_position):
+        if gap.track_id in track_ids_by_record[record_position]:
+            continue
+
+        target_record = records[record_position]
+        tracks_by_record[record_position].append(
+            _interpolate_track(
+                previous=previous_point,
+                current=current_point,
+                frame_index=target_record.frame_index,
+                timestamp_seconds=target_record.timestamp_seconds,
+                profile=profile,
+                config=config,
+            )
+        )
+        track_ids_by_record[record_position].add(gap.track_id)
+
+
+def _sorted_gap_filled_records(
+    records: Sequence[FrameRecord],
+    tracks_by_record: Sequence[Sequence[TrackedObject]],
+) -> Iterator[FrameRecord]:
+    for record, tracks in zip(records, tracks_by_record, strict=True):
+        yield record.model_copy(
+            update={"tracks": sorted(tracks, key=lambda track: track.track_id)}
+        )
+
+
 def iter_missing_analysis_gap_filled_records(
     records: Iterable[FrameRecord],
     config: AppConfig,
@@ -525,54 +617,23 @@ def iter_missing_analysis_gap_filled_records(
     if not materialized:
         return
 
-    observed_positions_by_track: dict[int, list[int]] = {}
-    for record_position, record in enumerate(materialized):
-        for track in record.tracks:
-            observed_positions_by_track.setdefault(track.track_id, []).append(
-                record_position
-            )
-
-    tracks_by_record = [list(record.tracks) for record in materialized]
-    for track_id, observed_positions in observed_positions_by_track.items():
-        for previous_position, current_position in zip(
-            observed_positions, observed_positions[1:], strict=False
-        ):
-            missing_count = current_position - previous_position - 1
-            if (
-                missing_count < 1
-                or missing_count
-                > config.render.smoothing.max_missing_analysis_gap_frames
-            ):
-                continue
-
-            previous_record = materialized[previous_position]
-            current_record = materialized[current_position]
-            previous_point = _track_points_by_id(previous_record).get(track_id)
-            current_point = _track_points_by_id(current_record).get(track_id)
-            if previous_point is None or current_point is None:
-                continue
-            for record_position in range(previous_position + 1, current_position):
-                if any(
-                    track.track_id == track_id
-                    for track in tracks_by_record[record_position]
-                ):
-                    continue
-                target_record = materialized[record_position]
-                tracks_by_record[record_position].append(
-                    _interpolate_track(
-                        previous=previous_point,
-                        current=current_point,
-                        frame_index=target_record.frame_index,
-                        timestamp_seconds=target_record.timestamp_seconds,
-                        profile=profile,
-                        config=config,
-                    )
-                )
-
-    for record, tracks in zip(materialized, tracks_by_record, strict=True):
-        yield record.model_copy(
-            update={"tracks": sorted(tracks, key=lambda track: track.track_id)}
+    tracks_by_record = _tracks_by_record(materialized)
+    track_ids_by_record = _track_ids_by_record(tracks_by_record)
+    points_by_record = _record_track_points_by_id(materialized)
+    for gap in _iter_missing_analysis_gaps(
+        _track_positions_by_id(materialized),
+        config.render.smoothing.max_missing_analysis_gap_frames,
+    ):
+        _fill_missing_analysis_gap(
+            gap=gap,
+            records=materialized,
+            tracks_by_record=tracks_by_record,
+            track_ids_by_record=track_ids_by_record,
+            points_by_record=points_by_record,
+            config=config,
+            profile=profile,
         )
+    yield from _sorted_gap_filled_records(materialized, tracks_by_record)
 
 
 def smooth_render_tracks(
