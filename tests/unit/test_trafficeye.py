@@ -23,7 +23,7 @@ from mmr.trafficeye_batch_grid import (
     match_batch_results,
 )
 from mmr.trafficeye_cache import hash_request
-from models import BBox
+from models import BBox, MMRResult
 
 
 def test_hash_request_is_stable_for_same_image_and_payload() -> None:
@@ -62,6 +62,52 @@ def test_decode_image_raises_for_invalid_image_bytes(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="Could not decode crop for MMR request"):
         decode_image(b"not-an-image", image_path)
+
+
+def test_traffic_eye_acceptance_requires_make_and_model(tmp_path) -> None:
+    config = AppConfig.model_validate({"mmr": {"accept_model_confidence": 0.30}})
+    client = TrafficEyeClient(
+        config=config,
+        cache_dir=tmp_path / "cache",
+        require_api_key=False,
+    )
+
+    make_only = client._mark_acceptance(
+        MMRResult(make="Toyota", make_confidence=0.90, model_confidence=0.90)
+    )
+    model_only = client._mark_acceptance(
+        MMRResult(model="Corolla", make_confidence=0.90, model_confidence=0.90)
+    )
+    low_make_confidence = client._mark_acceptance(
+        MMRResult(
+            make="Toyota",
+            model="Corolla",
+            make_confidence=0.29,
+            model_confidence=0.90,
+        )
+    )
+    low_model_confidence = client._mark_acceptance(
+        MMRResult(
+            make="Toyota",
+            model="Corolla",
+            make_confidence=0.90,
+            model_confidence=0.29,
+        )
+    )
+    accepted = client._mark_acceptance(
+        MMRResult(
+            make="Toyota",
+            model="Corolla",
+            make_confidence=0.30,
+            model_confidence=0.30,
+        )
+    )
+
+    assert make_only.accepted is False
+    assert model_only.accepted is False
+    assert low_make_confidence.accepted is False
+    assert low_model_confidence.accepted is False
+    assert accepted.accepted is True
 
 
 def test_resize_for_batch_cell_uses_lanczos_when_resampling(monkeypatch) -> None:

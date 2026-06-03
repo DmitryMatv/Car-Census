@@ -104,15 +104,28 @@ def test_write_vehicle_report_csv_uses_detailed_columns(tmp_path) -> None:
         reader = csv.DictReader(handle)
         csv_rows = list(reader)
 
-    assert reader.fieldnames[:7] == [
+    assert reader.fieldnames is not None
+    assert reader.fieldnames[:8] == [
         "vehicle_index",
         "track_id",
+        "category",
+        "category_confidence",
         "make",
         "model",
-        "category",
         "generation",
         "variation",
     ]
+    assert reader.fieldnames[8:16] == [
+        "accepted",
+        "make_confidence",
+        "model_confidence",
+        "generation_confidence",
+        "variation_confidence",
+        "color",
+        "view",
+        "view8",
+    ]
+    assert reader.fieldnames[16:18] == ["tag_taxi", "tag_taxi_confidence"]
     assert "api_classification_index" not in reader.fieldnames
     assert "color" in reader.fieldnames
     assert "view" in reader.fieldnames

@@ -30,11 +30,8 @@ Maintain a strict type-safety direction for the project.
 - TrafficEye manual `combinations` are projected into the response by order, but
   manually supplied boxes may not be returned. For batched MMR grids, match
   results by combination/cell order first; use returned boxes only as fallback.
-- `analysis/tracks.jsonl` may contain absolute crop paths from the original run
-  location. If a run directory is renamed or moved, classification should resolve
-  crop filenames against the current run's `crops/` directory.
-- Edge-touch suppression cannot rely only on BoT-SORT's emitted track box. The
-  tracker may output a smoothed/inset box while the matched detector box already
-  touches the source frame, ROI crop, or polygon edge.
-
-## Tech Stack
+- A car can be present in `analysis/frames.jsonl` and still be invisible in
+  rendered output. `visible_track_ids_for_render` intersects visible tracks with
+  `size_eligible_track_ids`, which requires `max_box_width_px >=
+analysis.min_box_width_px`. Check the analysis artifacts before assuming a
+  visible missing annotation means detector/tracker failure.

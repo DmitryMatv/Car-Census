@@ -329,6 +329,39 @@ def test_video_annotator_draws_counter() -> None:
     assert np.any(annotated[:30, :80] != frame[:30, :80])
 
 
+def test_video_annotator_counter_uses_balanced_visible_vertical_padding() -> None:
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "label_bg_alpha": 1.0,
+                "label_bg_color": "#000000",
+                "label_padding_px": 6,
+                "label_text_color": "#00FF00",
+                "counter_enabled": True,
+            }
+        }
+    )
+    frame = np.full((100, 240, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        counter_value=682,
+    )
+
+    background_pixels = np.where(np.any(annotated < 255, axis=2))
+    text_pixels = np.where(
+        (annotated[:, :, 1] > 0)
+        & (annotated[:, :, 1] > annotated[:, :, 0])
+        & (annotated[:, :, 1] > annotated[:, :, 2])
+    )
+    top_padding = int(text_pixels[0].min()) - int(background_pixels[0].min())
+    bottom_padding = int(background_pixels[0].max()) - int(text_pixels[0].max())
+
+    assert abs(top_padding - bottom_padding) <= 1
+
+
 def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
     config = AppConfig.model_validate(
         {
@@ -748,8 +781,8 @@ def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
     store.labels_path.write_bytes(
         orjson.dumps(
             {
-                "1": MMRResult(vehicle_index=1).model_dump(mode="json"),
-                "2": MMRResult(vehicle_index=2).model_dump(mode="json"),
+                "1": MMRResult(accepted=True, vehicle_index=1).model_dump(mode="json"),
+                "2": MMRResult(accepted=True, vehicle_index=2).model_dump(mode="json"),
             }
         )
     )
@@ -790,8 +823,8 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
     store.labels_path.write_bytes(
         orjson.dumps(
             {
-                "1": MMRResult(vehicle_index=1).model_dump(mode="json"),
-                "2": MMRResult(vehicle_index=2).model_dump(mode="json"),
+                "1": MMRResult(accepted=True, vehicle_index=1).model_dump(mode="json"),
+                "2": MMRResult(accepted=True, vehicle_index=2).model_dump(mode="json"),
             }
         )
     )
@@ -833,8 +866,8 @@ def test_render_hides_labeled_track_below_min_box_width(tmp_path, monkeypatch) -
     store.labels_path.write_bytes(
         orjson.dumps(
             {
-                "1": MMRResult(vehicle_index=1).model_dump(mode="json"),
-                "2": MMRResult(vehicle_index=2).model_dump(mode="json"),
+                "1": MMRResult(accepted=True, vehicle_index=1).model_dump(mode="json"),
+                "2": MMRResult(accepted=True, vehicle_index=2).model_dump(mode="json"),
             }
         )
     )
@@ -941,6 +974,55 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     assert DummyAnnotator.seen_labels_by_track[-1] == {1: "UNKNOWN"}
 
 
+def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, 0, vehicle_index=1),
+                    _track(2, 0, vehicle_index=2),
+                ],
+            )
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="Honda",
+                    accepted=False,
+                    vehicle_index=2,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert [1] in DummyAnnotator.seen_track_ids
+    assert [2] not in DummyAnnotator.seen_track_ids
+    assert DummyAnnotator.seen_labels_by_track[-1] == {1: "Toyota"}
+
+
 def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -965,8 +1047,12 @@ def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
     store.labels_path.write_bytes(
         orjson.dumps(
             {
-                "1": MMRResult(make="Toyota", vehicle_index=1).model_dump(mode="json"),
-                "2": MMRResult(make="VW", vehicle_index=2).model_dump(mode="json"),
+                "1": MMRResult(
+                    make="Toyota", accepted=True, vehicle_index=1
+                ).model_dump(mode="json"),
+                "2": MMRResult(make="VW", accepted=True, vehicle_index=2).model_dump(
+                    mode="json"
+                ),
             }
         )
     )
@@ -983,6 +1069,68 @@ def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
         run_store=_as_run_store(store),
     )
 
+    assert DummyAnnotator.seen_counter_values == [1, 2, 2]
+
+
+def test_render_counter_counts_only_rendered_accepted_tracks(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, 0, vehicle_index=1, counted=True)],
+            ),
+            FrameRecord(
+                frame_index=1,
+                timestamp_seconds=1 / 30.0,
+                tracks=[
+                    _track(1, 1, vehicle_index=1, counted=True),
+                    _track(2, 1, vehicle_index=2, counted=True),
+                    _track(3, 1, vehicle_index=3, counted=True),
+                ],
+            ),
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="Honda",
+                    accepted=False,
+                    vehicle_index=2,
+                ).model_dump(mode="json"),
+                "3": MMRResult(
+                    make="VW",
+                    accepted=True,
+                    vehicle_index=3,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_counter_values = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert [1, 3] in DummyAnnotator.seen_track_ids
+    assert [1, 2, 3] not in DummyAnnotator.seen_track_ids
     assert DummyAnnotator.seen_counter_values == [1, 2, 2]
 
 

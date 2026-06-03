@@ -11,7 +11,7 @@ analysis:
   batch_size: 32
   detector_batch_size: 32
   min_track_frames: 7
-  min_box_width_px: 180
+  min_box_width_px: 160
   crop_padding_ratio: 0.06
   crop_padding_px: 0
   crop_target_box_range_ratio: 0.777
@@ -34,20 +34,20 @@ detector:
   compile_for_inference: false
 
 tracker:
-  lost_track_buffer: 35 # of analysis frames to keep "lost" tracks in memory for potential re-association
+  lost_track_buffer: 25 # of analysis frames to keep "lost" tracks in memory for potential re-association
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.12 # tracker matching threshold
+  minimum_iou_threshold_first_assoc: 0.25 # tracker matching threshold
   minimum_iou_threshold_second_assoc: 0.5
-  minimum_iou_threshold_unconfirmed_assoc: 0.10
+  minimum_iou_threshold_unconfirmed_assoc: 0.20
   high_conf_det_threshold: 0.30
   enable_cmc: false
   cmc_method: sparseOptFlow
   cmc_downscale: 2
-  instant_first_frame_activation: false
+  instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 10
+  edge_margin_px: 5
   suppress_duplicate_tracks: true
   duplicate_track_iou_threshold: 0.90
   duplicate_track_containment_threshold: 0.98
@@ -85,7 +85,7 @@ render:
   label_text_color: "#FFFFFF"
   label_bg_color: "#000000"
   label_bg_alpha: 0.35
-  label_scale_reference_box_width_px: 100
+  label_scale_reference_box_width_px: 120
   corner_thickness: 2
   corner_length: 14
   counter_enabled: true
@@ -98,7 +98,7 @@ render:
     observed_smoothing_window: 5
     observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
-    max_missing_analysis_gap_frames: 6
+    max_missing_analysis_gap_frames: 9
     interpolate_source_frames: true
     interpolation_method: linear
     max_interpolation_gap_seconds: 0.25

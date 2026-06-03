@@ -60,9 +60,13 @@ class TrafficEyeClient:
         }
 
     def _mark_acceptance(self, result: MMRResult) -> MMRResult:
-        confidence = result.model_confidence or 0.0
-        result.accepted = confidence >= self.accept_model_confidence and bool(
-            result.make or result.model
+        make_confidence = result.make_confidence or 0.0
+        model_confidence = result.model_confidence or 0.0
+        result.accepted = (
+            make_confidence >= self.accept_model_confidence
+            and model_confidence >= self.accept_model_confidence
+            and bool(result.make)
+            and bool(result.model)
         )
         return result
 

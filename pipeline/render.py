@@ -169,6 +169,7 @@ def _label_text_by_track(
         return {
             track_id: format_label_text(result, config.render.unknown_label)
             for track_id, result in labels.items()
+            if result.accepted
         }
     if allow_unclassified_annotations or config.render.show_unclassified_tracks:
         return visible_track_label_text_by_track(
@@ -229,25 +230,25 @@ def _render_annotated_frames(
 ) -> None:
     current_record = next(record_iter, None)
     latest_tracks: list[TrackedObject] = []
-    live_count = 0
+    counted_vehicle_indices: set[int] = set()
 
     for frame_index, _timestamp_seconds, frame in frame_iter:
         while current_record is not None and current_record.frame_index <= frame_index:
             latest_tracks = current_record.tracks
             current_record = next(record_iter, None)
-        for track in latest_tracks:
-            if track.counted and track.vehicle_index is not None:
-                live_count = max(live_count, track.vehicle_index)
         render_tracks = [
             track
             for track in latest_tracks
             if track.track_id in label_text and track.track_id in visible_track_ids
         ]
+        for track in render_tracks:
+            if track.counted and track.vehicle_index is not None:
+                counted_vehicle_indices.add(track.vehicle_index)
         annotated = annotator.annotate(
             frame=frame,
             tracks=render_tracks,
             labels_by_track=label_text,
-            counter_value=live_count,
+            counter_value=len(counted_vehicle_indices),
         )
         writer.write(annotated)
 

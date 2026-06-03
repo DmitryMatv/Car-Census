@@ -10,20 +10,20 @@ from models import MMRResult
 BASE_REPORT_COLUMNS = [
     "vehicle_index",
     "track_id",
+    "category",
+    "category_confidence",
     "make",
     "model",
-    "category",
     "generation",
     "variation",
-    "color",
-    "view",
-    "view8",
     "accepted",
     "make_confidence",
     "model_confidence",
-    "category_confidence",
     "generation_confidence",
     "variation_confidence",
+    "color",
+    "view",
+    "view8",
 ]
 
 _TAG_PREFIX = "tag_"

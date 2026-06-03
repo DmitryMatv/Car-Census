@@ -142,9 +142,9 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.10
+    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
     assert config.tracker.high_conf_det_threshold == 0.30
-    assert config.tracker.edge_margin_px == 10
+    assert config.tracker.edge_margin_px == 5
     assert config.tracker.suppress_duplicate_tracks is True
     assert config.tracker.duplicate_track_iou_threshold == 0.90
     assert config.tracker.duplicate_track_containment_threshold == 0.98

@@ -223,7 +223,7 @@ def _counter_origin(
 
 
 def _draw_counter(frame: np.ndarray, value: int, config: AppConfig) -> None:
-    text = f"Cars: {value}"
+    text = f"{value}"
     font = cv2.FONT_HERSHEY_DUPLEX
     scale = config.render.label_font_scale * 2
     thickness = max(1, config.render.label_thickness)
@@ -236,6 +236,7 @@ def _draw_counter(frame: np.ndarray, value: int, config: AppConfig) -> None:
     )
     box_width = int(text_width) + padding * 2
     box_height = int(text_height) + int(baseline) + padding * 2
+    text_y = padding + int(text_height) + max(0, int(round(baseline / 2)) - 1)
     frame_height, frame_width = frame.shape[:2]
     x1, y1 = _counter_origin(
         frame_width=frame_width,
@@ -268,7 +269,7 @@ def _draw_counter(frame: np.ndarray, value: int, config: AppConfig) -> None:
     cv2.putText(
         frame,
         text,
-        (x1 + padding, y1 + padding + int(text_height)),
+        (x1 + padding, y1 + text_y),
         font,
         scale,
         _hex_to_bgr(config.render.label_text_color),
