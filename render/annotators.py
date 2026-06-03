@@ -84,10 +84,10 @@ def _draw_track_box(
         return
 
     frame_height, frame_width = frame.shape[:2]
-    x1 = min(max(0, int(round(track.bbox.x1))), frame_width - 1)
-    y1 = min(max(0, int(round(track.bbox.y1))), frame_height - 1)
-    x2 = min(max(0, int(round(track.bbox.x2))), frame_width - 1)
-    y2 = min(max(0, int(round(track.bbox.y2))), frame_height - 1)
+    x1 = min(max(0, round(track.bbox.x1)), frame_width - 1)
+    y1 = min(max(0, round(track.bbox.y1)), frame_height - 1)
+    x2 = min(max(0, round(track.bbox.x2)), frame_width - 1)
+    y2 = min(max(0, round(track.bbox.y2)), frame_height - 1)
     if x2 <= x1 or y2 <= y1:
         return
 
@@ -130,9 +130,9 @@ def _draw_track_label(
     font = cv2.FONT_HERSHEY_DUPLEX
     scale = config.render.label_font_scale * scale_factor
     normal_thickness = max(1, config.render.label_thickness)
-    padding = max(0, int(round(config.render.label_padding_px * scale_factor)))
-    gap = max(0, int(round(config.render.label_gap_px * scale_factor)))
-    line_gap = max(0, int(round(4 * scale)))
+    padding = max(0, round(config.render.label_padding_px * scale_factor))
+    gap = max(0, round(config.render.label_gap_px * scale_factor))
+    line_gap = max(0, round(4 * scale))
     sizes = _label_line_sizes(
         lines,
         font=font,
@@ -151,8 +151,8 @@ def _draw_track_label(
     box_height = text_height + padding * 2
 
     frame_height, frame_width = frame.shape[:2]
-    x1 = int(round(track.bbox.x1))
-    y1 = int(round(track.bbox.y2)) + gap
+    x1 = round(track.bbox.x1)
+    y1 = round(track.bbox.y2) + gap
     y1 = max(0, y1)
     x2 = x1 + box_width
     y2 = y1 + box_height

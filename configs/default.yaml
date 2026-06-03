@@ -10,11 +10,11 @@ analysis:
   fps: 10
   batch_size: 32
   detector_batch_size: 32
-  min_track_frames: 7
-  min_box_width_px: 160
-  crop_padding_ratio: 0.06
-  crop_padding_px: 0
-  crop_target_box_range_ratio: 0.777
+  min_track_frames: 5
+  min_box_width_px: 150
+  crop_padding_ratio: 0.00
+  crop_padding_px: 8
+  crop_target_box_range_ratio: 0.69420
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
 
@@ -47,7 +47,7 @@ tracker:
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 5
+  edge_margin_px: 10
   suppress_duplicate_tracks: true
   duplicate_track_iou_threshold: 0.90
   duplicate_track_containment_threshold: 0.98
@@ -71,7 +71,7 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 7
+  min_visible_track_observations: 5
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
@@ -96,7 +96,7 @@ render:
     observed_box_smoothing: local_linear
     history_length: 1
     observed_smoothing_window: 5
-    observed_smoothing_max_shift_ratio: 0.10
+    observed_smoothing_max_shift_ratio: 0.20
     bridge_missing_analysis_frames: true
     max_missing_analysis_gap_frames: 9
     interpolate_source_frames: true
