@@ -26,6 +26,10 @@ Maintain a strict type-safety direction for the project.
   Optional local offline checkpoint path: `detector.pretrain_weights`.
 - Tracking uses Roboflow's `trackers` package. Do not create a local top-level
   Python package named `trackers`; it collides with the third-party dependency.
+- Roboflow `trackers` scales `lost_track_buffer` by `analysis_fps / 30`; the
+  configured value is not a direct analysis-frame count. Its BoT-SORT
+  implementation uses Kalman motion, IoU, and detection confidence without
+  appearance/ReID matching.
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
 - TrafficEye manual `combinations` are projected into the response by order, but
   manually supplied boxes may not be returned. For batched MMR grids, match

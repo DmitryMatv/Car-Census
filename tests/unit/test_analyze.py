@@ -464,10 +464,15 @@ def _prepare_analyze_frames_test(
     detector: FakeDetector,
     tracker: FakeTrackerAdapter,
     frames: list[np.ndarray],
+    frame_timestamps: list[float] | None = None,
 ) -> RunStore:
     store = RunStore(tmp_path / "run")
     store.ensure_directories()
     frame_count = len(frames)
+    timestamps = frame_timestamps or [
+        frame_index / 30.0 for frame_index in range(frame_count)
+    ]
+    assert len(timestamps) == frame_count
 
     monkeypatch.setattr(
         analyze_module,
@@ -482,7 +487,7 @@ def _prepare_analyze_frames_test(
         lambda video_path, source_fps, target_fps, *, include_terminal_frame=False: (
             iter(
                 [
-                    (frame_index, frame_index / 30.0, frame)
+                    (frame_index, timestamps[frame_index], frame)
                     for frame_index, frame in enumerate(frames)
                 ]
             )
@@ -573,6 +578,132 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
     assert [[track.track_id for track in record.tracks] for record in records] == [[7]]
     assert tracker.drop_calls == [{8}]
     assert stats["duplicate_track_observations_suppressed"] == 1
+    assert stats["duplicate_track_ids_dropped"] == 1
+
+
+def test_analyze_rejects_stale_id_without_replacing_original_crop(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks([(7, BBox(x1=20, y1=20, x2=80, y2=80), 0.9)]),
+            _empty_tracks(),
+            _tracks([(7, BBox(x1=5, y1=5, x2=95, y2=95), 0.99)]),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[
+            np.full((100, 100, 3), 255, dtype=np.uint8),
+            np.full((100, 100, 3), 127, dtype=np.uint8),
+            np.zeros((100, 100, 3), dtype=np.uint8),
+        ],
+        frame_timestamps=[0.0, 0.1, 0.6],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {
+                    "crop_min_spacing_seconds": 0,
+                    "min_track_frames": 1,
+                    "min_box_width_px": 1,
+                    "crop_padding_ratio": 0,
+                    "crop_padding_px": 0,
+                },
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "max_reassociation_gap_seconds": 0.5,
+                },
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    stats = _read_detection_stats(store)
+    crop = cv2.imread(str(store.crops_dir / "vehicle_000001.jpg"))
+
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [],
+    ]
+    assert tracker.drop_calls == [{7}]
+    assert len(summaries) == 1
+    assert summaries[0]["track_id"] == 7
+    assert summaries[0]["frames_seen"] == 1
+    assert summaries[0]["candidates"][0]["frame_index"] == 0
+    assert int(crop.min()) == 255
+    assert stats["stale_reassociation_observations_suppressed"] == 1
+    assert stats["stale_reassociation_track_ids_dropped"] == 1
+
+
+def test_analyze_combines_stale_and_duplicate_tracker_drops(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    duplicate_bbox = BBox(x1=20, y1=20, x2=70, y2=70)
+    tracker = SequenceFakeTrackerAdapter(
+        [
+            _tracks([(7, BBox(x1=10, y1=10, x2=40, y2=40), 0.9)]),
+            _empty_tracks(),
+            _tracks(
+                [
+                    (7, BBox(x1=60, y1=60, x2=90, y2=90), 0.9),
+                    (8, duplicate_bbox, 0.9),
+                    (9, duplicate_bbox, 0.8),
+                ]
+            ),
+        ]
+    )
+    store = _prepare_analyze_frames_test(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        detector=detector,
+        tracker=tracker,
+        frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(3)],
+        frame_timestamps=[0.0, 0.1, 0.6],
+    )
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "max_reassociation_gap_seconds": 0.5,
+                },
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7],
+        [],
+        [8],
+    ]
+    assert tracker.drop_calls == [{7, 9}]
+    assert stats["stale_reassociation_track_ids_dropped"] == 1
     assert stats["duplicate_track_ids_dropped"] == 1
 
 

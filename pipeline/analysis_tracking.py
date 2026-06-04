@@ -18,6 +18,7 @@ from pipeline.analysis_crops import CropCandidateSelector
 from pipeline.analysis_diagnostics import AnalysisDiagnostics
 from pipeline.analysis_duplicates import DuplicateTrackSuppressor
 from pipeline.analysis_edges import EdgeSuppression
+from pipeline.analysis_reassociation import StaleReassociationRejector
 from pipeline.analysis_track_state import MutableTrackState, TrackStateStore
 from roi.geometry import point_in_polygon
 
@@ -36,7 +37,7 @@ class FrameTrackingInput:
 class TrackUpdateResult:
     frame_record: FrameRecord
     counted_events: list[CountEvent] = field(default_factory=list)
-    duplicate_track_ids_dropped: set[int] = field(default_factory=set)
+    tracker_ids_to_drop: set[int] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +204,7 @@ class TrackedObjectBuilder:
 @dataclass(frozen=True, slots=True)
 class TrackStateUpdaterComponents:
     observation_reader: TrackerObservationReader
+    stale_reassociation_rejector: StaleReassociationRejector
     edge_filter: EdgeObservationFilter
     duplicate_suppressor: DuplicateTrackSuppressor
     track_store: TrackStateStore
@@ -240,8 +242,14 @@ class TrackStateUpdater:
         frame_tracks = _empty_tracked_objects()
         counted_events = _empty_count_events()
 
+        stale_reassociation_result = (
+            self._components.stale_reassociation_rejector.reject(
+                self._components.observation_reader.read(tracked),
+                frame_input.timestamp_seconds,
+            )
+        )
         observations = self._components.edge_filter.filter(
-            self._components.observation_reader.read(tracked),
+            stale_reassociation_result.observations,
             frame_input,
             edge_detection_bboxes,
         )
@@ -280,7 +288,10 @@ class TrackStateUpdater:
                 tracks=frame_tracks,
             ),
             counted_events=counted_events,
-            duplicate_track_ids_dropped=duplicate_result.dropped_track_ids,
+            tracker_ids_to_drop=(
+                stale_reassociation_result.dropped_track_ids
+                | duplicate_result.dropped_track_ids
+            ),
         )
 
     def sorted_track_states(self) -> list[MutableTrackState]:
@@ -299,6 +310,10 @@ def build_track_state_updater(
     return TrackStateUpdater(
         components=TrackStateUpdaterComponents(
             observation_reader=TrackerObservationReader(diagnostics),
+            stale_reassociation_rejector=StaleReassociationRejector(
+                tracker_config=config.tracker,
+                diagnostics=diagnostics,
+            ),
             edge_filter=EdgeObservationFilter(
                 edge_suppression=edge_suppression,
                 diagnostics=diagnostics,

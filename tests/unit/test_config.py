@@ -39,6 +39,7 @@ def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
     config = AppConfig()
 
     assert config.tracker.lost_track_buffer == 30
+    assert config.tracker.max_reassociation_gap_seconds == 0.5
     assert config.tracker.track_activation_threshold == 0.35
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_first_assoc == 0.2
@@ -141,10 +142,12 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.inference_dtype == "auto"
     assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
+    assert config.tracker.lost_track_buffer == 15
+    assert config.tracker.max_reassociation_gap_seconds == 0.5
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
     assert config.tracker.high_conf_det_threshold == 0.30
-    assert config.tracker.edge_margin_px == 5
+    assert config.tracker.edge_margin_px == 10
     assert config.tracker.suppress_duplicate_tracks is True
     assert config.tracker.duplicate_track_iou_threshold == 0.90
     assert config.tracker.duplicate_track_containment_threshold == 0.98
@@ -177,6 +180,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.observed_smoothing_window == 5
     assert config.render.smoothing.observed_smoothing_max_shift_ratio == 0.10
     assert config.render.smoothing.bridge_missing_analysis_frames is True
+    assert config.render.smoothing.max_missing_analysis_gap_frames == 4
     assert config.render.smoothing.interpolate_source_frames is True
     assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25

@@ -52,6 +52,7 @@ class DetectorConfig(StrictBaseModel):
 
 class TrackerConfig(StrictBaseModel):
     lost_track_buffer: int = 30
+    max_reassociation_gap_seconds: float | None = Field(default=0.5, ge=0.0)
     track_activation_threshold: float = 0.35
     minimum_consecutive_frames: int = 2
     minimum_iou_threshold_first_assoc: float = 0.2
@@ -119,6 +120,7 @@ class RenderConfig(StrictBaseModel):
     label_thickness: int = 1
     label_padding_px: int = 4
     label_gap_px: int = 5
+    label_flag_gap_px: int = Field(default=4, ge=0)
     label_text_color: str = "#FFFFFF"
     label_bg_color: str = "#000000"
     label_bg_alpha: float = Field(default=0.35, ge=0.0, le=1.0)

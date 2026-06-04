@@ -729,6 +729,35 @@ def test_smooth_render_tracks_does_not_bridge_four_missing_analysis_frames(
     assert smoothed[12].tracks == []
 
 
+def test_smooth_render_tracks_with_four_frame_limit_does_not_bridge_five(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path, source_fps=30, analysis_fps=10)
+    profile = build_full_frame_profile(width=200, height=100)
+    config = AppConfig.model_validate(
+        {"render": {"smoothing": {"max_missing_analysis_gap_frames": 4}}}
+    )
+    records = [
+        _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
+        _record(3, 0.1, []),
+        _record(6, 0.2, []),
+        _record(9, 0.3, []),
+        _record(12, 0.4, []),
+        _record(15, 0.5, []),
+        _record(18, 0.6, [_track(1, 18, 0.6, BBox(x1=180, y1=10, x2=200, y2=30))]),
+    ]
+    _write_jsonl(store.frames_path, records)
+
+    smooth_render_tracks(config, profile, store)
+
+    smoothed = _records_by_frame(_read_records(store.render_frames_path))
+    assert smoothed[3].tracks == []
+    assert smoothed[6].tracks == []
+    assert smoothed[9].tracks == []
+    assert smoothed[12].tracks == []
+    assert smoothed[15].tracks == []
+
+
 def test_smooth_render_tracks_can_disable_missing_analysis_frame_bridge(
     tmp_path,
 ) -> None:
