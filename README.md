@@ -45,7 +45,6 @@ RF-DETR-S checkpoint path.
 For Colab GPU runs, install the project and use the Colab accelerator preset:
 
 ```bash
-source .venv/bin/activate
 pip install -e .
 Car-Census run input_data/test4K.MP4 --camera-id my-camera --accelerator colab-t4
 ```
