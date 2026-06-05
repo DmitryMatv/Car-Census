@@ -122,6 +122,8 @@ class RenderConfig(StrictBaseModel):
     label_gap_px: int = 5
     label_flag_gap_px: int = Field(default=4, ge=0)
     label_text_color: str = "#FFFFFF"
+    label_bev_text_color: str = "#00BFFF"
+    label_mixed_text_color: str = "#39FF14"
     label_bg_color: str = "#000000"
     label_bg_alpha: float = Field(default=0.35, ge=0.0, le=1.0)
     label_scale_reference_box_width_px: int = Field(default=90, gt=0)

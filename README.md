@@ -27,6 +27,10 @@ pip install -e .
 BoT-SORT tracking uses Roboflow's `trackers` package, which is installed with
 the main project dependencies.
 
+Color country flags in annotated labels require `NotoColorEmoji.ttf` to be
+installed and discoverable by Pillow. On Debian/Ubuntu systems, install the
+`fonts-noto-color-emoji` package.
+
 ## Model Setup
 
 The default detector is RF-DETR-S through Roboflow's `rfdetr` package. RF-DETR-S
@@ -75,6 +79,44 @@ maps source crop paths to grid cells. The full TrafficEye response is preserved
 under `mmr/labels.json[*].raw`; common MMR fields such as make, model,
 generation, color, tags, and the selected detection box are also promoted to
 typed label fields.
+
+## Brand-Origin Flags
+
+`MakeCountry.csv` maps each TrafficEye make to its historical origin-country
+flag. Accepted make/model labels in annotated videos start with that color flag.
+The flag is rendered separately from OpenCV text and scales with the label
+according to the tracked vehicle's box width. Set
+`render.label_flag_gap_px` to control the scaled horizontal gap between the flag
+and make/model text.
+
+## Powertrain Catalog
+
+`MakeModelGenVar.csv` maps complete TrafficEye make, model, generation, and
+variation identities to a `powertrain_class`:
+
+- `BEV`: every factory-produced vehicle represented by the identity is battery
+  electric.
+- `COMBUSTION`: every represented vehicle contains a combustion engine,
+  including ICE, HEV, PHEV, and range-extender vehicles.
+- `MIXED`: the identity can represent both BEV and combustion-equipped factory
+  variants.
+- `UNKNOWN`: the identity is insufficient or includes a powertrain outside this
+  taxonomy, such as a fuel-cell vehicle.
+
+`mmr.powertrain_catalog.lookup_powertrain_class` uses an exact,
+case-sensitive match across all four TrafficEye identity fields. It treats a
+missing variation as an empty variation, but does not use partial or
+make/model-only fallbacks. An unmatched result returns `None`, which is distinct
+from a matched `UNKNOWN` identity.
+
+Accepted `BEV` labels render all text lines in bright blue
+(`render.label_bev_text_color`, default `#00BFFF`), while accepted `MIXED`
+labels render in bright green (`render.label_mixed_text_color`, default
+`#39FF14`). `COMBUSTION`, `UNKNOWN`, unmatched, incomplete, and unclassified
+results retain `render.label_text_color` (white by default), while rejected
+labels remain excluded from rendering. Country flags, label backgrounds, boxes,
+and the counter keep their existing colors. Powertrain coloring requires the
+same exact complete identity match as the catalog lookup.
 
 ## Quick Start
 

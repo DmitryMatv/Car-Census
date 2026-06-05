@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 
 import numpy as np
 
 from config import AppConfig, CameraProfile
+from mmr.make_country import MakeCountryCatalog, load_make_country_catalog
+from mmr.powertrain_catalog import (
+    PowertrainCatalog,
+    PowertrainClass,
+    load_powertrain_catalog,
+    lookup_powertrain_class,
+)
 from models import FrameRecord, MMRResult, TrackedObject, TrackSummary
 from render.annotators import VideoAnnotator
 from storage.run_store import RunStore
@@ -24,6 +31,8 @@ from utils.video import (
 logger = logging.getLogger(__name__)
 
 SmoothRenderTracks = Callable[[AppConfig, CameraProfile, RunStore], Path]
+MAKE_COUNTRY_PATH = Path(__file__).resolve().parents[1] / "MakeCountry.csv"
+POWERTRAIN_CATALOG_PATH = Path(__file__).resolve().parents[1] / "MakeModelGenVar.csv"
 
 
 def _is_old_vehicle_placeholder(value: str | None) -> bool:
@@ -37,7 +46,11 @@ def _has_only_old_vehicle_details(result: MMRResult) -> bool:
     )
 
 
-def format_label_text(result: MMRResult, unknown_label: str) -> str:
+def format_label_text(
+    result: MMRResult,
+    unknown_label: str,
+    origin_country_by_make: Mapping[str, str] | None = None,
+) -> str:
     has_only_old_vehicle_details = _has_only_old_vehicle_details(result)
     make_model = " ".join(
         part.strip()
@@ -48,6 +61,10 @@ def format_label_text(result: MMRResult, unknown_label: str) -> str:
         if part and part.strip()
     ).strip()
     first_line = make_model or unknown_label
+    if result.make and origin_country_by_make:
+        origin_flag = origin_country_by_make.get(result.make)
+        if origin_flag:
+            first_line = f"{origin_flag} {first_line}"
     parts = [first_line]
     detail_parts = (
         []
@@ -158,27 +175,61 @@ def size_eligible_track_ids(
     }
 
 
-def _label_text_by_track(
+def _powertrain_text_color(
+    config: AppConfig,
+    powertrain_class: PowertrainClass | None,
+) -> str | None:
+    if powertrain_class == PowertrainClass.BEV:
+        return config.render.label_bev_text_color
+    if powertrain_class == PowertrainClass.MIXED:
+        return config.render.label_mixed_text_color
+    return None
+
+
+def _label_text_and_colors_by_track(
     config: AppConfig,
     run_store: RunStore,
     frames_path: Path,
     allow_unclassified_annotations: bool,
-) -> dict[int, str]:
+    origin_country_by_make: Mapping[str, str],
+    powertrain_catalog: PowertrainCatalog,
+) -> tuple[dict[int, str], dict[int, str]]:
     labels = run_store.labels.read()
     if labels:
-        return {
-            track_id: format_label_text(result, config.render.unknown_label)
-            for track_id, result in labels.items()
-            if result.accepted
+        accepted_labels = {
+            track_id: result for track_id, result in labels.items() if result.accepted
         }
+        label_text = {
+            track_id: format_label_text(
+                result,
+                config.render.unknown_label,
+                origin_country_by_make,
+            )
+            for track_id, result in accepted_labels.items()
+        }
+        label_text_colors = {
+            track_id: text_color
+            for track_id, result in accepted_labels.items()
+            if (
+                text_color := _powertrain_text_color(
+                    config,
+                    lookup_powertrain_class(powertrain_catalog, result),
+                )
+            )
+            is not None
+        }
+        return label_text, label_text_colors
     if allow_unclassified_annotations or config.render.show_unclassified_tracks:
-        return visible_track_label_text_by_track(
-            run_store.frames.iter(
-                smoothed=_uses_smoothed_frames(frames_path, run_store)
+        return (
+            visible_track_label_text_by_track(
+                run_store.frames.iter(
+                    smoothed=_uses_smoothed_frames(frames_path, run_store)
+                ),
+                config.render.unknown_label,
             ),
-            config.render.unknown_label,
+            {},
         )
-    return {}
+    return {}, {}
 
 
 def _output_fps(config: AppConfig) -> float:
@@ -226,6 +277,7 @@ def _render_annotated_frames(
     annotator: VideoAnnotator,
     writer: FrameWriter,
     label_text: dict[int, str],
+    label_text_colors: dict[int, str],
     visible_track_ids: set[int],
 ) -> None:
     current_record = next(record_iter, None)
@@ -249,6 +301,7 @@ def _render_annotated_frames(
             tracks=render_tracks,
             labels_by_track=label_text,
             counter_value=len(counted_vehicle_indices),
+            label_text_colors_by_track=label_text_colors,
         )
         writer.write(annotated)
 
@@ -271,8 +324,19 @@ def render_video(
     frames_path = _resolve_render_frames_path(
         config, profile, run_store, smooth_render_tracks
     )
-    label_text = _label_text_by_track(
-        config, run_store, frames_path, allow_unclassified_annotations
+    origin_country_by_make: MakeCountryCatalog = load_make_country_catalog(
+        MAKE_COUNTRY_PATH
+    )
+    powertrain_catalog: PowertrainCatalog = load_powertrain_catalog(
+        POWERTRAIN_CATALOG_PATH
+    )
+    label_text, label_text_colors = _label_text_and_colors_by_track(
+        config,
+        run_store,
+        frames_path,
+        allow_unclassified_annotations,
+        origin_country_by_make,
+        powertrain_catalog,
     )
     annotator = VideoAnnotator(config)
     output_fps = _output_fps(config)
@@ -287,6 +351,7 @@ def render_video(
             annotator=annotator,
             writer=writer,
             label_text=label_text,
+            label_text_colors=label_text_colors,
             visible_track_ids=visible_track_ids,
         )
     finally:

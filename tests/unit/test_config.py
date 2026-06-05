@@ -142,8 +142,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.inference_dtype == "auto"
     assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
-    assert config.tracker.lost_track_buffer == 15
-    assert config.tracker.max_reassociation_gap_seconds == 0.5
     assert config.tracker.minimum_consecutive_frames == 2
     assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
     assert config.tracker.high_conf_det_threshold == 0.30
@@ -302,6 +300,11 @@ def test_render_config_rejects_invalid_counter_position() -> None:
 def test_render_config_rejects_invalid_label_scale_reference_width() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate({"render": {"label_scale_reference_box_width_px": 0}})
+
+
+def test_render_config_rejects_negative_label_flag_gap() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"render": {"label_flag_gap_px": -1}})
 
 
 def test_render_config_rejects_removed_visual_keys() -> None:

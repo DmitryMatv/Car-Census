@@ -86,6 +86,8 @@ render:
   label_gap_px: 4
   label_flag_gap_px: 4
   label_text_color: "#FFFFFF"
+  label_bev_text_color: "#00BFFF"
+  label_mixed_text_color: "#39FF14"
   label_bg_color: "#000000"
   label_bg_alpha: 0.35
   label_scale_reference_box_width_px: 100

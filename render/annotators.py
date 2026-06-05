@@ -1,12 +1,33 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Sequence
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 from config import AppConfig
 from models import TrackedObject
+
+_EMOJI_FONT_NAME = "NotoColorEmoji.ttf"
+_EMOJI_FONT_NATIVE_SIZE = 109
+
+
+@dataclass(frozen=True)
+class _LabelLineLayout:
+    text: str
+    flag: str | None
+    text_size: tuple[int, int]
+    baseline: int
+    flag_width: int
+    flag_gap_width: int
+
+    @property
+    def width(self) -> int:
+        return self.flag_width + self.flag_gap_width + self.text_size[0]
 
 
 class VideoAnnotator:
@@ -19,6 +40,7 @@ class VideoAnnotator:
         tracks: Sequence[TrackedObject],
         labels_by_track: dict[int, str],
         counter_value: int | None = None,
+        label_text_colors_by_track: Mapping[int, str] | None = None,
     ) -> np.ndarray:
         annotated = frame.copy()
         for track in tracks:
@@ -35,6 +57,11 @@ class VideoAnnotator:
                 track,
                 display_label,
                 self.config,
+                text_color=(
+                    label_text_colors_by_track.get(track.track_id)
+                    if label_text_colors_by_track is not None
+                    else None
+                ),
             )
         if self.config.render.counter_enabled and counter_value is not None:
             _draw_counter(annotated, counter_value, self.config)
@@ -51,24 +78,89 @@ def _hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
     return blue, green, red
 
 
-def _label_line_sizes(
+def _is_flag_emoji(value: str) -> bool:
+    return len(value) == 2 and all(
+        "\U0001f1e6" <= character <= "\U0001f1ff" for character in value
+    )
+
+
+def _split_leading_flag(line: str) -> tuple[str | None, str]:
+    if len(line) >= 4 and line[2] == " " and _is_flag_emoji(line[:2]):
+        return line[:2], line[3:]
+    return None, line
+
+
+@lru_cache(maxsize=None)
+def _render_native_flag_emoji(flag: str) -> Image.Image:
+    if not _is_flag_emoji(flag):
+        raise ValueError(f"Expected flag emoji, got {flag!r}")
+    try:
+        font = ImageFont.truetype(_EMOJI_FONT_NAME, _EMOJI_FONT_NATIVE_SIZE)
+    except OSError as error:
+        raise RuntimeError(
+            "Noto Color Emoji is required to render country flags. "
+            "Install NotoColorEmoji.ttf so Pillow can find it."
+        ) from error
+
+    canvas = Image.new("RGBA", (160, 140), (0, 0, 0, 0))
+    ImageDraw.Draw(canvas).text(
+        (0, 0),
+        flag,
+        font=font,
+        embedded_color=True,
+    )
+    bounding_box = canvas.getbbox()
+    if bounding_box is None:
+        raise RuntimeError(f"Noto Color Emoji did not render flag {flag!r}")
+    return canvas.crop(bounding_box)
+
+
+@lru_cache(maxsize=512)
+def _render_flag_emoji(flag: str, target_height: int) -> np.ndarray:
+    if target_height <= 0:
+        raise ValueError(f"Expected positive flag height, got {target_height}")
+    cropped = _render_native_flag_emoji(flag)
+    target_width = max(1, round(cropped.width * target_height / cropped.height))
+    resized = cropped.resize(
+        (target_width, target_height),
+        resample=Image.Resampling.LANCZOS,
+    )
+    return np.asarray(resized, dtype=np.uint8)
+
+
+def _label_line_layouts(
     lines: Sequence[str],
     *,
     font: int,
     scale: float,
     normal_thickness: int,
     title_thickness: int,
-) -> list[tuple[tuple[int, int], int]]:
-    sizes: list[tuple[tuple[int, int], int]] = []
+    flag_gap_width: int,
+) -> list[_LabelLineLayout]:
+    layouts: list[_LabelLineLayout] = []
     for index, line in enumerate(lines):
+        flag, text = _split_leading_flag(line)
+        thickness = title_thickness if index == 0 else normal_thickness
         size, baseline = cv2.getTextSize(
-            line,
+            text,
             font,
             scale,
-            title_thickness if index == 0 else normal_thickness,
+            thickness,
         )
-        sizes.append(((int(size[0]), int(size[1])), int(baseline)))
-    return sizes
+        flag_width = 0
+        if flag is not None:
+            flag_width = int(_render_flag_emoji(flag, max(1, int(size[1]))).shape[1])
+        layouts.append(
+            _LabelLineLayout(
+                text=text,
+                flag=flag,
+                text_size=(int(size[0]), int(size[1])),
+                baseline=int(baseline),
+                flag_width=flag_width,
+                flag_gap_width=flag_gap_width if flag is not None else 0,
+            )
+        )
+    return layouts
 
 
 def _label_scale_factor(track: TrackedObject, config: AppConfig) -> float:
@@ -110,6 +202,34 @@ def _draw_track_box(
     )
 
 
+def _alpha_composite_rgba(
+    frame: np.ndarray,
+    rgba: np.ndarray,
+    x: int,
+    y: int,
+) -> None:
+    frame_height, frame_width = frame.shape[:2]
+    image_height, image_width = rgba.shape[:2]
+    frame_x1 = max(0, x)
+    frame_y1 = max(0, y)
+    frame_x2 = min(frame_width, x + image_width)
+    frame_y2 = min(frame_height, y + image_height)
+    if frame_x1 >= frame_x2 or frame_y1 >= frame_y2:
+        return
+
+    image_x1 = frame_x1 - x
+    image_y1 = frame_y1 - y
+    image_x2 = image_x1 + (frame_x2 - frame_x1)
+    image_y2 = image_y1 + (frame_y2 - frame_y1)
+    source = rgba[image_y1:image_y2, image_x1:image_x2]
+    destination = frame[frame_y1:frame_y2, frame_x1:frame_x2]
+    alpha = source[:, :, 3:4].astype(np.float32) / 255.0
+    source_bgr = source[:, :, :3][:, :, ::-1].astype(np.float32)
+    destination[:] = (
+        source_bgr * alpha + destination.astype(np.float32) * (1.0 - alpha)
+    ).astype(np.uint8)
+
+
 def _draw_track_label(
     frame: np.ndarray,
     track: TrackedObject,
@@ -117,6 +237,7 @@ def _draw_track_label(
     config: AppConfig,
     *,
     scale_factor: float | None = None,
+    text_color: str | None = None,
 ) -> None:
     lines = [line.strip() for line in label.splitlines() if line.strip()]
     if not lines:
@@ -132,19 +253,21 @@ def _draw_track_label(
     normal_thickness = max(1, config.render.label_thickness)
     padding = max(0, round(config.render.label_padding_px * scale_factor))
     gap = max(0, round(config.render.label_gap_px * scale_factor))
+    flag_gap = max(0, round(config.render.label_flag_gap_px * scale_factor))
     line_gap = max(0, round(4 * scale))
-    sizes = _label_line_sizes(
+    layouts = _label_line_layouts(
         lines,
         font=font,
         scale=scale,
         normal_thickness=normal_thickness,
         title_thickness=normal_thickness,
+        flag_gap_width=flag_gap,
     )
 
-    text_width = max(size[0][0] for size in sizes)
-    interline_descent = sum(size[1] for size in sizes[:-1])
-    final_descent = max(0, sizes[-1][1] - padding)
-    text_height = sum(size[0][1] for size in sizes)
+    text_width = max(layout.width for layout in layouts)
+    interline_descent = sum(layout.baseline for layout in layouts[:-1])
+    final_descent = max(0, layouts[-1].baseline - padding)
+    text_height = sum(layout.text_size[1] for layout in layouts)
     text_height += interline_descent + final_descent
     text_height += line_gap * (len(lines) - 1)
     box_width = text_width + padding * 2
@@ -182,21 +305,36 @@ def _draw_track_label(
         dst=label_region,
     )
 
-    text_color = _hex_to_bgr(config.render.label_text_color)
+    resolved_text_color = _hex_to_bgr(
+        text_color if text_color is not None else config.render.label_text_color
+    )
     baseline_y = y1 + padding
-    for line, (size, baseline) in zip(lines, sizes, strict=True):
-        baseline_y += size[1]
+    for layout in layouts:
+        baseline_y += layout.text_size[1]
+        text_x = x1 + padding
+        if layout.flag is not None:
+            flag_image = _render_flag_emoji(
+                layout.flag,
+                max(1, layout.text_size[1]),
+            )
+            _alpha_composite_rgba(
+                frame,
+                flag_image,
+                text_x,
+                baseline_y - int(flag_image.shape[0]),
+            )
+            text_x += layout.flag_width + layout.flag_gap_width
         cv2.putText(
             frame,
-            line,
-            (x1 + padding, baseline_y),
+            layout.text,
+            (text_x, baseline_y),
             font,
             scale,
-            text_color,
+            resolved_text_color,
             normal_thickness,
             cv2.LINE_AA,
         )
-        baseline_y += baseline + line_gap
+        baseline_y += layout.baseline + line_gap
 
 
 def _counter_origin(

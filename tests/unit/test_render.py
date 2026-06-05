@@ -6,6 +6,7 @@ import orjson
 import pytest
 
 from config import AppConfig, build_full_frame_profile
+from mmr.powertrain_catalog import PowertrainClass, VehicleIdentity
 from models import (
     BBox,
     FrameRecord,
@@ -16,6 +17,7 @@ from models import (
 )
 from pipeline import render as render_module
 from pipeline.render import (
+    _label_text_and_colors_by_track,
     _output_fps,
     _resolve_render_frames_path,
     format_label_text,
@@ -100,6 +102,7 @@ def _as_run_store(store: DummyRunStore) -> RunStore:
 class DummyAnnotator:
     seen_track_ids: list[list[int]] = []
     seen_labels_by_track: list[dict[int, str]] = []
+    seen_label_text_colors_by_track: list[dict[int, str]] = []
     seen_counter_values: list[int | None] = []
 
     def __init__(self, config: AppConfig) -> None:
@@ -111,9 +114,13 @@ class DummyAnnotator:
         tracks: list[TrackedObject],
         labels_by_track: dict[int, str],
         counter_value: int | None = None,
+        label_text_colors_by_track: dict[int, str] | None = None,
     ) -> np.ndarray:
         self.seen_track_ids.append([track.track_id for track in tracks])
         self.seen_labels_by_track.append(dict(labels_by_track))
+        self.seen_label_text_colors_by_track.append(
+            dict(label_text_colors_by_track or {})
+        )
         self.seen_counter_values.append(counter_value)
         return frame
 
@@ -362,6 +369,43 @@ def test_video_annotator_counter_uses_balanced_visible_vertical_padding() -> Non
     assert abs(top_padding - bottom_padding) <= 1
 
 
+def test_video_annotator_applies_track_color_to_all_label_lines_not_counter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drawn_text_and_colors: list[tuple[str, tuple[int, int, int]]] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = org, font_face, font_scale, thickness, line_type
+        drawn_text_and_colors.append((text, color))
+        return img
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+
+    VideoAnnotator(AppConfig()).annotate(
+        np.zeros((240, 360, 3), dtype=np.uint8),
+        tracks=[_track(1, bbox=BBox(x1=20, y1=20, x2=160, y2=80))],
+        labels_by_track={1: "🇩🇪 VW Golf\nMk VIII\nElectric"},
+        counter_value=1,
+        label_text_colors_by_track={1: "#00BFFF"},
+    )
+
+    assert drawn_text_and_colors == [
+        ("VW Golf", (255, 191, 0)),
+        ("Mk VIII", (255, 191, 0)),
+        ("Electric", (255, 191, 0)),
+        ("1", (255, 255, 255)),
+    ]
+
+
 def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
     config = AppConfig.model_validate(
         {
@@ -502,6 +546,93 @@ def test_draw_track_label_scales_simplex_font_by_box_width(
     assert thicknesses == [2]
 
 
+def test_flag_emoji_raster_scales_with_label_height() -> None:
+    small = annotators_module._render_flag_emoji("🇩🇪", 12)
+    large = annotators_module._render_flag_emoji("🇩🇪", 36)
+
+    assert small.shape[0] == 12
+    assert large.shape[0] == 36
+    assert large.shape[1] == pytest.approx(small.shape[1] * 3, abs=2)
+    assert np.count_nonzero(large[:, :, 3]) > 0
+    assert len(np.unique(large[large[:, :, 3] > 0][:, :3], axis=0)) > 10
+
+
+def test_draw_track_label_renders_color_flag_and_plain_opencv_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drawn_text: list[str] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = org, font_face, font_scale, color, thickness, line_type
+        drawn_text.append(text)
+        return img
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+    frame = np.zeros((120, 180, 3), dtype=np.uint8)
+
+    annotators_module._draw_track_label(
+        frame,
+        _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
+        "🇩🇪 VW Golf",
+        AppConfig(),
+    )
+
+    blue, green, red = (frame[:, :, index] for index in range(3))
+    assert drawn_text == ["VW Golf"]
+    assert np.any((red > 100) & (green < 100) & (blue < 100))
+    assert np.any((red > 100) & (green > 100) & (blue < 100))
+
+
+def test_draw_track_label_uses_configured_scaled_flag_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text_origins: list[tuple[int, int]] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = text, font_face, font_scale, color, thickness, line_type
+        text_origins.append(org)
+        return img
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+    frame = np.zeros((160, 300, 3), dtype=np.uint8)
+    track = _track(1, bbox=BBox(x1=10, y1=10, x2=190, y2=50))
+
+    for flag_gap in [0, 6]:
+        annotators_module._draw_track_label(
+            frame.copy(),
+            track,
+            "🇩🇪 VW Golf",
+            AppConfig.model_validate(
+                {
+                    "render": {
+                        "label_flag_gap_px": flag_gap,
+                        "label_scale_reference_box_width_px": 90,
+                    }
+                }
+            ),
+        )
+
+    assert text_origins[1][0] - text_origins[0][0] == 12
+
+
 def test_video_annotator_draws_larger_box_label_after_smaller_box_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -581,6 +712,25 @@ def test_format_label_text_uses_clean_multiline_label() -> None:
     )
 
 
+def test_format_label_text_prefixes_known_make_with_flag_and_one_space() -> None:
+    assert (
+        format_label_text(
+            MMRResult(make="VW", model="Golf", generation="Mk VIII"),
+            "unknown",
+            {"VW": "🇩🇪"},
+        )
+        == "🇩🇪 VW Golf\nMk VIII"
+    )
+    assert (
+        format_label_text(
+            MMRResult(make="Unknown Make", model="Model"),
+            "unknown",
+            {"VW": "🇩🇪"},
+        )
+        == "Unknown Make Model"
+    )
+
+
 def test_format_label_text_hides_all_old_vehicle_details() -> None:
     assert (
         format_label_text(
@@ -611,6 +761,105 @@ def test_visible_track_label_text_only_uses_vehicle_indexed_tracks(tmp_path) -> 
     )
 
     assert visible_track_label_text_by_track(records, "unknown") == {2: "unknown"}
+
+
+def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
+    tmp_path,
+) -> None:
+    store = DummyRunStore(tmp_path)
+    results = {
+        1: MMRResult(
+            make="Test",
+            model="BEV",
+            generation="Mk I",
+            accepted=True,
+        ),
+        2: MMRResult(
+            make="Test",
+            model="Mixed",
+            generation="Mk I",
+            accepted=True,
+        ),
+        3: MMRResult(
+            make="Test",
+            model="Combustion",
+            generation="Mk I",
+            accepted=True,
+        ),
+        4: MMRResult(
+            make="Test",
+            model="Unknown",
+            generation="Mk I",
+            accepted=True,
+        ),
+        5: MMRResult(
+            make="Test",
+            model="Unmatched",
+            generation="Mk I",
+            accepted=True,
+        ),
+        6: MMRResult(make="Test", model="Incomplete", accepted=True),
+        7: MMRResult(
+            make="Test",
+            model="Rejected BEV",
+            generation="Mk I",
+            accepted=False,
+        ),
+    }
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                str(track_id): result.model_dump(mode="json")
+                for track_id, result in results.items()
+            }
+        )
+    )
+    powertrain_catalog = {
+        VehicleIdentity("Test", "BEV", "Mk I"): PowertrainClass.BEV,
+        VehicleIdentity("Test", "Mixed", "Mk I"): PowertrainClass.MIXED,
+        VehicleIdentity("Test", "Combustion", "Mk I"): PowertrainClass.COMBUSTION,
+        VehicleIdentity("Test", "Unknown", "Mk I"): PowertrainClass.UNKNOWN,
+        VehicleIdentity("Test", "Rejected BEV", "Mk I"): PowertrainClass.BEV,
+    }
+
+    label_text, label_text_colors = _label_text_and_colors_by_track(
+        AppConfig(),
+        _as_run_store(store),
+        store.frames_path,
+        allow_unclassified_annotations=False,
+        origin_country_by_make={},
+        powertrain_catalog=powertrain_catalog,
+    )
+
+    assert set(label_text) == {1, 2, 3, 4, 5, 6}
+    assert label_text_colors == {1: "#00BFFF", 2: "#39FF14"}
+
+
+def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, vehicle_index=1)],
+            )
+        ],
+    )
+
+    label_text, label_text_colors = _label_text_and_colors_by_track(
+        AppConfig(),
+        _as_run_store(store),
+        store.frames_path,
+        allow_unclassified_annotations=True,
+        origin_country_by_make={},
+        powertrain_catalog={},
+    )
+
+    assert label_text == {1: "UNKNOWN"}
+    assert label_text_colors == {}
 
 
 def test_output_fps_caps_configured_render_fps_at_source_fps() -> None:
@@ -959,6 +1208,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     writer = DummyWriter()
     DummyAnnotator.seen_track_ids = []
     DummyAnnotator.seen_labels_by_track = []
+    DummyAnnotator.seen_label_text_colors_by_track = []
     _patch_render_io(monkeypatch, writer)
 
     render_video(
@@ -972,6 +1222,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     assert [1] in DummyAnnotator.seen_track_ids
     assert [2] not in DummyAnnotator.seen_track_ids
     assert DummyAnnotator.seen_labels_by_track[-1] == {1: "UNKNOWN"}
+    assert DummyAnnotator.seen_label_text_colors_by_track[-1] == {}
 
 
 def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> None:
@@ -1020,7 +1271,70 @@ def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> N
 
     assert [1] in DummyAnnotator.seen_track_ids
     assert [2] not in DummyAnnotator.seen_track_ids
-    assert DummyAnnotator.seen_labels_by_track[-1] == {1: "Toyota"}
+    assert DummyAnnotator.seen_labels_by_track[-1] == {1: "🇯🇵 Toyota"}
+
+
+def test_render_passes_exact_powertrain_text_colors_to_annotator(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, vehicle_index=1),
+                    _track(2, vehicle_index=2),
+                    _track(3, vehicle_index=3),
+                ],
+            )
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Tesla",
+                    model="Model 3",
+                    generation="Mk I (2018)",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="Hyundai",
+                    model="Kona",
+                    generation="Mk I (2017) ~ Mk I EV (2019)",
+                    accepted=True,
+                    vehicle_index=2,
+                ).model_dump(mode="json"),
+                "3": MMRResult(
+                    make="Audi",
+                    model="A4",
+                    generation="B5 (1998)",
+                    accepted=True,
+                    vehicle_index=3,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_label_text_colors_by_track = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert DummyAnnotator.seen_label_text_colors_by_track[-1] == {
+        1: "#00BFFF",
+        2: "#39FF14",
+    }
 
 
 def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:

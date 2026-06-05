@@ -1,0 +1,1344 @@
+make,model,generation,variation,powertrain_class
+Alfa Romeo,156,Mk II (2003),Wagon,COMBUSTION
+Alfa Romeo,Giulietta,940 (2010),,COMBUSTION
+Alfa Romeo,GT,(2003),,COMBUSTION
+Alfa Romeo,Stelvio,"949 (2016,2023)",,COMBUSTION
+Audi,80,B3 (1986),,COMBUSTION
+Audi,80,B4 (1991),,COMBUSTION
+Audi,100,C4 (1989),Sedan,COMBUSTION
+Audi,A1,"Mk I (2010,2015)",,COMBUSTION
+Audi,A2,"8Z (1999,2004)",,COMBUSTION
+Audi,A3,"8L (1996,2000)",,COMBUSTION
+Audi,A3,"8P (2004,2008)",Wagon,COMBUSTION
+Audi,A3,8P (2004),,COMBUSTION
+Audi,A3,8P (2008),,COMBUSTION
+Audi,A3,"8V (2012,2017)",Sedan,COMBUSTION
+Audi,A3,8V (2012),,COMBUSTION
+Audi,A3,8V (2017),,COMBUSTION
+Audi,A4,Allroad B8 (2012),,COMBUSTION
+Audi,A4,B5 (1998),Wagon,COMBUSTION
+Audi,A4,B5 (1998),,COMBUSTION
+Audi,A4,B6 (2001),Wagon,COMBUSTION
+Audi,A4,B7 (2004),Wagon,COMBUSTION
+Audi,A4,B7 (2004),,COMBUSTION
+Audi,A4,"B8 (2008,2012) ~ B8 Allroad (2009,2012)",Wagon,COMBUSTION
+Audi,A4,B8 (2008),,COMBUSTION
+Audi,A4,B8 (2012),,COMBUSTION
+Audi,A4,B9 (2017),Sedan,COMBUSTION
+Audi,A4,B9 (2017),,COMBUSTION
+Audi,A4,B9 (2017) ~ B9 Allroad (2017),Wagon,COMBUSTION
+Audi,A4,B9 (2019),Allroad,COMBUSTION
+Audi,A4,B9 (2019),Base,COMBUSTION
+Audi,A4,B9 (2019),Limusine,COMBUSTION
+Audi,A4,B9 (2019),RS4,COMBUSTION
+Audi,A4 ~ A6,"B6 (2001) ~ C5 (1997,2002)",,COMBUSTION
+Audi,A5,"8T (2007,2012)",,COMBUSTION
+Audi,A5,8T (2007),,COMBUSTION
+Audi,A5,8T (2012),,COMBUSTION
+Audi,A5,8W6 (2017),,COMBUSTION
+Audi,A5,8W6 (2020),Base,COMBUSTION
+Audi,A5,B10 (2024),Base,COMBUSTION
+Audi,A5,B10 (2024),S-Line,COMBUSTION
+Audi,A5,B10 (2024),Saloon,COMBUSTION
+Audi,A6,Allroad C5 (1999),,COMBUSTION
+Audi,A6,Allroad C6 (2006),,COMBUSTION
+Audi,A6,C4 (1994),Wagon,COMBUSTION
+Audi,A6,C4 (1994),,COMBUSTION
+Audi,A6,"C5 (1997,2002) ~ C5 Allroad (1999)",Wagon,COMBUSTION
+Audi,A6,"C6 (2004,2008)",Wagon,COMBUSTION
+Audi,A6,C6 (2004),,COMBUSTION
+Audi,A6,C6 (2004) ~ C6 S-line (2004),Sedan,COMBUSTION
+Audi,A6,C6 (2008),Sedan,COMBUSTION
+Audi,A6,C6 (2008),,COMBUSTION
+Audi,A6,"C7 (2012,2015)",Sedan,COMBUSTION
+Audi,A6,"C7 (2012,2015)",Wagon,COMBUSTION
+Audi,A6,C7 (2012),Allroad,COMBUSTION
+Audi,A6,C7 (2012),Base,COMBUSTION
+Audi,A6,C7 (2012),S-Line,COMBUSTION
+Audi,A6,C7 (2015),Allroad,COMBUSTION
+Audi,A6,C7 (2015),S-Line,COMBUSTION
+Audi,A6,C8 (2019),Sedan,COMBUSTION
+Audi,A6,C8 (2019),Wagon,COMBUSTION
+Audi,A6,C8 (2019),,COMBUSTION
+Audi,A6,S-line C6 (2004),,COMBUSTION
+Audi,A7,"4G (2010,2015)",,COMBUSTION
+Audi,A7,4G (2010),,COMBUSTION
+Audi,A8,D3 (2006),,COMBUSTION
+Audi,A8,D4 (2010),,COMBUSTION
+Audi,A8,D4 (2014),,COMBUSTION
+Audi,e-tron GT,"Mk I (2021,2024)",,BEV
+Audi,Q2,Mk I (2017),Design,COMBUSTION
+Audi,Q2,Mk I (2017),,COMBUSTION
+Audi,Q3,8U (2012),,COMBUSTION
+Audi,Q3,8U (2015),,COMBUSTION
+Audi,Q3,F3 (2018),Crossover,COMBUSTION
+Audi,Q3,F3 (2018),Sportback,COMBUSTION
+Audi,Q3,F3 (2018),,COMBUSTION
+Audi,Q4,Mk I (2021),,BEV
+Audi,Q5,"8R (2009,2012)",,COMBUSTION
+Audi,Q5,8R (2009),Base,COMBUSTION
+Audi,Q5,8R (2009),S-Line,COMBUSTION
+Audi,Q5,8R (2012),S-Line,COMBUSTION
+Audi,Q5,FY (2017),,COMBUSTION
+Audi,Q5,FY (2020),Crossover,COMBUSTION
+Audi,Q5,FY (2020),Sportback,COMBUSTION
+Audi,Q5,FY (2020),,COMBUSTION
+Audi,Q5,Mk III (2024),,COMBUSTION
+Audi,Q7,"4L (2005,2009)",,COMBUSTION
+Audi,Q7,4M (2015),,COMBUSTION
+Audi,Q7,"4M (2019,2025)",,COMBUSTION
+Audi,Q7,4M (2019),,COMBUSTION
+Audi,Q7,4M (2025),S Line,COMBUSTION
+Audi,Q8,"Mk I (2018,2024)",,COMBUSTION
+Audi,Q8,Mk I (2018),,COMBUSTION
+Audi,Q8,Mk I (2024),Base,COMBUSTION
+Audi,Q8 e-tron,Mk I (2019),Base,BEV
+Audi,Q8 e-tron,Mk I (2019),Sportback,BEV
+Audi,Q8 e-tron,Mk I (2024),Base,BEV
+Audi,TT,8J (2006),,COMBUSTION
+Audi,TT,"8N (1998,2003)",,COMBUSTION
+Bentley,Bentayga,Mk I (2016),,COMBUSTION
+Bentley,Bentayga,Mk I (2020),,COMBUSTION
+Bentley,Continental,GT Mk III (2018),,COMBUSTION
+BMW,1,"E8x (2004,2007) ~ E8x M-Packet (2004,2007)",,COMBUSTION
+BMW,1,E8x (2007),,COMBUSTION
+BMW,1,"F20,F21 (2012)",,COMBUSTION
+BMW,1,"F20,F21 (2015)",,COMBUSTION
+BMW,1,F40 (2019),,COMBUSTION
+BMW,2,F22 (2014),,COMBUSTION
+BMW,2,"Tourer F45 (2015,2018)",Base,COMBUSTION
+BMW,2,Tourer F45 (2015),,COMBUSTION
+BMW,2,Tourer F45 (2018),,COMBUSTION
+BMW,3,E36 (1991),,COMBUSTION
+BMW,3,"E46 (1998,2001)",Sedan ~ Coupe,COMBUSTION
+BMW,3,"E46 (1998,2001)",Wagon,COMBUSTION
+BMW,3,E46 (1998),,COMBUSTION
+BMW,3,E46 (2001),,COMBUSTION
+BMW,3,E46 Compact (2000),,COMBUSTION
+BMW,3,E90 (2005),,COMBUSTION
+BMW,3,E90 (2005) ~ E90 M-Sport (2005),Sedan,COMBUSTION
+BMW,3,E90 (2005) ~ E90 M-Sport (2005),Wagon,COMBUSTION
+BMW,3,E90 (2009),,COMBUSTION
+BMW,3,E90 (2009) ~ E90 M-Sport (2009),Sedan,COMBUSTION
+BMW,3,E90 (2009) ~ E90 M-Sport (2009),Wagon,COMBUSTION
+BMW,3,E90 M-Sport (2005),,COMBUSTION
+BMW,3,E92 Coupe (2006),,COMBUSTION
+BMW,3,E92 Coupe (2006) ~ E92 Coupe M (2006) ~ E92 Coupe M-Sport (2006),,COMBUSTION
+BMW,3,E92 Coupe M-Sport (2006),,COMBUSTION
+BMW,3,"F30 (2011,2015)",,COMBUSTION
+BMW,3,"F30 (2011,2015) ~ F30 M-Sport (2011,2015)",Sedan,COMBUSTION
+BMW,3,"F30 (2011,2015) ~ F30 M-Sport (2011,2015)",Wagon,COMBUSTION
+BMW,3,"F30 M-Sport (2011,2015)",,COMBUSTION
+BMW,3,G20 (2019),Base,COMBUSTION
+BMW,3,G20 (2019),Base Touring,COMBUSTION
+BMW,3,G20 (2019),Sport Line,COMBUSTION
+BMW,3,G20 (2019),Sport Line Sedan,COMBUSTION
+BMW,3,G20 (2023),M Sport,COMBUSTION
+BMW,3,G20 (2023),M Sport Touring,COMBUSTION
+BMW,3,G80 M (2021),Sedan,COMBUSTION
+BMW,3,"Gran Turismo F34 (2014,2017)",,COMBUSTION
+BMW,3,"Gran Turismo F34 (2014,2017) ~ Gran Turismo F34 M-Sport (2014,2017)",,COMBUSTION
+BMW,3,"Gran Turismo F34 M-Sport (2014,2017)",,COMBUSTION
+BMW,4,"F32 (2014,2017)",,COMBUSTION
+BMW,4,"F32 M-Sport (2014,2017)",,COMBUSTION
+BMW,4,Mk II (2020),M Sport Grand Coupe,COMBUSTION
+BMW,4,Mk II (2020),M-Sport Coupe,COMBUSTION
+BMW,5,"E39 (1995,2001)",Sedan,COMBUSTION
+BMW,5,"E39 (1995,2001)",Wagon,COMBUSTION
+BMW,5,"E39 (1995,2001)",,COMBUSTION
+BMW,5,"E60,E61 (2003,2007)",,COMBUSTION
+BMW,5,"E60,E61 (2003,2007) ~ E60,E61 M (2003,2007) ~ E60,E61 M-Sport (2003,2007)",Sedan,COMBUSTION
+BMW,5,"E60,E61 (2003,2007) ~ E60,E61 M (2003,2007) ~ E60,E61 M-Sport (2003,2007)",Wagon,COMBUSTION
+BMW,5,"E60,E61 M-Sport (2003,2007)",,COMBUSTION
+BMW,5,"F10 (2010,2013) ~ F10 M (2010,2013) ~ F10 M-Sport (2010,2013)",Sedan,COMBUSTION
+BMW,5,"F10 (2010,2013) ~ F10 M (2010,2013) ~ F10 M-Sport (2010,2013)",Wagon,COMBUSTION
+BMW,5,F10 (2010),,COMBUSTION
+BMW,5,F10 (2013),,COMBUSTION
+BMW,5,"F10 M-Sport (2010,2013)",,COMBUSTION
+BMW,5,G30 (2017),Luxury Line,COMBUSTION
+BMW,5,G30 (2017),Luxury Line Sedan,COMBUSTION
+BMW,5,G30 (2017),Luxury Line Wagon,COMBUSTION
+BMW,5,G30 (2017),M-Sport,COMBUSTION
+BMW,5,G30 (2017) ~ G31 (2021),M-Sport Sedan,COMBUSTION
+BMW,5,G31 (2021),Luxury Line,COMBUSTION
+BMW,5,G31 (2021),M-Sport,COMBUSTION
+BMW,5,G60 (2024),M-Sport,COMBUSTION
+BMW,5,G60 (2024),M-Sport Sedan,COMBUSTION
+BMW,5,"Gran Turismo F07 (2010,2013)",,COMBUSTION
+BMW,5,Gran Turismo F07 (2010) ~ Gran Turismo F07 M-Sport (2010),,COMBUSTION
+BMW,6,"E63,E64 (2003)",,COMBUSTION
+BMW,6,"G32 Gran Turismo (2017,2020)",,COMBUSTION
+BMW,6,G32 Gran Turismo (2017),Base,COMBUSTION
+BMW,6,G32 Gran Turismo (2017),M-Sport,COMBUSTION
+BMW,7,E65 (2005),,COMBUSTION
+BMW,7,"F01 (2008,2012) ~ F01 M-Sport (2008,2012)",,COMBUSTION
+BMW,7,F01 (2008),,COMBUSTION
+BMW,7,F01 (2012),,COMBUSTION
+BMW,7,G11 (2016),,COMBUSTION
+BMW,7,G11 (2016) ~ G11 M-Sport (2016),,COMBUSTION
+BMW,7,G11 M-Sport (2016),,COMBUSTION
+BMW,7,G70 (2022),M Sport,COMBUSTION
+BMW,8,G1x (2019),M,COMBUSTION
+BMW,3 ~ 4,"F30 M (2011,2015) ~ F32 M (2014,2017)",,COMBUSTION
+BMW,i3,"(2014,2018)",,MIXED
+BMW,i3,(2014),,MIXED
+BMW,i3,(2018),,MIXED
+BMW,i4,G26 (2021),M-Sport,BEV
+BMW,iX,i20 (2021),Base,BEV
+BMW,iX,i20 (2021),Sport,BEV
+BMW,X1,"E84 (2010,2012,2015)",,COMBUSTION
+BMW,X1,"F48 (2016,2020) ~ F48 M-Sport (2016,2020)",,COMBUSTION
+BMW,X1,F48 (2016),,COMBUSTION
+BMW,X1,F48 (2020),,COMBUSTION
+BMW,X1,U11 (2023),M Sport,COMBUSTION
+BMW,X3,"E83 (2004,2007) ~ E83 M-Sport (2004,2007)",,COMBUSTION
+BMW,X3,E83 (2004),,COMBUSTION
+BMW,X3,E83 (2007),,COMBUSTION
+BMW,X3,E83 M-Sport (2007),,COMBUSTION
+BMW,X3,"F25 (2010,2015)",,COMBUSTION
+BMW,X3,F25 (2010),,COMBUSTION
+BMW,X3,F25 (2015),Base,COMBUSTION
+BMW,X3,G01 (2018),Base,COMBUSTION
+BMW,X3,G01 (2018),,COMBUSTION
+BMW,X3,G01 (2022),M ~ M-Sport,COMBUSTION
+BMW,X3,G45 (2024),M-Sport,COMBUSTION
+BMW,X3 ~ X4,F25 (2015) ~ F26 (2015),M-Sport,COMBUSTION
+BMW,X3 ~ X4,G01 (2018) ~ G02 (2018),M-Sport,COMBUSTION
+BMW,X3 ~ X4,G01 (2022) ~ G02 (2022),M-Sport,COMBUSTION
+BMW,X4,F26 (2015),,COMBUSTION
+BMW,X4,G02 (2018),Base,COMBUSTION
+BMW,X4,G02 (2018),,COMBUSTION
+BMW,X4,G02 (2022),M ~ M-Sport,COMBUSTION
+BMW,X5,"E53 (2000,2004)",,COMBUSTION
+BMW,X5,E53 (2000),,COMBUSTION
+BMW,X5,E53 (2004),,COMBUSTION
+BMW,X5,"E70 (2006,2010)",,COMBUSTION
+BMW,X5,E70 (2006),,COMBUSTION
+BMW,X5,E70 (2010),,COMBUSTION
+BMW,X5,E70 M-Sport (2006),,COMBUSTION
+BMW,X5,E70 M-Sport (2010),,COMBUSTION
+BMW,X5,F15 (2013),,COMBUSTION
+BMW,X5,F15 (2013) ~ F15 M-Sport (2013),,COMBUSTION
+BMW,X5,F15 M-Sport (2013),,COMBUSTION
+BMW,X5,"G05 (2018,2023)",Base,COMBUSTION
+BMW,X5,"G05 (2018,2023)",M-Sport,COMBUSTION
+BMW,X5,G05 (2018),Base,COMBUSTION
+BMW,X5,G05 (2018),M-Sport,COMBUSTION
+BMW,X5,G05 (2023),M-Sport,COMBUSTION
+BMW,X6,"E71 (2009,2011)",,COMBUSTION
+BMW,X6,E71 (2009),,COMBUSTION
+BMW,X6,E71 (2011),,COMBUSTION
+BMW,X6,"E71 M-Sport (2009,2011)",,COMBUSTION
+BMW,X6,F16 (2014) ~ F16 M-Sport (2014),,COMBUSTION
+BMW,X6,F16 M-Sport (2014),,COMBUSTION
+BMW,X6,F86 M (2014),,COMBUSTION
+BMW,X6,"G06 (2019,2023)",M-Sport,COMBUSTION
+BMW,X6,G06 (2019),M-Sport,COMBUSTION
+BMW,X6,G06 (2023),M-Sport,COMBUSTION
+BMW,X7,G07 (2019),,COMBUSTION
+BMW,X7,G07 (2023),M,COMBUSTION
+BYD,Seal U,Mk I (2023),,MIXED
+BYD,Sealion 7,Mk I (2024),,BEV
+Chery,Tiggo 4,Pro Mk II (2025),,COMBUSTION
+Chevrolet,Captiva,"Mk I (2006,2011,2016)",,COMBUSTION
+Chevrolet,Cruze,Mk I (2012),,COMBUSTION
+Chrysler,300C,Mk I C-Line (2005),,COMBUSTION
+Chrysler,Pacifica,Mk II (2021),,COMBUSTION
+Chrysler,Pacifica ~ Voyager,Mk II (2017) ~  Mk VI (2020),,COMBUSTION
+Chrysler,PT Cruiser,Mk I (2001),,COMBUSTION
+Chrysler,Sebring,Mk III (2007),Sedan,COMBUSTION
+Chrysler,Sebring,Mk III (2007),,COMBUSTION
+Chrysler,Town and Country,Mk V (2011),,COMBUSTION
+Chrysler,Town and Country ~ Voyager,"Mk IV (2001,2005) ~ Mk IV (2001,2005)",,COMBUSTION
+Chrysler,Voyager,Mk IV (2005),,COMBUSTION
+Chrysler,Voyager,Mk V (2008),,COMBUSTION
+Citroen,Berlingo,"Mk I (1996,2002)",Multispace,COMBUSTION
+Citroen,Berlingo,Mk I (2002),,COMBUSTION
+Citroen,Berlingo,"Mk II (2008,2012)",Multispace,COMBUSTION
+Citroen,Berlingo,"Mk II (2008,2012)",Panelvan,COMBUSTION
+Citroen,Berlingo,"Mk II (2008,2012)",,COMBUSTION
+Citroen,Berlingo,Mk III (2018),Passenger,MIXED
+Citroen,Berlingo,Mk III (2018),Passenger ~ Van Look Pack,MIXED
+Citroen,Berlingo,Mk III (2018),Van,MIXED
+Citroen,Berlingo,Mk III (2018),Van Base,MIXED
+Citroen,Berlingo,Mk IV (2024),Max,MIXED
+Citroen,C2,(2003),,COMBUSTION
+Citroen,C3,Aircross Mk III (2025),,MIXED
+Citroen,C3,Mk II (2010),,COMBUSTION
+Citroen,C4,Cactus Mk I (2014),,COMBUSTION
+Citroen,C4,Grand Picasso Mk II (2013),,COMBUSTION
+Citroen,C4,"Mk I (2004,2008)",Hatchback,COMBUSTION
+Citroen,C4,Mk III (2021),Coupe SUV,MIXED
+Citroen,C4,Mk III (2021),,MIXED
+Citroen,C4,"Picasso Mk I (2006,2010)",,COMBUSTION
+Citroen,C4,Picasso Mk II (2013),,COMBUSTION
+Citroen,C5,"Aircross Mk I (2018,2022)",,COMBUSTION
+Citroen,C5,Aircross Mk I (2018),,COMBUSTION
+Citroen,C5,Mk II (2008),Tourer,COMBUSTION
+Citroen,DS3,Mk I (2010),,COMBUSTION
+Citroen,DS4,Mk I (2011),,COMBUSTION
+Citroen,Jumper,Mk IV (2014),Van,MIXED
+Citroen,Jumper,Mk IV (2014),,MIXED
+Citroen,Jumpy,Mk II (2007),Panelvan,COMBUSTION
+Citroen,Jumpy,Mk III (2016),Base,MIXED
+Citroen,Jumpy ~ SpaceTourer,Mk III (2016) ~ Mk I (2016),Pack Look ~ Base,MIXED
+Citroen,Jumpy ~ SpaceTourer,Mk III (2016) ~ Mk I (2016),Panelvan,MIXED
+Cupra,Born,Mk I (2021),,BEV
+Cupra,Formentor,Mk I (2020),,COMBUSTION
+Cupra,Formentor,Mk I (2024),,COMBUSTION
+Cupra,Leon,Mk IV (2024),,COMBUSTION
+Cupra,Tavascan,Mk I (2024),,BEV
+Cupra,Terramar,Mk I (2024),,COMBUSTION
+Dacia,Dokker,(2012),,COMBUSTION
+Dacia,Duster,"Mk I (2010,2013)",,COMBUSTION
+Dacia,Duster,"Mk II (2018,2022)",,COMBUSTION
+Dacia,Duster,Mk II (2018),,COMBUSTION
+Dacia,Duster,Mk II (2022),,COMBUSTION
+Dacia,Duster,Mk II (2023),,COMBUSTION
+Dacia,Duster,Mk III (2024),,COMBUSTION
+Dacia,Jogger,"Mk I (2022,2023)",,COMBUSTION
+Dacia,Jogger,Mk I (2023),,COMBUSTION
+Dacia,Lodgy ~ Dokker,Mk I (2012),Base,COMBUSTION
+Dacia,Lodgy ~ Dokker,Mk I (2012),Stepway,COMBUSTION
+Dacia,Sandero,Mk III Stepway (2020),,COMBUSTION
+Dacia,Sandero ~ Logan,Mk III (2020) ~ Mk III (2020),,COMBUSTION
+Dacia,Spring,Mk I (2021),,BEV
+Dacia,Spring,Mk I (2024),,BEV
+DAF,XF,Mk III (2013),,COMBUSTION
+DAF,XF,Mk III (2017),,COMBUSTION
+Dodge,Caliber,(2007),,COMBUSTION
+Dodge,Durango,Mk III (2010),,COMBUSTION
+Dodge,Durango,Mk III (2021),,COMBUSTION
+Dodge,Nitro,(2008),,COMBUSTION
+Dodge,Ram,Mk III (2006),,COMBUSTION
+Dodge,Ram,Mk V (2019),,COMBUSTION
+Dongfeng,Box,Mk I (2025),,BEV
+Fiat,500,(2007),,MIXED
+Fiat,500X,Mk I (2014),,COMBUSTION
+Fiat,Doblo,Mk I (2005),,COMBUSTION
+Fiat,Doblo,Mk II (2009),,COMBUSTION
+Fiat,Freemont,Mk I (2009),,COMBUSTION
+Fiat,Talento,Mk II (2016),,COMBUSTION
+Ford,C-Max,Mk II (2010),,COMBUSTION
+Ford,C-Max,Mk II (2015),,COMBUSTION
+Ford,Escort,Mk V (1995),,COMBUSTION
+Ford,Fiesta,"Mk VI (2008,2014,2017)",Hatchback,COMBUSTION
+Ford,Fiesta,Mk VI (2008),,COMBUSTION
+Ford,Fiesta,Mk VI (2014),,COMBUSTION
+Ford,Focus,"C-Max (2003,2007)",,COMBUSTION
+Ford,Focus,"Mk II (2004,2008)",Hatchback,COMBUSTION
+Ford,Focus,"Mk II (2004,2008)",Wagon,COMBUSTION
+Ford,Focus,Mk II (2004),,COMBUSTION
+Ford,Focus,Mk II (2008),,COMBUSTION
+Ford,Focus,"Mk III (2012,2015)",Wagon,COMBUSTION
+Ford,Focus,Mk III (2012),Base,MIXED
+Ford,Focus,Mk III (2015),Base,MIXED
+Ford,Focus,Mk III (2015),Hatchback,MIXED
+Ford,Focus,"Mk IV (2019,2022)",Wagon,COMBUSTION
+Ford,Focus,Mk IV (2019),,COMBUSTION
+Ford,Focus,Mk IV (2022),Titanium,COMBUSTION
+Ford,Kuga,Mk I (2008),,COMBUSTION
+Ford,Mondeo,"Mk III (2000,2003,2005)",,COMBUSTION
+Ford,Mondeo,Mk IV (2007),Sedan,COMBUSTION
+Ford,Mondeo,Mk IV (2007),,COMBUSTION
+Ford,Mondeo,Mk IV (2010),Wagon,COMBUSTION
+Ford,Mondeo,Mk IV (2010),,COMBUSTION
+Ford,Mondeo,"Mk V (2013,2017)",,COMBUSTION
+Ford,Mondeo,Mk V (2013),Wagon,COMBUSTION
+Ford,Mondeo,"Mk V (2017,2019)",Wagon,COMBUSTION
+Ford,Mondeo,Mk V (2019),,COMBUSTION
+Ford,Mustang Mach-E,Mk I (2020),,BEV
+Ford,Puma,Mk II (2019),,COMBUSTION
+Ford,Puma,Mk II (2019) ~ Gen E Mk I (2024),,MIXED
+Ford,Ranger,"Mk II (2006,2009)",,COMBUSTION
+Ford,Ranger,Mk II (2006),Wildtrack,COMBUSTION
+Ford,Ranger,"Mk III (2011,2016,2018)",,COMBUSTION
+Ford,Ranger,Mk IV (2022),Base,COMBUSTION
+Ford,Ranger,Mk IV (2022),,COMBUSTION
+Ford,S-Max,Mk I (2006),,COMBUSTION
+Ford,S-Max,Mk I (2011),,COMBUSTION
+Ford,Tourneo Connect ~ Transit Connect,Mk I (2002),Double Gate,COMBUSTION
+Ford,Tourneo Connect ~ Transit Connect,Mk I (2002),,COMBUSTION
+Ford,Tourneo Connect ~ Transit Connect,Mk I (2010),,COMBUSTION
+Ford,Tourneo Connect ~ Transit Connect,"Mk II (2013,2019)",Double Gate,COMBUSTION
+Ford,Tourneo Connect ~ Transit Connect,Mk II (2013),,COMBUSTION
+Ford,Tourneo Courier ~ Transit Courier,(2018),,COMBUSTION
+Ford,Tourneo Courier ~ Transit Courier,Mk II (2023) ~ Mk II (2023),,MIXED
+Ford,Tourneo Custom ~ Transit Custom,"(2013,2018)",Single Gate,COMBUSTION
+Ford,Tourneo Custom ~ Transit Custom,(2013),,COMBUSTION
+Ford,Tourneo Custom ~ Transit Custom,(2018),,COMBUSTION
+Ford,Tourneo Custom ~ Transit Custom,Mk II (2023) ~ Mk II (2023),,MIXED
+Ford,Transit,"Mk III (2000,2006)",Panelvan,COMBUSTION
+Ford,Transit,Mk III (2006),,COMBUSTION
+Ford,Transit,Mk IV (2013),,COMBUSTION
+Ford,Transit,Mk IV (2020),,MIXED
+Ford,Transit Courier,"(2015,2018)",,COMBUSTION
+Ford,Transit Custom,"(2013,2018)",Double Gate,COMBUSTION
+Great Wall,Voleex C30,Mk I (2010),,COMBUSTION
+Honda,Accord,Mk VII (2002),,COMBUSTION
+Honda,Accord,Mk VIII (2008),Sedan,COMBUSTION
+Honda,Accord,Mk VIII (2008),Tourer,COMBUSTION
+Honda,Accord,Mk VIII (2008),,COMBUSTION
+Honda,Civic,Mk IX (2012),,COMBUSTION
+Honda,Civic,Mk VI (1995),Global,COMBUSTION
+Honda,Civic,Mk VIII (2006),Hatchback,COMBUSTION
+Honda,Civic,"Mk X (2017,2020)",Hatchback,COMBUSTION
+Honda,Civic,"Mk XI (2022,2025)",Hatchback,COMBUSTION
+Honda,Civic,Mk XI (2022),,COMBUSTION
+Honda,Civic,NON-EU Mk IX (2012),Sedan US,COMBUSTION
+Honda,Civic,"NON-EU Mk VIII (2006,2009)",,COMBUSTION
+Honda,CR-V,"Mk II (2002,2005)",,COMBUSTION
+Honda,CR-V,Mk II (2005),,COMBUSTION
+Honda,CR-V,"Mk III (2007,2009)",,COMBUSTION
+Honda,CR-V,Mk III (2007),,COMBUSTION
+Honda,CR-V,Mk IV (2012),,COMBUSTION
+Honda,CR-V,Mk IV (2015),,COMBUSTION
+Honda,CR-V,"Mk V (2017,2020)",,COMBUSTION
+Honda,CR-V,Mk V (2017),,COMBUSTION
+Honda,CR-V,Mk VI (2023),EX,COMBUSTION
+Honda,CR-V,Mk VI (2023),,COMBUSTION
+Honda,FR-V,(2005),,COMBUSTION
+Honda,HR-V,"Mk II (2014,2018)",,COMBUSTION
+Honda,HR-V,Mk II (2014),,COMBUSTION
+Honda,HR-V,"Mk III (2021,2025)",,COMBUSTION
+Honda,Jazz,Mk II (2011),,COMBUSTION
+Honda,Jazz,Mk IV Advance Sport (2023),,COMBUSTION
+Honda,ZR-V,Mk I (2022),,COMBUSTION
+Hyundai,Bayon,Mk I (2021),,COMBUSTION
+Hyundai,Getz,(2005),,COMBUSTION
+Hyundai,i20,Mk II (2014),Base,COMBUSTION
+Hyundai,i20,Mk II (2018),Base,COMBUSTION
+Hyundai,i20,Mk III (2020),Base ~ N-Line,COMBUSTION
+Hyundai,i30,Mk I (2007),,COMBUSTION
+Hyundai,i30,"Mk II (2012,2015)",Wagon,COMBUSTION
+Hyundai,i30,Mk II (2012),,COMBUSTION
+Hyundai,i30,"Mk III (2017,2020)",Fastback,COMBUSTION
+Hyundai,i30,"Mk III (2017,2020)",Wagon,COMBUSTION
+Hyundai,i30,Mk III (2017),Hatchback,COMBUSTION
+Hyundai,i30,Mk III (2017),,COMBUSTION
+Hyundai,i30,Mk III (2020),Base,COMBUSTION
+Hyundai,i30,Mk III (2020),Hatchback,COMBUSTION
+Hyundai,i40,(2011),,COMBUSTION
+Hyundai,i40,(2015),,COMBUSTION
+Hyundai,i40,"Mk I (2011,2015)",Sedan,COMBUSTION
+Hyundai,i40,"Mk I (2011,2015)",Tourer,COMBUSTION
+Hyundai,Ioniq,Mk I (2016),,MIXED
+Hyundai,Ioniq 5,Mk I (2022),Base,BEV
+Hyundai,ix35,"(2010,2015)",,COMBUSTION
+Hyundai,ix35,(2010),,COMBUSTION
+Hyundai,Kona,Mk I (2017),,COMBUSTION
+Hyundai,Kona,Mk I (2017) ~ Mk I EV (2019),,MIXED
+Hyundai,Kona,Mk I (2020),Base,COMBUSTION
+Hyundai,Kona,Mk I (2020),Electric,BEV
+Hyundai,Kona,Mk I (2020),N-Line,COMBUSTION
+Hyundai,Kona,Mk I EV (2019),,BEV
+Hyundai,Santa_Fe,"Mk II (2007,2010)",,COMBUSTION
+Hyundai,Santa_Fe,Mk II (2007),,COMBUSTION
+Hyundai,Santa_Fe,"Mk III (2013,2016)",Base,COMBUSTION
+Hyundai,Santa_Fe,Mk III (2013),Base,COMBUSTION
+Hyundai,Santa_Fe,Mk IV (2019),,COMBUSTION
+Hyundai,Santa_Fe,Mk IV (2020),,COMBUSTION
+Hyundai,Sonata,"Mk V (2006,2008)",,COMBUSTION
+Hyundai,Staria,Mk I (2021),Brass Chrome Paket,COMBUSTION
+Hyundai,Tucson,Mk I (2004),,COMBUSTION
+Hyundai,Tucson,Mk III (2015),,COMBUSTION
+Hyundai,Tucson,Mk III (2018),,COMBUSTION
+Hyundai,Tucson,Mk IV (2020),Base,COMBUSTION
+Hyundai,Tucson,Mk IV (2020),N-Line,COMBUSTION
+Hyundai,Tucson,Mk IV (2024),Base,COMBUSTION
+Infiniti,FX,"Mk I (2003,2006)",,COMBUSTION
+Irizar,i6,Mk I (2016),,COMBUSTION
+Iveco,Daily,Mk III (2000),,COMBUSTION
+Iveco,Daily,Mk IV (2006),,COMBUSTION
+Iveco,Daily,"Mk IV (2006) ~ Mk V (2011) ~ Mk VI (2014,2020)",Cargo Box,MIXED
+Iveco,Daily,"Mk IV (2006) ~ Mk V (2011) ~ Mk VI (2014,2020)",Flatbed,MIXED
+Iveco,Daily,Mk VI (2020),,MIXED
+Iveco,Eurocargo,Mk II (2002),,COMBUSTION
+Jaguar,F-Pace,X761 (2016),,COMBUSTION
+Jaguar,F-Pace,X761 (2020),Base,COMBUSTION
+Jaguar,I-Pace,Mk I (2018),,BEV
+Jaguar,S-Type,Mk I (2000),,COMBUSTION
+Jaguar,XF,X250 (2011),,COMBUSTION
+Jeep,Grand Cherokee,WJ (1999),,COMBUSTION
+Jeep,Renegade,"BU (2015,2019)",,COMBUSTION
+Jeep,Wrangler,JK (2007),,COMBUSTION
+KGM,Musso EV,Mk I (2025),,BEV
+Kia,Carens,Mk III (2017),,COMBUSTION
+Kia,Ceed,"Mk I (2006,2009)",Hatchback,COMBUSTION
+Kia,Ceed,Mk I (2009),Hatchback ~ SW,COMBUSTION
+Kia,Ceed,"Mk II (2013,2016)",Base Proceed,COMBUSTION
+Kia,Ceed,"Mk II (2013,2016)",SW,COMBUSTION
+Kia,Ceed,Mk II (2013),Hatchback ~ SW,COMBUSTION
+Kia,Ceed,Mk II (2016),Base,COMBUSTION
+Kia,Ceed,Mk II (2016),Base Hatchback,COMBUSTION
+Kia,Ceed,Mk II (2016),GT Line,COMBUSTION
+Kia,Ceed,Mk III (2018),Base Hatchback ~ Base SW,COMBUSTION
+Kia,Ceed,Mk III (2018),Hatchback,COMBUSTION
+Kia,Ceed,Mk III (2018),SW,COMBUSTION
+Kia,Ceed,Mk III (2022),Base,COMBUSTION
+Kia,Ceed,Mk III (2022),Base Hatchback,COMBUSTION
+Kia,Ceed,Mk III (2022),SW,COMBUSTION
+Kia,Ceed,Mk III (2022),,COMBUSTION
+Kia,EV6,Mk I (2022),Base,BEV
+Kia,EV6,Mk I (2022),GT-Line,BEV
+Kia,Niro,EV (2018),,BEV
+Kia,Niro,Mk II (2022),,MIXED
+Kia,Optima,"Mk IV (2016,2018)",Sedan,COMBUSTION
+Kia,Picanto,Mk III (2018),GT,COMBUSTION
+Kia,Sorento,"Mk I (2003,2007)",,COMBUSTION
+Kia,Sorento,Mk I (2007),,COMBUSTION
+Kia,Sorento,Mk II (2013),,COMBUSTION
+Kia,Sportage,Mk III (2010),,COMBUSTION
+Kia,Sportage,"Mk IV (2016,2018)",,COMBUSTION
+Kia,Sportage,Mk IV (2016),,COMBUSTION
+Kia,Sportage,Mk IV (2018),,COMBUSTION
+Kia,Sportage,Mk V (2022),Base,COMBUSTION
+Kia,Sportage,Mk V (2022),Base Europe,COMBUSTION
+Kia,Sportage,Mk V (2022),GT-Line,COMBUSTION
+Kia,Sportage,Mk V (2026),Base,COMBUSTION
+Kia,Sportage,Mk V (2026),X-Line,COMBUSTION
+Kia,Stonic,Mk II (2026),Base,COMBUSTION
+Kia,Stonic,Mk II (2026),GT-Line,COMBUSTION
+Kia,Telluride,Mk I (2020),,COMBUSTION
+Kia,XCeed,Mk I (2023),,COMBUSTION
+Lada,Vesta,Cross Mk I (2018),,COMBUSTION
+Lada,Zhiguli,Mk I (1970),Sedan,COMBUSTION
+Lamborghini,Urus,Mk I (2018),,COMBUSTION
+Lancia,Voyager,Mk V (2008),,COMBUSTION
+Land Rover,Defender,(1990),Base,COMBUSTION
+Land Rover,Defender,L663 (2020),,COMBUSTION
+Land Rover,Discovery,"3 L319 (2004) ~ 4 L319 (2009,2014)",,COMBUSTION
+Land Rover,Discovery,"L462 (2017,2021)",,COMBUSTION
+Land Rover,Freelander,L359 (2006),,COMBUSTION
+Land Rover,Freelander,L359 (2011),,COMBUSTION
+Land Rover,Range Rover,"L405 (2013,2018)",,COMBUSTION
+Land Rover,Range Rover,L405 (2013),Base,COMBUSTION
+Land Rover,Range Rover,L405 (2018),,COMBUSTION
+Land Rover,Range Rover,L460 (2022),Base,COMBUSTION
+Land Rover,Range Rover,L460 (2022),,COMBUSTION
+Land Rover,Range Rover,P38A (1994),,COMBUSTION
+Land Rover,Range Rover Evoque,"L538 (2011,2016)",SUV,COMBUSTION
+Land Rover,Range Rover Evoque,L538 (2011),,COMBUSTION
+Land Rover,Range Rover Evoque,"Mk II (2020,2024)",,COMBUSTION
+Land Rover,Range Rover Evoque,Mk II (2020),,COMBUSTION
+Land Rover,Range Rover Sport,L461 (2023),Base,COMBUSTION
+Land Rover,Range Rover Sport,L461 (2023),,COMBUSTION
+Land Rover,Range Rover Sport,"L494 (2014,2018)",,COMBUSTION
+Land Rover,Range Rover Sport,L494 (2018),,COMBUSTION
+Land Rover,Range Rover Velar,"Mk I (2019,2024)",,COMBUSTION
+Land Rover,Range Rover Velar,Mk I (2019),,COMBUSTION
+Lexus,CT,Mk I (2011),,COMBUSTION
+Lexus,ES,Mk VII (2019),,COMBUSTION
+Lexus,IS,Mk II (2006),Sedan,COMBUSTION
+Lexus,IS,Mk II (2006),,COMBUSTION
+Lexus,IS,"Mk III (2013,2016,2017)",,COMBUSTION
+Lexus,LBX,Mk I (2024),,COMBUSTION
+Lexus,LS,Mk III (2000),,COMBUSTION
+Lexus,NX,Mk I (2015),,COMBUSTION
+Lexus,NX,Mk I (2018),,COMBUSTION
+Lexus,NX,Mk II (2022),Base,COMBUSTION
+Lexus,NX,Mk II (2022),,COMBUSTION
+Lexus,RC,Mk I (2019),,COMBUSTION
+Lexus,RX,Mk II (2004) ~ Mk II 400h (2004),,COMBUSTION
+Lexus,RX,"Mk III (2010,2012)",,COMBUSTION
+Lexus,RX,Mk III (2010),,COMBUSTION
+Lexus,RX,Mk III (2012),,COMBUSTION
+Lexus,RX,Mk IV (2016),,COMBUSTION
+Lexus,RX,Mk IV (2019),,COMBUSTION
+Lexus,RX,Mk V (2023),Base,COMBUSTION
+Lexus,RX,Mk V (2023),Sport,COMBUSTION
+Lexus,UX,Mk I (2019),Base,MIXED
+Lexus,UX,Mk I (2019),,MIXED
+Lynk and Co,1,Mk I (2021),,COMBUSTION
+Lynk and Co,2,Mk II (2024),,COMBUSTION
+MAN,TGA,Mk I (2002),Low Cab,COMBUSTION
+MAN,TGA,Mk I (2002),Meiller,COMBUSTION
+MAN,TGE,Mk I (2016),Van,MIXED
+MAN,TGE,Mk I (2016),,MIXED
+MAN,TGL,Mk I (2008),Base,COMBUSTION
+MAN,TGL,Mk I (2012),Base,COMBUSTION
+MAN,TGS,Mk II (2020),Meiller,COMBUSTION
+Maserati,Grecale,Mk I (2023),Trofeo,COMBUSTION
+Maserati,Levante,M161 (2017),Base,COMBUSTION
+Mazda,3,Mk II (2009),Base,COMBUSTION
+Mazda,3,Mk III (2014),,COMBUSTION
+Mazda,5,Mk II (2010),,COMBUSTION
+Mazda,6,"Mk I (2003,2006)",Sedan,COMBUSTION
+Mazda,6,"Mk III (2013,2016)",Sedan,COMBUSTION
+Mazda,6,Mk III (2013),,COMBUSTION
+Mazda,6,Mk III (2016),,COMBUSTION
+Mazda,6,Mk III (2018),Wagon,COMBUSTION
+Mazda,626,"Mk VI (1997,2000)",Sedan,COMBUSTION
+Mazda,CX-3,"Mk I (2015,2019)",,COMBUSTION
+Mazda,CX-30,Mk I (2019),,COMBUSTION
+Mazda,CX-5,"Mk I (2013,2016)",,COMBUSTION
+Mazda,CX-5,Mk II (2017),,COMBUSTION
+Mazda,MX-30,Mk I (2020),,MIXED
+Mazda,MX-5,NB (1998),,COMBUSTION
+McLaren,750S,Mk I (2023),,COMBUSTION
+Mercedes,A-Class,"W169 (2004,2008,2011)",,COMBUSTION
+Mercedes,A-Class,"W169 (2008,2011)",,COMBUSTION
+Mercedes,A-Class,"W176 (2013,2016)",,COMBUSTION
+Mercedes,A-Class,"W177 (2019,2024)",Hatchback,COMBUSTION
+Mercedes,Actros,MegaSpace Mk II (2012),,COMBUSTION
+Mercedes,Actros,Mk I (2003),,COMBUSTION
+Mercedes,AMG,GT (2023),,COMBUSTION
+Mercedes,Atego,Mk I (1998),,COMBUSTION
+Mercedes,Atego,Mk I (2008),,COMBUSTION
+Mercedes,B-Class,"T245 (2006,2008)",,COMBUSTION
+Mercedes,B-Class,T245 (2006),,COMBUSTION
+Mercedes,B-Class,T245 (2008),,COMBUSTION
+Mercedes,B-Class,W246 (2012),,MIXED
+Mercedes,C-Class,"W203 (2001,2005)",Sedan,COMBUSTION
+Mercedes,C-Class,"W203 SportCoupe (2001,2005)",,COMBUSTION
+Mercedes,C-Class,"W204 (2008,2012) ~ W204 Elegance (2008,2012)",Sedan,COMBUSTION
+Mercedes,C-Class,"W204 (2008,2012) ~ W204 Elegance (2008,2012)",Wagon,COMBUSTION
+Mercedes,C-Class,W204 (2008),,COMBUSTION
+Mercedes,C-Class,W204 (2012),,COMBUSTION
+Mercedes,C-Class,"W205 (2015,2019)",Avantgarde Coupe,COMBUSTION
+Mercedes,C-Class,"W205 (2015,2019)",Limousine,COMBUSTION
+Mercedes,C-Class,W205 (2015),AMG Line,COMBUSTION
+Mercedes,C-Class,W205 (2015),Avantgarde Estate ~ Avantgarde Limousine,COMBUSTION
+Mercedes,Citan,Mk II (2022),,MIXED
+Mercedes,CL-Class,"C216 (2006,2011)",,COMBUSTION
+Mercedes,CLA-Class,"Mk I (2014,2017)",Coupe,COMBUSTION
+Mercedes,CLA-Class,"Mk I (2014,2017)",,COMBUSTION
+Mercedes,CLA-Class,"Mk II (2019,2023)",Coupe,COMBUSTION
+Mercedes,CLA-Class,Mk II (2019),AMG-Line,COMBUSTION
+Mercedes,CLK-Class,"209 (2002,2005)",Coupe,COMBUSTION
+Mercedes,E-Class,W210 (1995),,COMBUSTION
+Mercedes,E-Class,W210 (2000),,COMBUSTION
+Mercedes,E-Class,"W211 (2002,2007)",Sedan,COMBUSTION
+Mercedes,E-Class,"W211 (2002,2007)",Wagon,COMBUSTION
+Mercedes,E-Class,W211 (2002),,COMBUSTION
+Mercedes,E-Class,W211 (2007),,COMBUSTION
+Mercedes,E-Class,"W212 (2009,2011)",,COMBUSTION
+Mercedes,E-Class,W212 (2013),Base,COMBUSTION
+Mercedes,E-Class,W212 (2013),Elegance,COMBUSTION
+Mercedes,E-Class,W212 Coupe (2009),,COMBUSTION
+Mercedes,E-Class,"W213 (2016,2020)",Wagon,COMBUSTION
+Mercedes,E-Class,W213 (2016),Base Sedan ~ Base Wagon,COMBUSTION
+Mercedes,E-Class,W213 (2016),Sedan,COMBUSTION
+Mercedes,E-Class,W213 (2020),All-Terrain,COMBUSTION
+Mercedes,E-Class,W213 (2020),Avantgarde Sedan ~ Avantgarde Wagon,COMBUSTION
+Mercedes,EQA,"H243 (2021,2024)",Base,BEV
+Mercedes,EQB,"X243 (2021,2024)",AMG Line,BEV
+Mercedes,EQB,"X243 (2021,2024)",Base,BEV
+Mercedes,EQC,Mk I (2019),AMG Line,BEV
+Mercedes,EQE,Mk I (2022),AMG ~ AMG Line,BEV
+Mercedes,EQS,V297 (2021),Base,BEV
+Mercedes,G-Class,W463 (2018),,COMBUSTION
+Mercedes,GL-Class,X164 (2006),,COMBUSTION
+Mercedes,GL-Class,X166 (2013),,COMBUSTION
+Mercedes,GLC-Class,"Mk I (2015,2020)",SUV,COMBUSTION
+Mercedes,GLC-Class,Mk I (2015),AMG Line SUV,COMBUSTION
+Mercedes,GLC-Class,Mk I (2015),Base SUV,COMBUSTION
+Mercedes,GLC-Class,Mk I (2020),AMG,COMBUSTION
+Mercedes,GLC-Class,Mk II (2023),Coupe,COMBUSTION
+Mercedes,GLC-Class,Mk II (2023),SUV,COMBUSTION
+Mercedes,GLE-Class,"V167 (2019,2024)",Coupe,COMBUSTION
+Mercedes,GLE-Class,"V167 (2019,2024)",SUV,COMBUSTION
+Mercedes,GLE-Class,V167 (2019),AMG-Line,COMBUSTION
+Mercedes,GLE-Class,V167 (2019),Base SUV,COMBUSTION
+Mercedes,GLE-Class,V167 (2019),,COMBUSTION
+Mercedes,GLE-Class,V167 (2024),AMG 53,COMBUSTION
+Mercedes,GLE-Class,V167 (2024),AMG Line,COMBUSTION
+Mercedes,GLE-Class,W166 (2015),AMG Coupe,COMBUSTION
+Mercedes,GLE-Class,W166 (2015),AMG SUV,COMBUSTION
+Mercedes,GLE-Class,W166 (2015),Base Coupe,COMBUSTION
+Mercedes,GLE-Class,W166 (2015),Coupe,COMBUSTION
+Mercedes,GLK-Class,X204 (2009),,COMBUSTION
+Mercedes,GLK-Class,X204 (2012),,COMBUSTION
+Mercedes,GLS-Class,X166 (2016),,COMBUSTION
+Mercedes,GLS-Class,"X167 (2020,2024)",,COMBUSTION
+Mercedes,GLS-Class,X167 (2020),AMG-Line,COMBUSTION
+Mercedes,L2,Mk II (1986),,COMBUSTION
+Mercedes,ML,W164 (2005) ~ W164 AMG (2005),,COMBUSTION
+Mercedes,ML,W164 (2007),,COMBUSTION
+Mercedes,ML,W166 (2011),,COMBUSTION
+Mercedes,S-Class,W140 (1991),Sedan,COMBUSTION
+Mercedes,S-Class,"W221 (2006,2010)",,COMBUSTION
+Mercedes,S-Class,"W222 (2014,2018)",,COMBUSTION
+Mercedes,S-Class,W222 (2014),,COMBUSTION
+Mercedes,S-Class,W222 (2018),,COMBUSTION
+Mercedes,S-Class,W223 (2021),AMG Line,COMBUSTION
+Mercedes,S-Class,W223 (2021),,COMBUSTION
+Mercedes,SK,Mk I (1987),,COMBUSTION
+Mercedes,SL-Class,"R230 (2001,2008)",,COMBUSTION
+Mercedes,SL-Class,R232 (2022),55 ~ 63,COMBUSTION
+Mercedes,Sprinter,"Mk I (1995,2001)",Base,COMBUSTION
+Mercedes,Sprinter,Mk I (2001),,COMBUSTION
+Mercedes,Sprinter,"Mk I,II,III (1995,2001,2007,2014,2019)",Customized,COMBUSTION
+Mercedes,Sprinter,"Mk II (2007,2014)",Base,COMBUSTION
+Mercedes,Sprinter,Mk II (2007),,COMBUSTION
+Mercedes,Sprinter,Mk III (2019),Base,MIXED
+Mercedes,Sprinter,Mk III (2019),,MIXED
+Mercedes,V-Class,"W447 (2015,2020,2024)",Long,COMBUSTION
+Mercedes,V-Class,W447 (2015),Base,COMBUSTION
+Mercedes,V-Class,W447 (2020),AMG Line,COMBUSTION
+Mercedes,V-Class,W447 (2024),EQV,BEV
+Mercedes,V-Class,W447 (2024),Exclusive,COMBUSTION
+Mercedes,V-Class ~ Vito,"W447 (2015,2020,2024) ~ W447 (2015,2024)",Short ~ Single Gate,MIXED
+Mercedes,Vito,W447 (2015),,MIXED
+Mercedes,Vito ~ Viano,"W639 (2003,2010)",Double Gate,COMBUSTION
+Mercedes,Vito ~ Viano,"W639 (2003,2010)",Single Gate,COMBUSTION
+Mercedes,Vito ~ Viano,W639 (2003),,COMBUSTION
+Mercedes,Vito ~ Viano,W639 (2010),,COMBUSTION
+MG,HS,Mk II (2024),,COMBUSTION
+Mini,Aceman,Mk I (2024),SE,BEV
+Mini,Clubman,"Mk I (2007,2010)",,COMBUSTION
+Mini,Clubman,Mk II (2015),Cooper,COMBUSTION
+Mini,Clubman ~ Cooper,Mk I (2007) ~ Mk II (2007),Cooper D,COMBUSTION
+Mini,Clubman ~ Cooper,Mk I (2010) ~ Mk II (2010),Cooper,COMBUSTION
+Mini,Clubman ~ Cooper,Mk I (2010) ~ Mk II (2010),Cooper S ~ John Cooper Works,COMBUSTION
+Mini,Cooper,Mk I (2001),Cooper,COMBUSTION
+Mini,Cooper,Mk III (2015),Cooper,COMBUSTION
+Mini,Cooper,Mk III (2015),Cooper S Base Look,COMBUSTION
+Mini,Cooper,Mk III (2015),John Cooper Works Look Frontal,COMBUSTION
+Mini,Countryman,Mk II (2017),Cooper ALL4,COMBUSTION
+Mini,Countryman,Mk II (2017),,COMBUSTION
+Mini,Countryman,Mk II (2020),Cooper S,COMBUSTION
+Mini,Countryman,Mk III (2024),John Cooper Works,COMBUSTION
+Mini,Countryman,Mk III (2024),,MIXED
+Mitsubishi,ASX,Mk I (2010),,COMBUSTION
+Mitsubishi,ASX,Mk I (2013),,COMBUSTION
+Mitsubishi,ASX,Mk I (2019),,COMBUSTION
+Mitsubishi,Colt,Z30 (2003),Five Door,COMBUSTION
+Mitsubishi,Colt,Z30 (2003),,COMBUSTION
+Mitsubishi,Colt,Z3B (2008),Three Door,COMBUSTION
+Mitsubishi,Eclipse Cross,Mk I (2017),,COMBUSTION
+Mitsubishi,Grandis,Mk I (2003),,COMBUSTION
+Mitsubishi,L200,Mk V (2019),,COMBUSTION
+Mitsubishi,Lancer,"Mk IX (2008,2016)",Sportback,COMBUSTION
+Mitsubishi,Lancer,Mk IX (2008),Ralliart,COMBUSTION
+Mitsubishi,Outlander,Mk I (2001),,COMBUSTION
+Mitsubishi,Outlander,"Mk II (2006,2010)",,COMBUSTION
+Mitsubishi,Outlander,Mk II (2006),,COMBUSTION
+Mitsubishi,Outlander,Mk III (2016),,COMBUSTION
+Mitsubishi,Pajero,Mk III (1999),,COMBUSTION
+Mitsubishi,Space Star,Mk V (2020),Hatchback,COMBUSTION
+Nissan,350z,Z33 (2002),,COMBUSTION
+Nissan,Almera,"N16 (2000,2004)",Hatchback,COMBUSTION
+Nissan,Armada,"Mk I (2004,2008)",,COMBUSTION
+Nissan,Juke,Mk I (2011),,COMBUSTION
+Nissan,Juke,Mk I (2015),,COMBUSTION
+Nissan,Juke,Mk II (2019),,COMBUSTION
+Nissan,Leaf,Mk II (2018),,BEV
+Nissan,Micra,"K12 (2003,2008)",,COMBUSTION
+Nissan,Murano,Z51 (2012),,COMBUSTION
+Nissan,Navara,D23 (2014),,COMBUSTION
+Nissan,Note,"Mk I (2004,2010)",,COMBUSTION
+Nissan,NV200,Mk I (2010),Base,MIXED
+Nissan,NV200,Mk I (2010),Base Single Gate,MIXED
+Nissan,Primastar,"X83 (2001,2008)",,COMBUSTION
+Nissan,Primastar,X83 (2001),,COMBUSTION
+Nissan,Primastar,X83 (2008),,COMBUSTION
+Nissan,Pulsar,C13 (2014),,COMBUSTION
+Nissan,Qashqai,J10 (2007),,COMBUSTION
+Nissan,Qashqai,J10 (2010),,COMBUSTION
+Nissan,Qashqai,J11 (2014),,COMBUSTION
+Nissan,Qashqai,J11 (2018),,COMBUSTION
+Nissan,Qashqai,J12 (2021),,COMBUSTION
+Nissan,Qashqai,J12 (2024),,COMBUSTION
+Nissan,Terrano,II R20 (1999),,COMBUSTION
+Nissan,X-Trail,Mk I (2000),,COMBUSTION
+Nissan,X-Trail,Mk II (2008),,COMBUSTION
+Nissan,X-Trail,Mk II (2010),,COMBUSTION
+Nissan,X-Trail,Mk III (2014),,COMBUSTION
+Nissan,X-Trail,Mk III (2018),,COMBUSTION
+Nissan,X-Trail,Mk IV (2021),,COMBUSTION
+Opel,Agila,B (2008),,COMBUSTION
+Opel,Antara,Mk I (2006),,COMBUSTION
+Opel,Antara,Mk I (2010),,COMBUSTION
+Opel,Astra,G (1998),Sedan,COMBUSTION
+Opel,Astra,G (1998),Wagon,COMBUSTION
+Opel,Astra,G (1998),,COMBUSTION
+Opel,Astra,"H (2004,2007)",Wagon,COMBUSTION
+Opel,Astra,H (2004),,COMBUSTION
+Opel,Astra,H (2007),,COMBUSTION
+Opel,Astra,"J (2009,2012)",Sedan,COMBUSTION
+Opel,Astra,"J (2009,2012)",Wagon,COMBUSTION
+Opel,Astra,J (2009),,COMBUSTION
+Opel,Astra,J (2012),,COMBUSTION
+Opel,Astra,K (2015),Wagon,COMBUSTION
+Opel,Astra,K (2015),,COMBUSTION
+Opel,Astra,L (2022),Base,MIXED
+Opel,Combo,"C (2000,2003,2008)",Double Gate,COMBUSTION
+Opel,Combo,D (2011),Double Gate,COMBUSTION
+Opel,Combo,"E (2018,2024)",Double Gate,MIXED
+Opel,Combo,E (2018),,MIXED
+Opel,Corsa,"B (1993,1997)",Three Door Hatchback,COMBUSTION
+Opel,Corsa,E (2014),,COMBUSTION
+Opel,Corsa,"F (2019,2024)",Base,MIXED
+Opel,Corsa,F (2019),Base,MIXED
+Opel,Corsa ~ Combo,C (2003) ~ C (2003),Europe,COMBUSTION
+Opel,Crossland,X (2018),,COMBUSTION
+Opel,Crossland,X (2020),,COMBUSTION
+Opel,Grandland,Mk I (2018),,COMBUSTION
+Opel,Insignia,(2008),Sedan,COMBUSTION
+Opel,Insignia,(2008),Wagon,COMBUSTION
+Opel,Insignia,(2008),,COMBUSTION
+Opel,Insignia,(2013),Sedan,COMBUSTION
+Opel,Insignia,"Mk II (2017,2020)",Base Sedan ~ Country Tourer Sedan,COMBUSTION
+Opel,Insignia,"Mk II (2017,2020)",Base Wagon ~ Country Tourer Wagon,COMBUSTION
+Opel,Insignia,"Mk II (2017,2020)",GSi Wagon,COMBUSTION
+Opel,Insignia,Mk II (2017),Base,COMBUSTION
+Opel,Insignia,Mk II (2020),Base,COMBUSTION
+Opel,Meriva,"A (2003,2006)",,COMBUSTION
+Opel,Meriva,"B (2010,2015)",,COMBUSTION
+Opel,Meriva,B (2010),,COMBUSTION
+Opel,Mokka,Mk I (2013),,COMBUSTION
+Opel,Mokka,Mk II (2020),,MIXED
+Opel,Mokka,X (2017),,COMBUSTION
+Opel,Movano,Mk III (2010),Base,COMBUSTION
+Opel,Movano,Mk III (2010),,COMBUSTION
+Opel,Signum ~ Vectra,Mk I (2005) ~ C (2005),,COMBUSTION
+Opel,Vectra,"C (2002,2005)",Sedan,COMBUSTION
+Opel,Vectra,"C (2002,2005)",Wagon,COMBUSTION
+Opel,Vivaro,"Mk II (2001,2006)",Double Gate,COMBUSTION
+Opel,Vivaro,"Mk II (2001,2006)",Single Gate,COMBUSTION
+Opel,Vivaro,Mk II (2001),,COMBUSTION
+Opel,Vivaro,Mk II (2006),,COMBUSTION
+Opel,Vivaro,Mk III (2014),Double Gate,COMBUSTION
+Opel,Vivaro,Mk III (2014),,COMBUSTION
+Opel,Vivaro ~ Zafira Life,Mk IV (2024) ~ Mk I (2024),Pack Look ~ Base,MIXED
+Opel,Zafira,"A (1999,2003)",,COMBUSTION
+Opel,Zafira,"B (2005,2008)",,COMBUSTION
+Opel,Zafira,"Tourer C (2012,2017)",,COMBUSTION
+Opel,Zafira,Tourer C (2012),,COMBUSTION
+Peugeot,107,Mk I (2005),,COMBUSTION
+Peugeot,206,"Mk I (1998,2003)",CC,COMBUSTION
+Peugeot,206,"Mk I (1998,2003)",Hatchback,COMBUSTION
+Peugeot,208,"Mk II (2019,2024)",,MIXED
+Peugeot,307,Mk I (2005),,COMBUSTION
+Peugeot,308,(2007),,COMBUSTION
+Peugeot,308,"Mk I (2007,2011)",Hatchback,COMBUSTION
+Peugeot,308,"Mk I (2007,2011)",SW,COMBUSTION
+Peugeot,308,"Mk II (2013,2017)",Hatchback,COMBUSTION
+Peugeot,308,"Mk II (2013,2017)",SW,COMBUSTION
+Peugeot,308,Mk II (2013),,COMBUSTION
+Peugeot,308,Mk II (2017),,COMBUSTION
+Peugeot,407,Mk I (2004),Sedan,COMBUSTION
+Peugeot,407,Mk I (2004),Sedan ~ SW,COMBUSTION
+Peugeot,408,Mk III (2023),,COMBUSTION
+Peugeot,508,(2014),,COMBUSTION
+Peugeot,508,"Mk I (2010,2014)",SW,COMBUSTION
+Peugeot,508,Mk I (2010),,COMBUSTION
+Peugeot,508,"Mk II (2018,2023)",Sedan,COMBUSTION
+Peugeot,2008,"Mk I (2013,2016,2019)",,COMBUSTION
+Peugeot,2008,Mk I (2013),,COMBUSTION
+Peugeot,2008,Mk I (2016),,COMBUSTION
+Peugeot,2008,"Mk II (2019,2024)",,MIXED
+Peugeot,2008,Mk II (2019),,MIXED
+Peugeot,2008,Mk II (2024),,MIXED
+Peugeot,3008,"Mk I (2009,2012)",,COMBUSTION
+Peugeot,3008,"Mk II (2016,2020)",,COMBUSTION
+Peugeot,3008,Mk III (2024),,MIXED
+Peugeot,5008,(2009),,COMBUSTION
+Peugeot,5008,(2013),,COMBUSTION
+Peugeot,5008,"Mk I (2009,2013)",,COMBUSTION
+Peugeot,5008,"Mk II (2016,2020)",,COMBUSTION
+Peugeot,3008 ~ 5008,Mk II (2016) ~ Mk II (2016),,COMBUSTION
+Peugeot,3008 ~ 5008,Mk II (2020) ~ Mk II (2020),,COMBUSTION
+Peugeot,3008 ~ 5008,Mk III (2024) ~ Mk III (2025),,MIXED
+Peugeot,Boxer,"Mk I (1994,2002) ~ Mk II (2006) ~ Mk III (2015,2024)",Customized,MIXED
+Peugeot,Boxer,Mk II (2006),Van,COMBUSTION
+Peugeot,Boxer,Mk II (2006),,COMBUSTION
+Peugeot,Boxer,Mk III (2015),Van,MIXED
+Peugeot,Boxer,Mk III (2015),,MIXED
+Peugeot,Boxer,Mk III (2024),,MIXED
+Peugeot,Expert,Mk III (2016),Panelvan,MIXED
+Peugeot,Expert,Mk III (2016),Traveller,MIXED
+Peugeot,Expert,Mk III (2016),,MIXED
+Peugeot,Expert,Mk III (2024),Base,MIXED
+Peugeot,Partner,"Mk II (2008,2012,2015)",Tepee,COMBUSTION
+Peugeot,Partner,Mk II (2008),,COMBUSTION
+Peugeot,Partner,Mk II (2015),,COMBUSTION
+Peugeot,Partner,Mk III (2019),,MIXED
+Peugeot,Partner,Mk III (2024),,MIXED
+Peugeot,Partner ~ Rifter,Mk III (2019) ~ Mk I (2019),Panelvan,MIXED
+Peugeot,RCZ,(2009),,COMBUSTION
+Peugeot,Rifter,Mk I (2024),Tepee,MIXED
+Peugeot,Rifter,Mk I (2024),,MIXED
+Polestar,2,Mk I (2020),,BEV
+Porsche,911,992 (2019),Sport Package Frontal,COMBUSTION
+Porsche,Boxster ~ Cayman,982 (2016) ~ 982 (2016),Base,COMBUSTION
+Porsche,Cayenne,92A (2010),,COMBUSTION
+Porsche,Cayenne,92A (2010) ~ 92A Turbo (2010),,COMBUSTION
+Porsche,Cayenne,92A (2015),,COMBUSTION
+Porsche,Cayenne,92A Turbo (2010),,COMBUSTION
+Porsche,Cayenne,9YA (2017),Base,COMBUSTION
+Porsche,Cayenne,9YA (2017),,COMBUSTION
+Porsche,Cayenne,9YA (2024),S,COMBUSTION
+Porsche,Cayenne,9YA (2024),SUV,COMBUSTION
+Porsche,Cayman,981 (2013),,COMBUSTION
+Porsche,Macan,Mk I (2015),,COMBUSTION
+Porsche,Macan,Mk I (2022),,COMBUSTION
+Porsche,Panamera,"971 (2017,2020)",Base,COMBUSTION
+Porsche,Panamera,971 (2017),Fastback,COMBUSTION
+Porsche,Panamera,972 (2024),,COMBUSTION
+Porsche,Taycan,"Mk I (2019,2025)",Sedan,BEV
+Porsche,Taycan,Mk I (2019),,BEV
+Renault,4,E-Tech Mk I (2025),,BEV
+Renault,Arkana,Mk I (2019),Intens,COMBUSTION
+Renault,Arkana,Mk I (2019),RS Line,COMBUSTION
+Renault,Austral,Mk I (2022),,COMBUSTION
+Renault,Austral ~ Espace,Mk I (2022) ~ Mk VI (2022),,COMBUSTION
+Renault,Captur,"Mk I (2013,2017,2021)",,COMBUSTION
+Renault,Captur,Mk I (2013),,COMBUSTION
+Renault,Captur,Mk II (2024),,COMBUSTION
+Renault,Clio,Mk III (2005),,COMBUSTION
+Renault,Clio,"Mk IV (2013,2016)",Hatchback,COMBUSTION
+Renault,Espace,"Mk IV (2002,2006,2012)",,COMBUSTION
+Renault,Espace,Mk IV (2002),,COMBUSTION
+Renault,Espace,Mk V (2015),,COMBUSTION
+Renault,Express,Mk II (2021),,COMBUSTION
+Renault,Kadjar,Mk I (2015),,COMBUSTION
+Renault,Kangoo,Mk I (2003),,COMBUSTION
+Renault,Kangoo,"Mk II (2008,2011,2013)",Double Gate,MIXED
+Renault,Kangoo,Mk II (2013),,MIXED
+Renault,Laguna,"Mk III (2008,2012)",Grandtour,COMBUSTION
+Renault,Laguna,"Mk III (2008,2012)",Liftback,COMBUSTION
+Renault,Laguna,"Mk III (2008,2012)",,COMBUSTION
+Renault,Master,"Mk II (1997,2003,2006)",Van,COMBUSTION
+Renault,Master,"Mk II (1997,2003,2006) ~ Mk III (2010,2015) ~ Mk IV (2019,2024)",Customized,MIXED
+Renault,Master,Mk II (2003),,COMBUSTION
+Renault,Master,Mk II (2006),,COMBUSTION
+Renault,Master,"Mk III (2010,2015) ~ Mk IV (2019,2024)",Chassis Cab,MIXED
+Renault,Master,"Mk III (2010,2015) ~ Mk IV (2019,2024)",Van,MIXED
+Renault,Master,Mk III (2010),,MIXED
+Renault,Master,Mk III (2015),,MIXED
+Renault,Master,Mk IV (2019),,MIXED
+Renault,Master,Mk IV (2024),Van,MIXED
+Renault,Master,Mk IV (2024),,MIXED
+Renault,Megane,"Mk III (2009,2012,2014)",Hatchback,COMBUSTION
+Renault,Megane,"Mk III (2009,2012,2014)",Sport Tourer,COMBUSTION
+Renault,Megane,"Mk III (2009,2012)",,COMBUSTION
+Renault,Megane,Mk IV (2020),Base,COMBUSTION
+Renault,Scenic,"Mk II (2003,2006)",,COMBUSTION
+Renault,Scenic,"Mk III (2009,2012,2013)",Grand,COMBUSTION
+Renault,Scenic,Mk III (2009),,COMBUSTION
+Renault,Scenic,Mk III (2012),,COMBUSTION
+Renault,Scenic,Mk III (2013),,COMBUSTION
+Renault,Scenic,Xmod Mk III (2014),,COMBUSTION
+Renault,Talisman,Mk I (2015),Grandtour,COMBUSTION
+Renault,Talisman,Mk I (2015),Sedan,COMBUSTION
+Renault,Trafic,"Mk II (2001,2006)",Double Gate,COMBUSTION
+Renault,Trafic,"Mk II (2001,2006)",Single Gate,COMBUSTION
+Renault,Trafic,Mk II (2001),,COMBUSTION
+Renault,Trafic,Mk II (2006),,COMBUSTION
+Renault,Trafic,"Mk III (2015,2021)",Double Gate,MIXED
+Renault,Trafic,Mk III (2015),,MIXED
+Renault,Trafic,Mk III (2021),,MIXED
+Renault,Trucks_T,Mk I (2014),,MIXED
+Renault,Zoe,"Mk I (2012,2020)",,BEV
+Saab,900,"Mk I (1978,1987)",,COMBUSTION
+Saab,9-3,Mk I (1998),Coupe,COMBUSTION
+Saab,9-3,"Mk II (2003,2008)",Sedan,COMBUSTION
+Saab,9-3,Mk II (2003),,COMBUSTION
+Saab,9-3,Mk II (2008),,COMBUSTION
+Saab,9-5,Mk I (2006),Wagon,COMBUSTION
+Saab,9-5,Mk I (2006),,COMBUSTION
+Scania,G-Series,Mk II (2017),XT,COMBUSTION
+Scania,P-Series,Mk I (2004),,COMBUSTION
+Scania,P-Series,Mk I (2011),Highline,COMBUSTION
+Scania,R-Series,Mk I (1995),,COMBUSTION
+Scania,R-Series,Mk I (2005),,COMBUSTION
+Scania,R-Series,Mk I (2014),Base,COMBUSTION
+Scania,R-Series,Mk II (2017),Base,COMBUSTION
+Scania,S-Series,Mk I (2016),Base,COMBUSTION
+Seat,Alhambra,Mk I (2000),,COMBUSTION
+Seat,Alhambra,Mk II (2010),,COMBUSTION
+Seat,Arona,"Mk I (2018,2022)",,COMBUSTION
+Seat,Ateca,"Mk I (2016,2020)",,COMBUSTION
+Seat,Ateca,Mk I (2016),,COMBUSTION
+Seat,Ateca,Mk I (2020),,COMBUSTION
+Seat,Ibiza,Mk IV (2008),,COMBUSTION
+Seat,Leon,Mk II (2009),,COMBUSTION
+Seat,Leon,"Mk III (2014,2016)",SportTourer,COMBUSTION
+Seat,Leon,Mk III (2014),,COMBUSTION
+Seat,Leon,Mk III (2016),FR,COMBUSTION
+Seat,Leon,Mk IV (2020),Base,COMBUSTION
+Seat,Leon,Mk IV (2020),Base Sportstourer,COMBUSTION
+Seat,Tarraco,Mk I (2019),,COMBUSTION
+Seat,Toledo,Mk III (2005),,COMBUSTION
+Skoda,Enyaq iV,"Mk I (2020,2025)",SUV,BEV
+Skoda,Enyaq iV,Mk I (2020),Base SUV,BEV
+Skoda,Enyaq iV,Mk I (2020),Sportline,BEV
+Skoda,Enyaq iV,Mk I (2025),Base,BEV
+Skoda,Fabia,"Mk I (1999,2004)",Combi,COMBUSTION
+Skoda,Fabia,"Mk I (1999,2004)",,COMBUSTION
+Skoda,Fabia,"Mk II (2007,2010)",Combi,COMBUSTION
+Skoda,Fabia,"Mk III (2015,2018)",Combi,COMBUSTION
+Skoda,Fabia,"Mk III (2015,2018)",Hatchback,COMBUSTION
+Skoda,Fabia,Mk III (2018),,COMBUSTION
+Skoda,Fabia,Mk IV (2021),,COMBUSTION
+Skoda,Fabia ~ Roomster,"Mk II (2007,2010) ~ (2006,2010)",,COMBUSTION
+Skoda,Kamiq,Mk I (2019),,COMBUSTION
+Skoda,Kamiq,Mk I (2024),,COMBUSTION
+Skoda,Karoq,Mk I (2017),,COMBUSTION
+Skoda,Karoq,Mk I (2022),Base,COMBUSTION
+Skoda,Karoq,Mk I (2022),Sportline,COMBUSTION
+Skoda,Karoq,Mk I (2022),,COMBUSTION
+Skoda,Kodiaq,Mk I (2017),,COMBUSTION
+Skoda,Kodiaq,Mk I (2021),Base,COMBUSTION
+Skoda,Kodiaq,Mk I (2021),,COMBUSTION
+Skoda,Kodiaq,Mk II (2024),Base,COMBUSTION
+Skoda,Kodiaq,Mk II (2024),,COMBUSTION
+Skoda,Octavia,"Mk I (1996,2000)",,COMBUSTION
+Skoda,Octavia,"Mk II (2004,2008)",Combi,COMBUSTION
+Skoda,Octavia,"Mk II (2004,2008)",Liftback,COMBUSTION
+Skoda,Octavia,Mk II (2004),,COMBUSTION
+Skoda,Octavia,Mk II (2008),,COMBUSTION
+Skoda,Octavia,"Mk III (2013,2017)",Combi,COMBUSTION
+Skoda,Octavia,"Mk III (2013,2017)",Liftback,COMBUSTION
+Skoda,Octavia,Mk III (2013),Base,COMBUSTION
+Skoda,Octavia,Mk III (2017),Base,COMBUSTION
+Skoda,Octavia,"Mk IV (2020,2024)",RS Combi,COMBUSTION
+Skoda,Octavia,"Mk IV (2020,2024)",,COMBUSTION
+Skoda,Octavia,Mk IV (2020),Base,COMBUSTION
+Skoda,Octavia,Mk IV (2020),Base Combi,COMBUSTION
+Skoda,Octavia,Mk IV (2020),Base Liftback,COMBUSTION
+Skoda,Octavia,Mk IV (2020),RS,COMBUSTION
+Skoda,Octavia,Mk IV (2024),Base,COMBUSTION
+Skoda,Octavia,Mk IV (2024),Base Combi,COMBUSTION
+Skoda,Octavia,Mk IV (2024),Base Liftback,COMBUSTION
+Skoda,Octavia,RS Mk II (2008),,COMBUSTION
+Skoda,Rapid,"Mk I (2012,2017)",Liftback,COMBUSTION
+Skoda,Rapid,"Mk I (2012,2017)",Spaceback,COMBUSTION
+Skoda,Rapid,Mk I (2012),,COMBUSTION
+Skoda,Roomster,"Mk I (2006,2010)",,COMBUSTION
+Skoda,Scala,Mk I (2019),,COMBUSTION
+Skoda,Scala,Mk I (2024),,COMBUSTION
+Skoda,Superb,Mk II (2008),Combi,COMBUSTION
+Skoda,Superb,Mk II (2008),,COMBUSTION
+Skoda,Superb,Mk III (2015),Combi,COMBUSTION
+Skoda,Superb,Mk III (2015),Liftback,COMBUSTION
+Skoda,Superb,Mk III (2015),,COMBUSTION
+Skoda,Superb,Mk III (2019),Combi,COMBUSTION
+Skoda,Superb,Mk III (2019),Liftback,COMBUSTION
+Skoda,Superb,Mk III (2019),,COMBUSTION
+Skoda,Superb,Mk IV (2024),Combi,COMBUSTION
+Skoda,Superb,Mk IV (2024),,COMBUSTION
+Skoda,Yeti,Mk I (2009),,COMBUSTION
+Skoda,Yeti,Mk I (2013),,COMBUSTION
+Ssangyong,Tivoli,Mk I (2015),Base,COMBUSTION
+Subaru,Forester,Mk II (2005),,COMBUSTION
+Subaru,Forester,"Mk IV (2013,2017)",,COMBUSTION
+Subaru,Forester,Mk V (2022),Base,COMBUSTION
+Subaru,Legacy ~ Outback,"Mk IV (2003,2006) ~ Mk III (2003)",Sedan,COMBUSTION
+Subaru,Outback,Mk III (2003),,COMBUSTION
+Subaru,Outback,Mk IV (2012),,COMBUSTION
+Subaru,Outback,"Mk V (2014,2017)",,COMBUSTION
+Subaru,Outback,Mk V (2014),,COMBUSTION
+Subaru,Outback,Mk V (2017),,COMBUSTION
+Subaru,Outback,Mk VI (2021),,COMBUSTION
+Subaru,Tribeca,Mk I (2006),,COMBUSTION
+Subaru,XV,"Mk I (2013,2016)",,COMBUSTION
+Subaru,XV,Mk III (2024),Base,COMBUSTION
+Suzuki,Ignis,Mk II (2020),,COMBUSTION
+Suzuki,Swift,"Mk III (2010,2013)",,COMBUSTION
+Suzuki,Vitara,Mk III (2005),,COMBUSTION
+Suzuki,Vitara,"Mk IV (2015,2024)",,COMBUSTION
+Suzuki,Vitara,Mk IV (2015),,COMBUSTION
+Suzuki,Vitara,Mk IV (2024),,COMBUSTION
+Tesla,Model 3,Mk I (2018),,BEV
+Tesla,Model 3,Mk I (2024),,BEV
+Tesla,Model S,"Mk I (2012,2016,2021)",,BEV
+Tesla,Model S,Mk I (2012),,BEV
+Tesla,Model X,"Mk I (2016,2022)",,BEV
+Tesla,Model X,Mk I (2016),,BEV
+Tesla,Model Y,Mk I (2020),,BEV
+Tesla,Model Y,Mk I (2025),Base,BEV
+Tesla,Model Y,Mk I (2025),,BEV
+Toyota,Auris,Mk I (2006),,COMBUSTION
+Toyota,Auris,Mk I (2011),,COMBUSTION
+Toyota,Auris,Mk II (2012),Hatchback,COMBUSTION
+Toyota,Auris,Mk II (2012),Wagon,COMBUSTION
+Toyota,Auris,Mk II (2012),,COMBUSTION
+Toyota,Auris,Mk II (2015),Hatchback,COMBUSTION
+Toyota,Auris,Mk II (2015),Wagon,COMBUSTION
+Toyota,Auris,Mk II (2015),,COMBUSTION
+Toyota,Avensis,"Mk II (2003,2006)",Sedan,COMBUSTION
+Toyota,Avensis,"Mk II (2003,2006)",Wagon,COMBUSTION
+Toyota,Avensis,Mk II (2006),,COMBUSTION
+Toyota,Avensis,Mk III (2009),Sedan,COMBUSTION
+Toyota,Avensis,Mk III (2009),,COMBUSTION
+Toyota,Avensis,Mk III (2012),Wagon,COMBUSTION
+Toyota,Avensis,Mk III (2012),,COMBUSTION
+Toyota,Avensis,Mk III (2015),Sedan,COMBUSTION
+Toyota,Avensis,Mk III (2015),Wagon,COMBUSTION
+Toyota,Avensis,Mk III (2015),,COMBUSTION
+Toyota,Avensis,Verso Mk II (2004),,COMBUSTION
+Toyota,Aygo X,"Mk I (2022,2025)",,COMBUSTION
+Toyota,Aygo X,Mk I (2025),,COMBUSTION
+Toyota,bZ4X,"Mk I (2023,2025)",,BEV
+Toyota,bZ4X,Mk I (2023),,BEV
+Toyota,C-HR,"Mk I (2017,2019)",,COMBUSTION
+Toyota,C-HR,Mk I (2017),,COMBUSTION
+Toyota,C-HR,Mk I (2019),Base,COMBUSTION
+Toyota,C-HR,Mk II (2024),,COMBUSTION
+Toyota,Camry,XV30 (2003),,COMBUSTION
+Toyota,Camry,XV40 (2007),,COMBUSTION
+Toyota,Camry,"XV70 (2018,2022)",,COMBUSTION
+Toyota,Celica,Mk VI (1993),,COMBUSTION
+Toyota,Corolla,"Mk IX (2000,2002,2004)",Hatchback,COMBUSTION
+Toyota,Corolla,Mk IX (2000),,COMBUSTION
+Toyota,Corolla,"Mk VIII (1998,2000)",Hatchback,COMBUSTION
+Toyota,Corolla,Mk X (2010),,COMBUSTION
+Toyota,Corolla,Mk XI (2013),,COMBUSTION
+Toyota,Corolla,Mk XI (2016),,COMBUSTION
+Toyota,Corolla,"Mk XII (2019,2023)",Sedan,COMBUSTION
+Toyota,Corolla,"Mk XII (2019,2023)",Wagon,COMBUSTION
+Toyota,Corolla,Mk XII (2019),Base,COMBUSTION
+Toyota,Corolla,Mk XII (2023),,COMBUSTION
+Toyota,Corolla,Verso (2001),,COMBUSTION
+Toyota,Corolla,Verso (2004),,COMBUSTION
+Toyota,Corolla,Verso (2008),,COMBUSTION
+Toyota,Corolla Cross,"Mk I (2020,2024)",,COMBUSTION
+Toyota,Corolla Cross,Mk I (2024),,COMBUSTION
+Toyota,Granvia,"Mk IV (1989,1995,2000)",Single Gate,COMBUSTION
+Toyota,Highlander,Mk IV (2019),Base,COMBUSTION
+Toyota,Highlander,Mk IV (2019),,COMBUSTION
+Toyota,Hilux,"Mk VII (2005,2008,2011)",,COMBUSTION
+Toyota,Hilux,Mk VII (2008),,COMBUSTION
+Toyota,Hilux,Mk VII (2011),,COMBUSTION
+Toyota,Hilux,"Mk VIII (2015,2018,2020)",,COMBUSTION
+Toyota,Hilux,Mk VIII (2020),Rocco,COMBUSTION
+Toyota,Hilux,Mk VIII (2020),SR,COMBUSTION
+Toyota,iQ,(2008),,COMBUSTION
+Toyota,Land_Cruiser,Icon J200 (2016),,COMBUSTION
+Toyota,Land_Cruiser,J100 (1998),Base,COMBUSTION
+Toyota,Land_Cruiser,J120 (2003),,COMBUSTION
+Toyota,Land_Cruiser,J150 (2010) ~ Icon J200 (2016),,COMBUSTION
+Toyota,Land_Cruiser,J200 (2015),,COMBUSTION
+Toyota,Land_Cruiser,J200 (2018),,COMBUSTION
+Toyota,Land_Cruiser,J90 (1996),,COMBUSTION
+Toyota,Previa,Mk I (1990),,COMBUSTION
+Toyota,Prius,Mk III (2011),,COMBUSTION
+Toyota,Prius,Mk IV Non EU (2016),,COMBUSTION
+Toyota,Prius,"V (2012,2015)",,COMBUSTION
+Toyota,Prius,V (2012),,COMBUSTION
+Toyota,Prius,V (2015),,COMBUSTION
+Toyota,Proace,"Mk II (2016,2024)",Double Gate,MIXED
+Toyota,Proace,Mk II (2016),,MIXED
+Toyota,Proace,Mk II (2024),,MIXED
+Toyota,Proace City,"Mk I (2020,2024)",Double Gate,MIXED
+Toyota,Proace City,"Mk I (2020,2024)",Single Gate,MIXED
+Toyota,Proace City,Mk I (2020),,MIXED
+Toyota,Proace City,Mk I (2024),,MIXED
+Toyota,RAV4,"Mk II (2001,2003)",,COMBUSTION
+Toyota,RAV4,Mk II (2003),,COMBUSTION
+Toyota,RAV4,"Mk III (2006,2009)",,COMBUSTION
+Toyota,RAV4,Mk III (2006),Base,COMBUSTION
+Toyota,RAV4,Mk III (2009),Sport,COMBUSTION
+Toyota,RAV4,Mk IV (2012),,COMBUSTION
+Toyota,RAV4,Mk IV (2016),,COMBUSTION
+Toyota,RAV4,Mk V (2019),Adventure,COMBUSTION
+Toyota,RAV4,Mk V (2019),Base,COMBUSTION
+Toyota,RAV4,Mk V (2019),,COMBUSTION
+Toyota,RAV4,Mk VI (2025),Base,COMBUSTION
+Toyota,RAV4,Mk VI (2025),GR Sport,COMBUSTION
+Toyota,Verso,"Mk I (2009,2013)",,COMBUSTION
+Toyota,Verso,Mk I (2009),,COMBUSTION
+Toyota,Verso,Mk I (2013),,COMBUSTION
+Toyota,Yaris,Mk III (2010),,COMBUSTION
+Toyota,Yaris,Mk III (2014),,COMBUSTION
+Toyota,Yaris,Mk IV (2017),,COMBUSTION
+Toyota,Yaris,"Mk V (2020,2024)",Base,COMBUSTION
+Toyota,Yaris Cross,Mk I (2020),Base,COMBUSTION
+Toyota,Yaris Cross,Mk I (2020),,COMBUSTION
+Vauxhall,Corsa ~ Combo,C (2000) ~ C (2000),,COMBUSTION
+Vauxhall,Vivaro,Mk II (2006),,COMBUSTION
+VDL,Bova,Magiq (2006),,COMBUSTION
+Volvo,740,(1984),,COMBUSTION
+Volvo,C30,"Mk I (2007,2010)",,COMBUSTION
+Volvo,C30,Mk I (2007),,COMBUSTION
+Volvo,FH,(2021),LED Lights,MIXED
+Volvo,FH ~ FM,(2003) ~ (2005),,COMBUSTION
+Volvo,FH ~ FM,(2008) ~ (2008),,COMBUSTION
+Volvo,FH ~ FM,(2012) ~ (2010),,COMBUSTION
+Volvo,FL,Mk II (2013),,COMBUSTION
+Volvo,FMX,Mk I (2013),,COMBUSTION
+Volvo,S40,Mk II (2004),,COMBUSTION
+Volvo,S40,Mk II (2008),,COMBUSTION
+Volvo,S40 ~ V40,Mk I (2000),,COMBUSTION
+Volvo,S40 ~ V50,Mk II (2004),,COMBUSTION
+Volvo,S60,"Mk I (2000,2006)",,COMBUSTION
+Volvo,S60,Mk I (2000),,COMBUSTION
+Volvo,S60,Mk I (2006),,COMBUSTION
+Volvo,S60,"Mk II (2011,2014)",,COMBUSTION
+Volvo,S60 ~ V60,Mk II (2011),,COMBUSTION
+Volvo,S60 ~ V60,Mk II (2014),,COMBUSTION
+Volvo,S60 ~ V60,Mk III (2019),,COMBUSTION
+Volvo,S70 ~ V70,Mk I (1998),,COMBUSTION
+Volvo,S80,"Mk I (1998,2004)",,COMBUSTION
+Volvo,S80,Mk I (1998),,COMBUSTION
+Volvo,S80,Mk I (2004),,COMBUSTION
+Volvo,S80,"Mk II (2007,2013)",,COMBUSTION
+Volvo,S80,Mk II (2007),,COMBUSTION
+Volvo,S80 ~ V70,Mk II (2013) ~ Mk III (2013),,COMBUSTION
+Volvo,S90,Mk I (2017),,COMBUSTION
+Volvo,S90 ~ V90,Mk I (2017),,COMBUSTION
+Volvo,V40,"Mk II (2013,2016)",Base,COMBUSTION
+Volvo,V40,"Mk II (2013,2016)",R-Design ~ Cross Country,COMBUSTION
+Volvo,V40,"Mk II (2013,2016)",,COMBUSTION
+Volvo,V50,Mk II (2004),,COMBUSTION
+Volvo,V50,Mk II (2008),,COMBUSTION
+Volvo,V60,"Mk II (2011,2014)",,COMBUSTION
+Volvo,V60,Mk III (2019),,COMBUSTION
+Volvo,V70,Mk I (1998),,COMBUSTION
+Volvo,V70,"Mk II (2000,2005)",,COMBUSTION
+Volvo,V70,Mk II (2000),,COMBUSTION
+Volvo,V70,Mk II (2005),,COMBUSTION
+Volvo,V70,"Mk III (2008,2013)",,COMBUSTION
+Volvo,V70,Mk III (2008),,COMBUSTION
+Volvo,V90,Mk I (2017),,COMBUSTION
+Volvo,XC40,"Mk I (2018,2023)",,MIXED
+Volvo,XC40,Mk I (2018),Base,MIXED
+Volvo,XC40,Mk I (2023),Base,MIXED
+Volvo,XC60,Mk I (2008),,COMBUSTION
+Volvo,XC60,Mk I (2014),,COMBUSTION
+Volvo,XC60,"Mk II (2018,2022)",,COMBUSTION
+Volvo,XC60,Mk II (2018),,COMBUSTION
+Volvo,XC60,Mk II (2022),Base,COMBUSTION
+Volvo,XC60,Mk II (2022),R-Desing,COMBUSTION
+Volvo,XC70,Mk II (2002),,COMBUSTION
+Volvo,XC70,"Mk III (2007,2014)",,COMBUSTION
+Volvo,XC70,Mk III (2007),,COMBUSTION
+Volvo,XC70,Mk III (2014),,COMBUSTION
+Volvo,XC90,Mk I (2003),,COMBUSTION
+Volvo,XC90,Mk I (2007),,COMBUSTION
+Volvo,XC90,"Mk II (2016,2024)",,COMBUSTION
+Volvo,XC90,Mk II (2016),,COMBUSTION
+VW,Amarok,"Mk I (2010,2016)",,COMBUSTION
+VW,Amarok,Mk I (2010),,COMBUSTION
+VW,Amarok,Mk II (2023),Base,COMBUSTION
+VW,Amarok,Mk II (2023),IQ.Light,COMBUSTION
+VW,Amarok,Mk II (2023),X-Design,COMBUSTION
+VW,Arteon,"Mk I (2017,2020)",Fastback,COMBUSTION
+VW,Arteon,Mk I (2020),Shooting Brake,COMBUSTION
+VW,Arteon,Mk I (2020),,COMBUSTION
+VW,Atlas,Mk II (2024),,COMBUSTION
+VW,Beetle,(2012),,COMBUSTION
+VW,Caddy,"Mk II (1996,2005)",,COMBUSTION
+VW,Caddy,"Mk III (2003,2010,2015)",,COMBUSTION
+VW,Caddy,"Mk III (2003,2010)",,COMBUSTION
+VW,Caddy,Mk III (2015),Single Gate,COMBUSTION
+VW,Caddy,Mk III (2015),,COMBUSTION
+VW,Caddy,Mk III Utility (2003),,COMBUSTION
+VW,Caddy,Mk IV (2020),,COMBUSTION
+VW,Caddy ~ Touran,Mk III (2003) ~ Mk I (2003),,COMBUSTION
+VW,Caddy ~ Touran,Mk III (2010) ~ Mk I (2010),,COMBUSTION
+VW,Crafter,"Mk I (2006,2011)",Van,COMBUSTION
+VW,Crafter,Mk I (2006),,COMBUSTION
+VW,Crafter,Mk I (2011),,COMBUSTION
+VW,Crafter,Mk II (2017),Van,MIXED
+VW,Crafter,Mk II (2017),,MIXED
+VW,Golf,Mk IV (1997),Hatchback,COMBUSTION
+VW,Golf,Mk IV (1997),,COMBUSTION
+VW,Golf,"Mk V (2003,2005)",Hatchback,COMBUSTION
+VW,Golf,Mk V (2003),,COMBUSTION
+VW,Golf,Mk VI (2008),Hatchback,COMBUSTION
+VW,Golf,Mk VI (2008),,COMBUSTION
+VW,Golf,"Mk VII (2013,2017)",Variant,COMBUSTION
+VW,Golf,"Mk VII (2013,2017)",,COMBUSTION
+VW,Golf,"Mk VII (2013,2017) ~ E Mk VII (2015)",Hatchback,MIXED
+VW,Golf,"Mk VIII (2020,2024)",Hatchback,COMBUSTION
+VW,Golf,"Mk VIII (2020,2024)",Variant,COMBUSTION
+VW,Golf,Mk VIII (2020),,COMBUSTION
+VW,Golf,Mk VIII (2024),Base,COMBUSTION
+VW,Golf,Plus Mk V (2004),,COMBUSTION
+VW,Golf,Plus Mk V (2004) ~ Plus Mk VI (2012),,COMBUSTION
+VW,Golf,Plus Mk VI (2012),,COMBUSTION
+VW,Golf,Sportsvan (2014),,COMBUSTION
+VW,Golf ~ Jetta,Mk IV (1997) ~ Bora Mk IV (1998),Variant,COMBUSTION
+VW,Golf ~ Jetta,Mk V (2005) ~ Mk V (2005),,COMBUSTION
+VW,ID.3,"Mk I (2020,2024)",,BEV
+VW,ID.3,Mk I (2020),,BEV
+VW,ID.4,Mk I (2020),Pro,BEV
+VW,ID.4 ~ ID.5,Mk I (2020) ~ Mk I (2022),Base,BEV
+VW,ID.5,Mk I (2022),Pro,BEV
+VW,ID.7,Mk I (2024),,BEV
+VW,Jetta,Bora Mk IV (1998),Sedan,COMBUSTION
+VW,Jetta,Bora Mk IV (1998),,COMBUSTION
+VW,Jetta,Mk VI (2011),,COMBUSTION
+VW,Jetta,Mk VI (2015),,COMBUSTION
+VW,Jetta,"Vento Mk III (1992,1995)",,COMBUSTION
+VW,LT,Mk II (1996),,COMBUSTION
+VW,Lupo,(1998),,COMBUSTION
+VW,New_Beetle,(1998),,COMBUSTION
+VW,Passat,CC (2008),,COMBUSTION
+VW,Passat,"Mk V (1996,2000)",Variant,COMBUSTION
+VW,Passat,Mk V (1996),,COMBUSTION
+VW,Passat,Mk V (2000),,COMBUSTION
+VW,Passat,Mk VI (2005),Sedan,COMBUSTION
+VW,Passat,Mk VI (2005),Variant,COMBUSTION
+VW,Passat,Mk VI (2005),,COMBUSTION
+VW,Passat,Mk VII (2010),Sedan,COMBUSTION
+VW,Passat,Mk VII (2010),Variant,COMBUSTION
+VW,Passat,Mk VII (2010),,COMBUSTION
+VW,Passat,Mk VIII (2015),Limousine,COMBUSTION
+VW,Passat,Mk VIII (2015),Variant,COMBUSTION
+VW,Passat,Mk VIII (2015),,COMBUSTION
+VW,Passat,Mk VIII (2019),Variant,COMBUSTION
+VW,Passat,Mk VIII (2019),,COMBUSTION
+VW,Passat,NMS (2012),,COMBUSTION
+VW,Phaeton,Mk I (2012),,COMBUSTION
+VW,Polo,Mk III (2000),,COMBUSTION
+VW,Polo,Mk IV (2001),,COMBUSTION
+VW,Polo,"Mk IV (2005,2010)",Hatchback,COMBUSTION
+VW,Polo,Mk IV (2005),,COMBUSTION
+VW,Polo,"Mk V (2009,2015)",Cross Hatchback,COMBUSTION
+VW,Polo,"Mk V (2009,2015)",Hatchback,COMBUSTION
+VW,Polo,Mk V (2009),Base Hatchback,COMBUSTION
+VW,Polo,Mk V (2015),Base Hatchback,COMBUSTION
+VW,Polo,Mk VI (2017),Base,COMBUSTION
+VW,Sharan,"Mk I (2000,2004)",,COMBUSTION
+VW,Sharan,Mk I (2000),,COMBUSTION
+VW,Sharan,"Mk II (2009,2015)",,COMBUSTION
+VW,T-Cross,Mk I (2019),,COMBUSTION
+VW,T-Cross,Mk I (2024),,COMBUSTION
+VW,T-Roc,Mk I (2018),Base,COMBUSTION
+VW,T-Roc,Mk I (2022),Base,COMBUSTION
+VW,T-Roc,Mk I (2022),Base Hatchback,COMBUSTION
+VW,T-Roc,Mk II (2025),,COMBUSTION
+VW,Taigo,Mk I (2021),Base,COMBUSTION
+VW,Taigo,Mk I (2021),R-Line,COMBUSTION
+VW,Tayron,Mk II (2024),Elegance,COMBUSTION
+VW,Tayron,Mk II (2024),R-Line,COMBUSTION
+VW,Tayron,Mk II (2024),,COMBUSTION
+VW,Tiguan,(2011),,COMBUSTION
+VW,Tiguan,Mk II (2016),,COMBUSTION
+VW,Tiguan,Mk II (2020),Allspace,COMBUSTION
+VW,Tiguan,Mk II (2020),Base,COMBUSTION
+VW,Tiguan,Mk II (2020),R-Line,COMBUSTION
+VW,Tiguan,Mk II (2020),SUV,COMBUSTION
+VW,Tiguan,Mk III (2024),Base,COMBUSTION
+VW,Tiguan,Mk III (2024),R-Line,COMBUSTION
+VW,Touareg,"Mk I (2002,2006)",,COMBUSTION
+VW,Touareg,Mk I (2002),,COMBUSTION
+VW,Touareg,"Mk II (2010,2015)",,COMBUSTION
+VW,Touareg,Mk II (2010),,COMBUSTION
+VW,Touareg,Mk II (2015),,COMBUSTION
+VW,Touareg,Mk III (2018),,COMBUSTION
+VW,Touareg,Mk III (2024),R-Line,COMBUSTION
+VW,Touareg,Mk III (2024),,COMBUSTION
+VW,Touran,"Mk I (2003,2006)",,COMBUSTION
+VW,Touran,Mk I (2006),,COMBUSTION
+VW,Touran,Mk I (2010),,COMBUSTION
+VW,Touran,Mk II (2015),,COMBUSTION
+VW,Transporter,"T4 (1990,1995)",Single Gate,COMBUSTION
+VW,Transporter,"T4 (1990,1995) ~ T5 (2003)",Chassis Cab,COMBUSTION
+VW,Transporter,T4 (1990),,COMBUSTION
+VW,Transporter,T4 (1995),,COMBUSTION
+VW,Transporter,"T5 (2003,2009)",Double Gate,COMBUSTION
+VW,Transporter,"T5 (2003,2009)",Single Gate,COMBUSTION
+VW,Transporter,T5 (2003),,COMBUSTION
+VW,Transporter,T5 (2009),,COMBUSTION
+VW,Transporter,T6 (2015),,COMBUSTION
+VW,Transporter,T6 (2015) ~ T6.1 (2020),Double Gate,COMBUSTION
+VW,Transporter,T6 (2015) ~ T6.1 (2020),Single Gate,COMBUSTION
+VW,Transporter,T6.1 (2020),,COMBUSTION
+VW,Transporter,T7 (2022),,COMBUSTION
+VW,Up,(2017),,MIXED

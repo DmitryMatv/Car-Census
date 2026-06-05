@@ -30,10 +30,22 @@ Maintain a strict type-safety direction for the project.
   configured value is not a direct analysis-frame count. Its BoT-SORT
   implementation uses Kalman motion, IoU, and detection confidence without
   appearance/ReID matching.
+- BoT-SORT floors that scaled buffer and keeps tracks only while
+  `time_since_update < maximum_frames_without_update`. For example,
+  `lost_track_buffer: 15` at 5 analysis FPS becomes 2, so a mature track
+  survives only one fully missed analysis frame; an immature track can be
+  removed on its first miss.
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
 - TrafficEye manual `combinations` are projected into the response by order, but
   manually supplied boxes may not be returned. For batched MMR grids, match
   results by combination/cell order first; use returned boxes only as fallback.
+- TrafficEye make/model/generation/variation identities can combine BEV and
+  combustion-equipped factory variants. Use `MIXED` or `UNKNOWN` from the
+  powertrain catalog when the complete identity does not support a reliable
+  binary classification; do not force it to BEV or combustion.
+- OpenCV Hershey fonts do not render country flag emoji. The installed
+  `NotoColorEmoji.ttf` exposes a fixed 109-pixel color strike through Pillow;
+  render flags at that native size and resize the raster for label scaling.
 - A car can be present in `analysis/frames.jsonl` and still be invisible in
   rendered output. `visible_track_ids_for_render` intersects visible tracks with
   `size_eligible_track_ids`, which requires `max_box_width_px >=
