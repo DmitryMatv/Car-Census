@@ -10,12 +10,6 @@ from trackers import BoTSORTTracker
 from config import AppConfig
 
 
-class TrackerAdapter(Protocol):
-    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections: ...
-
-    def drop_tracks(self, track_ids: Collection[int]) -> None: ...
-
-
 class _BoTSortLike(Protocol):
     def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections: ...
 

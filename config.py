@@ -38,7 +38,6 @@ class AnalysisConfig(StrictBaseModel):
 
 
 class DetectorConfig(StrictBaseModel):
-    model: Literal["rfdetr-small"] = "rfdetr-small"
     device: Literal["auto", "cpu", "cuda"] = "auto"
     confidence: float = 0.30
     input_size: int = Field(default=512, ge=64)
@@ -127,8 +126,6 @@ class RenderConfig(StrictBaseModel):
     label_bg_color: str = "#000000"
     label_bg_alpha: float = Field(default=0.35, ge=0.0, le=1.0)
     label_scale_reference_box_width_px: int = Field(default=90, gt=0)
-    corner_thickness: int = 2
-    corner_length: int = 32
     counter_enabled: bool = True
     counter_position: Literal[
         "top_left", "top_right", "bottom_left", "bottom_right"

@@ -7,7 +7,7 @@ from typing import BinaryIO, Generic, TypeVar
 import orjson
 from pydantic import BaseModel
 
-from models import CountEvent, FrameRecord, MMRResult, RunManifest, TrackSummary
+from models import FrameRecord, MMRResult
 from storage.json_artifacts import iter_jsonl, read_json, write_json, write_jsonl
 from storage.run_layout import RunLayout
 
@@ -160,8 +160,3 @@ class DetectionStatsFile:
             return {}
         raw = read_json(self._path)
         return raw if isinstance(raw, dict) else {}
-
-
-ManifestFile = JsonModelFile[RunManifest]
-TrackSummariesFile = JsonlModelFile[TrackSummary]
-CountEventsFile = JsonlModelFile[CountEvent]

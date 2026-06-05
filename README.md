@@ -82,17 +82,17 @@ typed label fields.
 
 ## Brand-Origin Flags
 
-`MakeCountry.csv` maps each TrafficEye make to its historical origin-country
-flag. Accepted make/model labels in annotated videos start with that color flag.
-The flag is rendered separately from OpenCV text and scales with the label
-according to the tracked vehicle's box width. Set
+`mmr/data/MakeCountry.csv` maps each TrafficEye make to its historical
+origin-country flag. Accepted make/model labels in annotated videos start with
+that color flag. The flag is rendered separately from OpenCV text and scales
+with the label according to the tracked vehicle's box width. Set
 `render.label_flag_gap_px` to control the scaled horizontal gap between the flag
 and make/model text.
 
 ## Powertrain Catalog
 
-`MakeModelGenVar.csv` maps complete TrafficEye make, model, generation, and
-variation identities to a `powertrain_class`:
+`mmr/data/MakeModelGenVar.csv` maps complete TrafficEye make, model,
+generation, and variation identities to a `powertrain_class`:
 
 - `BEV`: every factory-produced vehicle represented by the identity is battery
   electric.

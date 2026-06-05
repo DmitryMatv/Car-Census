@@ -15,6 +15,54 @@ def test_bbox_bottom_center_uses_lower_box_edge() -> None:
     assert bbox.center == (20.0, 50.0)
 
 
+def test_bbox_intersection_method_detects_overlap_and_separation() -> None:
+    bbox = BBox(x1=0, y1=0, x2=10, y2=10)
+
+    assert bbox.intersection_area(BBox(x1=5, y1=5, x2=15, y2=12)) == 25.0
+    assert bbox.intersection_area(BBox(x1=11, y1=5, x2=15, y2=12)) == 0.0
+
+
+def test_box_iou_method_handles_overlap_and_zero_union() -> None:
+    bbox = BBox(x1=0, y1=0, x2=10, y2=10)
+
+    assert bbox.iou(BBox(x1=5, y1=0, x2=15, y2=10)) == 50.0 / 150.0
+    assert BBox(x1=0, y1=0, x2=0, y2=0).iou(BBox(x1=1, y1=1, x2=1, y2=1)) == 0.0
+
+
+def test_bbox_coverage_and_area_ratio() -> None:
+    larger = BBox(x1=0, y1=0, x2=10, y2=10)
+    smaller = BBox(x1=2, y1=2, x2=6, y2=7)
+
+    assert larger.smaller_coverage(smaller) == 1.0
+    assert larger.area_ratio(smaller) == 0.2
+    assert larger.smaller_coverage(BBox(x1=0, y1=0, x2=0, y2=0)) == 0.0
+    assert larger.area_ratio(BBox(x1=0, y1=0, x2=0, y2=0)) == 0.0
+
+
+def test_bbox_center_distance() -> None:
+    assert (
+        BBox(x1=0, y1=0, x2=2, y2=2).center_distance(BBox(x1=6, y1=8, x2=8, y2=10))
+        == 10.0
+    )
+
+
+def test_box_contains_point_method_inclusive() -> None:
+    bbox = BBox(x1=10, y1=20, x2=30, y2=40)
+
+    assert bbox.contains_point((10, 20))
+    assert bbox.contains_point((30, 40))
+    assert not bbox.contains_point((30.1, 40))
+
+
+def test_box_contains_point_method_exclusive_right_bottom_edges() -> None:
+    bbox = BBox(x1=10, y1=20, x2=30, y2=40)
+
+    assert bbox.contains_point((10, 20), inclusive=False)
+    assert not bbox.contains_point((30, 40), inclusive=False)
+    assert not bbox.contains_point((30, 30), inclusive=False)
+    assert not bbox.contains_point((20, 40), inclusive=False)
+
+
 def test_point_in_polygon_detects_inside_point() -> None:
     polygon = [[0, 0], [100, 0], [100, 100], [0, 100]]
     assert point_in_polygon((50, 50), polygon) is True

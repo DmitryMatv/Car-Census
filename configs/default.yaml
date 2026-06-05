@@ -19,7 +19,6 @@ analysis:
   crop_jpeg_quality: 95
 
 detector:
-  model: rfdetr-small
   confidence: 0.30
   input_size: 512
   allowed_class_names:
@@ -86,13 +85,11 @@ render:
   label_gap_px: 4
   label_flag_gap_px: 4
   label_text_color: "#FFFFFF"
-  label_bev_text_color: "#00BFFF"
-  label_mixed_text_color: "#39FF14"
+  label_bev_text_color: "#33C1FF"
+  label_mixed_text_color: "#00FF84"
   label_bg_color: "#000000"
   label_bg_alpha: 0.35
   label_scale_reference_box_width_px: 100
-  corner_thickness: 2
-  corner_length: 14
   counter_enabled: true
   counter_position: top_left
   unknown_label: UNKNOWN

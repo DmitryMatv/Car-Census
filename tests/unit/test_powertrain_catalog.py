@@ -3,6 +3,8 @@ from pathlib import Path
 
 from mmr.powertrain_catalog import (
     PowertrainClass,
+    VehicleIdentity,
+    load_default_powertrain_catalog,
     load_powertrain_catalog,
     lookup_powertrain_class,
 )
@@ -73,3 +75,11 @@ def test_load_and_lookup_require_exact_complete_identity(tmp_path: Path) -> None
         )
         is None
     )
+
+
+def test_load_default_powertrain_catalog_loads_packaged_resource() -> None:
+    catalog = load_default_powertrain_catalog()
+
+    assert catalog
+    assert all(isinstance(identity, VehicleIdentity) for identity in catalog)
+    assert all(isinstance(value, PowertrainClass) for value in catalog.values())

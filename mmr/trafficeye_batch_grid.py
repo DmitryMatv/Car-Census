@@ -141,28 +141,15 @@ def batch_request_payload(
     }
 
 
-def _intersection_area(first: BBox, second: BBox) -> float:
-    x1 = max(first.x1, second.x1)
-    y1 = max(first.y1, second.y1)
-    x2 = min(first.x2, second.x2)
-    y2 = min(first.y2, second.y2)
-    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
-
-
-def _box_center_inside(box: BBox, region: BBox) -> bool:
-    center_x, center_y = box.center
-    return region.x1 <= center_x < region.x2 and region.y1 <= center_y < region.y2
-
-
 def _matched_cell_index(result: MMRResult, cells: list[BatchCell]) -> int | None:
     box = result.detection_box
     if box is None:
         return None
     for cell in cells:
-        if _box_center_inside(box, cell.cell_box):
+        if cell.cell_box.contains_point(box.center, inclusive=False):
             return cell.index
 
-    overlaps = [(_intersection_area(box, cell.cell_box), cell.index) for cell in cells]
+    overlaps = [(box.intersection_area(cell.cell_box), cell.index) for cell in cells]
     overlap, index = max(overlaps, default=(0.0, None))
     if overlap <= 0.0:
         return None

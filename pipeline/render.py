@@ -8,11 +8,11 @@ from pathlib import Path
 import numpy as np
 
 from config import AppConfig, CameraProfile
-from mmr.make_country import MakeCountryCatalog, load_make_country_catalog
+from mmr.make_country import MakeCountryCatalog, load_default_make_country_catalog
 from mmr.powertrain_catalog import (
     PowertrainCatalog,
     PowertrainClass,
-    load_powertrain_catalog,
+    load_default_powertrain_catalog,
     lookup_powertrain_class,
 )
 from models import FrameRecord, MMRResult, TrackedObject, TrackSummary
@@ -31,8 +31,6 @@ from utils.video import (
 logger = logging.getLogger(__name__)
 
 SmoothRenderTracks = Callable[[AppConfig, CameraProfile, RunStore], Path]
-MAKE_COUNTRY_PATH = Path(__file__).resolve().parents[1] / "MakeCountry.csv"
-POWERTRAIN_CATALOG_PATH = Path(__file__).resolve().parents[1] / "MakeModelGenVar.csv"
 
 
 def _is_old_vehicle_placeholder(value: str | None) -> bool:
@@ -93,15 +91,6 @@ def visible_track_label_text_by_track(
                 unknown_label,
             )
     return labels
-
-
-def visible_track_ids_by_observation_count(
-    records: Iterable[FrameRecord], min_observations: int
-) -> set[int]:
-    counts: Counter[int] = Counter()
-    for record in records:
-        counts.update(track.track_id for track in record.tracks)
-    return {track_id for track_id, count in counts.items() if count >= min_observations}
 
 
 def _read_validated_metadata(config: AppConfig, video_path: Path) -> VideoMetadata:
@@ -324,12 +313,8 @@ def render_video(
     frames_path = _resolve_render_frames_path(
         config, profile, run_store, smooth_render_tracks
     )
-    origin_country_by_make: MakeCountryCatalog = load_make_country_catalog(
-        MAKE_COUNTRY_PATH
-    )
-    powertrain_catalog: PowertrainCatalog = load_powertrain_catalog(
-        POWERTRAIN_CATALOG_PATH
-    )
+    origin_country_by_make: MakeCountryCatalog = load_default_make_country_catalog()
+    powertrain_catalog: PowertrainCatalog = load_default_powertrain_catalog()
     label_text, label_text_colors = _label_text_and_colors_by_track(
         config,
         run_store,

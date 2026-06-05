@@ -208,6 +208,21 @@ def _patch_render_io(monkeypatch: pytest.MonkeyPatch, writer: DummyWriter) -> No
     )
     monkeypatch.setattr(render_module, "build_frame_writer", lambda **kwargs: writer)
     monkeypatch.setattr(render_module, "VideoAnnotator", DummyAnnotator)
+    monkeypatch.setattr(
+        render_module,
+        "load_default_make_country_catalog",
+        lambda: {"Toyota": "🇯🇵", "VW": "🇩🇪"},
+    )
+    monkeypatch.setattr(
+        render_module,
+        "load_default_powertrain_catalog",
+        lambda: {
+            VehicleIdentity("Tesla", "Model 3", "Mk I (2018)"): PowertrainClass.BEV,
+            VehicleIdentity(
+                "Hyundai", "Kona", "Mk I (2017) ~ Mk I EV (2019)"
+            ): PowertrainClass.MIXED,
+        },
+    )
 
 
 def test_video_annotator_returns_same_shape_frame() -> None:

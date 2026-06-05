@@ -19,13 +19,6 @@ def read_json(path: Path) -> object:
     return orjson.loads(path.read_bytes())
 
 
-def append_jsonl(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("ab") as handle:
-        handle.write(orjson.dumps(payload))
-        handle.write(b"\n")
-
-
 def iter_jsonl(path: Path, model_type: type[TModel]) -> Iterator[TModel]:
     if not path.exists():
         return

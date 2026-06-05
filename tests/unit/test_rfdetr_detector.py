@@ -103,7 +103,7 @@ def test_detector_passes_configured_cpu_device_to_rfdetr() -> None:
     config = AppConfig.model_validate({"detector": {"device": "cpu"}})
     detector = RfDetrSmallDetector(config=config, project_root=Path("."))
 
-    assert detector.model.device == "cpu"
+    assert getattr(detector, "model").device == "cpu"
 
 
 def test_detector_optimizes_cuda_auto_dtype_as_float16() -> None:
@@ -351,5 +351,6 @@ def test_local_pretrain_weights_are_resolved_from_project_root(tmp_path: Path) -
 
     detector = RfDetrSmallDetector(config=config, project_root=tmp_path)
 
-    assert detector.model.pretrain_weights == str(weights)
-    assert detector.model.resolution == 512
+    model = getattr(detector, "model")
+    assert model.pretrain_weights == str(weights)
+    assert model.resolution == 512

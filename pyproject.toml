@@ -51,6 +51,9 @@ include = [
 ]
 namespaces = true
 
+[tool.setuptools.package-data]
+"mmr.data" = ["*.csv"]
+
 
 [tool.mypy]
 files = [

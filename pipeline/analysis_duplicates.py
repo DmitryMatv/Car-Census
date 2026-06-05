@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from config import TrackerConfig
-from models import BBox
 from pipeline.analysis_diagnostics import AnalysisDiagnostics
 from pipeline.analysis_track_state import TrackStateStore
 from pipeline.vehicles import discard_track_artifacts
@@ -20,38 +19,6 @@ if TYPE_CHECKING:
 class DuplicateSuppressionResult:
     observations: list[TrackObservation]
     dropped_track_ids: set[int]
-
-
-def _bbox_intersection_area(a: BBox, b: BBox) -> float:
-    width = max(0.0, min(a.x2, b.x2) - max(a.x1, b.x1))
-    height = max(0.0, min(a.y2, b.y2) - max(a.y1, b.y1))
-    return width * height
-
-
-def _bbox_iou(a: BBox, b: BBox) -> float:
-    intersection = _bbox_intersection_area(a, b)
-    union = a.area + b.area - intersection
-    return intersection / union if union > 0.0 else 0.0
-
-
-def _bbox_smaller_coverage(a: BBox, b: BBox) -> float:
-    smaller_area = min(a.area, b.area)
-    if smaller_area <= 0.0:
-        return 0.0
-    return _bbox_intersection_area(a, b) / smaller_area
-
-
-def _bbox_area_ratio(a: BBox, b: BBox) -> float:
-    larger_area = max(a.area, b.area)
-    if larger_area <= 0.0:
-        return 0.0
-    return min(a.area, b.area) / larger_area
-
-
-def _center_distance(a: BBox, b: BBox) -> float:
-    ax, ay = a.center
-    bx, by = b.center
-    return math.hypot(ax - bx, ay - by)
 
 
 class DuplicateTrackSuppressor:
@@ -149,16 +116,16 @@ class DuplicateTrackSuppressor:
         if left.track_id == right.track_id or left.track_id < 0 or right.track_id < 0:
             return False
 
-        if _bbox_iou(left.bbox, right.bbox) >= (
+        if left.bbox.iou(right.bbox) >= (
             self._tracker_config.duplicate_track_iou_threshold
         ):
             return True
 
-        coverage = _bbox_smaller_coverage(left.bbox, right.bbox)
+        coverage = left.bbox.smaller_coverage(right.bbox)
         if coverage < self._tracker_config.duplicate_track_containment_threshold:
             return False
         if (
-            _bbox_area_ratio(left.bbox, right.bbox)
+            left.bbox.area_ratio(right.bbox)
             < self._tracker_config.duplicate_track_min_area_ratio
         ):
             return False
@@ -167,7 +134,7 @@ class DuplicateTrackSuppressor:
             self._tracker_config.duplicate_track_center_distance_ratio
             * math.sqrt(larger_area)
         )
-        return _center_distance(left.bbox, right.bbox) <= max_center_distance
+        return left.bbox.center_distance(right.bbox) <= max_center_distance
 
     def _select_loser(
         self, left: TrackObservation, right: TrackObservation

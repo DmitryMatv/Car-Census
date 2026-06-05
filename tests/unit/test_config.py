@@ -133,7 +133,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.analysis.fps == 10.0
     assert config.analysis.batch_size == 32
     assert config.analysis.detector_batch_size == 32
-    assert config.detector.model == "rfdetr-small"
     assert config.detector.confidence == 0.30
     assert config.detector.input_size == 512
     assert config.detector.pretrain_weights is None
@@ -163,8 +162,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.box_enabled is True
     assert config.render.box_alpha == 0.5
     assert config.render.box_thickness == 2
-    assert config.render.corner_thickness == 2
-    assert config.render.corner_length == 14
     assert config.render.counter_enabled is True
     assert config.render.counter_position == "top_left"
     assert config.render.label_thickness == 1
@@ -197,7 +194,6 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     config = AppConfig.model_validate(
         {
             "detector": {
-                "model": "rfdetr-small",
                 "device": "cpu",
                 "input_size": 512,
                 "allowed_class_names": ["car", "truck"],
@@ -210,7 +206,6 @@ def test_detector_config_accepts_rfdetr_options() -> None:
         }
     )
 
-    assert config.detector.model == "rfdetr-small"
     assert config.detector.device == "cpu"
     assert config.detector.input_size == 512
     assert config.detector.allowed_class_names == ["car", "truck"]
@@ -235,6 +230,11 @@ def test_detector_config_rejects_invalid_inference_dtype() -> None:
 def test_detector_config_rejects_removed_provider_key() -> None:
     with pytest.raises(ValidationError):
         AppConfig.model_validate({"detector": {"provider": "legacy_local"}})
+
+
+def test_detector_config_rejects_removed_model_key() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"model": "rfdetr-small"}})
 
 
 def test_detector_config_rejects_removed_runtime_keys() -> None:
@@ -308,8 +308,13 @@ def test_render_config_rejects_negative_label_flag_gap() -> None:
 
 
 def test_render_config_rejects_removed_visual_keys() -> None:
-    with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"label" + "_shadow_enabled": True}})
+    for key, value in [
+        ("label" + "_shadow_enabled", True),
+        ("corner_thickness", 2),
+        ("corner_length", 14),
+    ]:
+        with pytest.raises(ValidationError):
+            AppConfig.model_validate({"render": {key: value}})
 
 
 def test_render_smoothing_rejects_removed_custom_smoothing_keys() -> None:

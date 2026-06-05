@@ -240,7 +240,7 @@ class SequenceFakeDetector(FakeDetector):
         return detections
 
 
-class FakeTrackerAdapter:
+class FakeTracker:
     def __init__(self, tracks: sv.Detections) -> None:
         self.tracks = tracks
         self.received_detections: list[sv.Detections] = []
@@ -256,7 +256,7 @@ class FakeTrackerAdapter:
         self.drop_calls.append(set(track_ids))
 
 
-class SequenceFakeTrackerAdapter(FakeTrackerAdapter):
+class SequenceFakeTracker(FakeTracker):
     def __init__(self, tracks_by_frame: list[sv.Detections]) -> None:
         super().__init__(_empty_tracks())
         self.tracks_by_frame = tracks_by_frame
@@ -270,7 +270,7 @@ class SequenceFakeTrackerAdapter(FakeTrackerAdapter):
         return self.tracks_by_frame[index]
 
 
-class DetectionDrivenTrackerAdapter(FakeTrackerAdapter):
+class DetectionDrivenTracker(FakeTracker):
     def __init__(self, track_ids_by_update: list[int]) -> None:
         super().__init__(_empty_tracks())
         self.track_ids_by_update = track_ids_by_update
@@ -318,7 +318,7 @@ class DetectionDrivenTrackerAdapter(FakeTrackerAdapter):
         self.dropped_track_ids.update(track_ids)
 
 
-class UnconfirmedThenConfirmedTrackerAdapter(FakeTrackerAdapter):
+class UnconfirmedThenConfirmedTracker(FakeTracker):
     def __init__(self) -> None:
         super().__init__(_empty_tracks())
         self.unconfirmed_dropped = False
@@ -447,7 +447,7 @@ def _prepare_analyze_test(
     tmp_path,
     monkeypatch,
     detector: FakeDetector,
-    tracker: FakeTrackerAdapter,
+    tracker: FakeTracker,
 ) -> RunStore:
     return _prepare_analyze_frames_test(
         tmp_path=tmp_path,
@@ -462,7 +462,7 @@ def _prepare_analyze_frames_test(
     tmp_path,
     monkeypatch,
     detector: FakeDetector,
-    tracker: FakeTrackerAdapter,
+    tracker: FakeTracker,
     frames: list[np.ndarray],
     frame_timestamps: list[float] | None = None,
 ) -> RunStore:
@@ -527,7 +527,7 @@ def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
         tracker_id=np.array([-1, 7], dtype=np.int32),
         data={"class_name": np.array(["car", "car"], dtype=object)},
     )
-    tracker = FakeTrackerAdapter(tracked)
+    tracker = FakeTracker(tracked)
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
     config = AppConfig.model_validate({"tracker": {"ignore_edge_touches": False}})
 
@@ -550,7 +550,7 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(
+    tracker = FakeTracker(
         _tracks(
             [
                 (7, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
@@ -585,7 +585,7 @@ def test_analyze_rejects_stale_id_without_replacing_original_crop(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks([(7, BBox(x1=20, y1=20, x2=80, y2=80), 0.9)]),
             _empty_tracks(),
@@ -656,7 +656,7 @@ def test_analyze_combines_stale_and_duplicate_tracker_drops(
 ) -> None:
     detector = FakeDetector([])
     duplicate_bbox = BBox(x1=20, y1=20, x2=70, y2=70)
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks([(7, BBox(x1=10, y1=10, x2=40, y2=40), 0.9)]),
             _empty_tracks(),
@@ -711,7 +711,7 @@ def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks([(7, BBox(x1=20, y1=20, x2=70, y2=70), 0.7)]),
             _tracks(
@@ -755,7 +755,7 @@ def test_analyze_suppresses_strongly_contained_duplicate_track(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(
+    tracker = FakeTracker(
         _tracks(
             [
                 (7, BBox(x1=10, y1=10, x2=90, y2=90), 0.9),
@@ -785,7 +785,7 @@ def test_analyze_suppresses_strongly_contained_duplicate_track(
 
 def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(
+    tracker = FakeTracker(
         _tracks(
             [
                 (7, BBox(x1=10, y1=20, x2=70, y2=80), 0.9),
@@ -821,7 +821,7 @@ def test_analyze_does_not_suppress_count_event_duplicate_loser(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks(
                 [
@@ -887,7 +887,7 @@ def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks([(7, BBox(x1=1220, y1=322, x2=1270, y2=360), 0.47)]),
             _tracks(
@@ -942,7 +942,7 @@ def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _tracks([(7, BBox(x1=20, y1=20, x2=220, y2=220), 0.9)]),
             _tracks(
@@ -1008,7 +1008,7 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
         ]
     )
 
-    class OrderedTracker(FakeTrackerAdapter):
+    class OrderedTracker(FakeTracker):
         def update(self, detections: sv.Detections, frame) -> sv.Detections:
             self.received_detections.append(detections)
             frame_value = int(frame[0, 0, 0])
@@ -1086,7 +1086,7 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_single_track(BBox(x1=48, y1=18, x2=56, y2=28)))
+    tracker = FakeTracker(_single_track(BBox(x1=48, y1=18, x2=56, y2=28)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
 
     analyze_video(
@@ -1110,7 +1110,7 @@ def test_analyze_requests_terminal_frame_sampling(tmp_path, monkeypatch) -> None
     store = RunStore(tmp_path / "run")
     store.ensure_directories()
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_empty_tracks())
+    tracker = FakeTracker(_empty_tracks())
     include_terminal_frame_values: list[bool] = []
 
     monkeypatch.setattr(
@@ -1194,7 +1194,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observa
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 7, 7])
+    tracker = DetectionDrivenTracker([7, 7, 7])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1258,7 +1258,7 @@ def test_analyze_skips_track_when_edge_detection_matches_inset_tracker_output(
             ],
         ]
     )
-    tracker = SequenceFakeTrackerAdapter(
+    tracker = SequenceFakeTracker(
         [
             _single_track(BBox(x1=20, y1=20, x2=60, y2=60)),
             _single_track(BBox(x1=3, y1=20, x2=63, y2=60)),
@@ -1316,7 +1316,7 @@ def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
             ],
         ]
     )
-    tracker = UnconfirmedThenConfirmedTrackerAdapter()
+    tracker = UnconfirmedThenConfirmedTracker()
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1378,7 +1378,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_obser
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 7, 7])
+    tracker = DetectionDrivenTracker([7, 7, 7])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1441,7 +1441,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observ
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 7, 7])
+    tracker = DetectionDrivenTracker([7, 7, 7])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1499,7 +1499,7 @@ def test_analyze_allows_new_track_id_after_edge_skip(tmp_path, monkeypatch) -> N
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 7, 8])
+    tracker = DetectionDrivenTracker([7, 7, 8])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1551,7 +1551,7 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 7])
+    tracker = DetectionDrivenTracker([7, 7])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1596,7 +1596,7 @@ def test_track_between_160_and_199_px_wide_gets_crop_candidate(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_single_track(BBox(x1=10, y1=20, x2=180, y2=80)))
+    tracker = FakeTracker(_single_track(BBox(x1=10, y1=20, x2=180, y2=80)))
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1650,7 +1650,7 @@ def test_analyze_no_longer_filters_edge_detections_before_tracker(
             ]
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7])
+    tracker = DetectionDrivenTracker([7])
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
 
     analyze_video(
@@ -1688,7 +1688,7 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
             "confidence_values": [0.35, 0.9],
         },
     )
-    tracker = DetectionDrivenTrackerAdapter([7])
+    tracker = DetectionDrivenTracker([7])
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
 
     analyze_video(
@@ -1757,7 +1757,7 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
             ],
         ]
     )
-    tracker = DetectionDrivenTrackerAdapter([7, 8, 8])
+    tracker = DetectionDrivenTracker([7, 8, 8])
     store = _prepare_analyze_frames_test(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
@@ -1797,7 +1797,7 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
 
 def test_analyze_uses_bottom_center_for_roi_membership(tmp_path, monkeypatch) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_single_track(BBox(x1=40, y1=20, x2=60, y2=80)))
+    tracker = FakeTracker(_single_track(BBox(x1=40, y1=20, x2=60, y2=80)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
     config = AppConfig.model_validate(
         {
@@ -1827,7 +1827,7 @@ def test_analyze_discards_crops_and_vehicle_index_for_short_tracks(
     tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
-    tracker = FakeTrackerAdapter(_single_track(BBox(x1=20, y1=20, x2=80, y2=80)))
+    tracker = FakeTracker(_single_track(BBox(x1=20, y1=20, x2=80, y2=80)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
     config = AppConfig.model_validate(
         {"analysis": {"min_track_frames": 2, "min_box_width_px": 1}}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,44 @@ class BBox(BaseModel):
     @property
     def bottom_center(self) -> tuple[float, float]:
         return ((self.x1 + self.x2) / 2.0, self.y2)
+
+    def intersection_area(self, other: BBox) -> float:
+        width = max(0.0, min(self.x2, other.x2) - max(self.x1, other.x1))
+        height = max(0.0, min(self.y2, other.y2) - max(self.y1, other.y1))
+        return width * height
+
+    def iou(self, other: BBox) -> float:
+        intersection = self.intersection_area(other)
+        union = self.area + other.area - intersection
+        return intersection / union if union > 0.0 else 0.0
+
+    def smaller_coverage(self, other: BBox) -> float:
+        smaller_area = min(self.area, other.area)
+        if smaller_area <= 0.0:
+            return 0.0
+        return self.intersection_area(other) / smaller_area
+
+    def area_ratio(self, other: BBox) -> float:
+        larger_area = max(self.area, other.area)
+        if larger_area <= 0.0:
+            return 0.0
+        return min(self.area, other.area) / larger_area
+
+    def center_distance(self, other: BBox) -> float:
+        x, y = self.center
+        other_x, other_y = other.center
+        return math.hypot(x - other_x, y - other_y)
+
+    def contains_point(
+        self,
+        point: tuple[float, float],
+        *,
+        inclusive: bool = True,
+    ) -> bool:
+        x, y = point
+        if inclusive:
+            return self.x1 <= x <= self.x2 and self.y1 <= y <= self.y2
+        return self.x1 <= x < self.x2 and self.y1 <= y < self.y2
 
 
 class TrackedObject(BaseModel):

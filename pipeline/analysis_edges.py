@@ -14,36 +14,15 @@ from roi.geometry import (
 )
 
 
-def bbox_intersection_area(left: BBox, right: BBox) -> float:
-    intersection_width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
-    intersection_height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
-    return intersection_width * intersection_height
-
-
-def bbox_iou(left: BBox, right: BBox) -> float:
-    intersection_area = bbox_intersection_area(left, right)
-    if intersection_area <= 0:
-        return 0.0
-    union_area = left.area + right.area - intersection_area
-    if union_area <= 0:
-        return 0.0
-    return intersection_area / union_area
-
-
-def bbox_contains_point(bbox: BBox, point: tuple[float, float]) -> bool:
-    x, y = point
-    return bbox.x1 <= x <= bbox.x2 and bbox.y1 <= y <= bbox.y2
-
-
 def track_matches_edge_detection(
     track_bbox: BBox, edge_detection_bboxes: SequenceABC[BBox]
 ) -> bool:
     for detection_bbox in edge_detection_bboxes:
-        if bbox_iou(track_bbox, detection_bbox) >= 0.05:
+        if track_bbox.iou(detection_bbox) >= 0.05:
             return True
-        if bbox_contains_point(track_bbox, detection_bbox.center):
+        if track_bbox.contains_point(detection_bbox.center):
             return True
-        if bbox_contains_point(detection_bbox, track_bbox.center):
+        if detection_bbox.contains_point(track_bbox.center):
             return True
     return False
 
