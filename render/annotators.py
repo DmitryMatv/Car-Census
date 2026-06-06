@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config import AppConfig
 from models import TrackedObject
+from render.label_emojis import TAG_EMOJI_ORDER
 
 _EMOJI_FONT_NAME = "NotoColorEmoji.ttf"
 _EMOJI_FONT_NATIVE_SIZE = 109
@@ -19,15 +20,27 @@ _EMOJI_FONT_NATIVE_SIZE = 109
 @dataclass(frozen=True)
 class _LabelLineLayout:
     text: str
-    flag: str | None
+    flags: tuple[str, ...]
     text_size: tuple[int, int]
     baseline: int
-    flag_width: int
+    flag_widths: tuple[int, ...]
     flag_gap_width: int
+    trailing_emojis: tuple[str, ...]
+    trailing_emoji_widths: tuple[int, ...]
 
     @property
     def width(self) -> int:
-        return self.flag_width + self.flag_gap_width + self.text_size[0]
+        flags_width = sum(self.flag_widths)
+        trailing_width = sum(self.trailing_emoji_widths)
+        trailing_gap_width = self.flag_gap_width * len(self.trailing_emojis)
+        leading_gap_width = self.flag_gap_width if self.flags else 0
+        return (
+            flags_width
+            + leading_gap_width
+            + self.text_size[0]
+            + trailing_width
+            + trailing_gap_width
+        )
 
 
 class VideoAnnotator:
@@ -84,48 +97,83 @@ def _is_flag_emoji(value: str) -> bool:
     )
 
 
-def _split_leading_flag(line: str) -> tuple[str | None, str]:
-    if len(line) >= 4 and line[2] == " " and _is_flag_emoji(line[:2]):
-        return line[:2], line[3:]
-    return None, line
+def _split_leading_flags(line: str) -> tuple[tuple[str, ...], str]:
+    flags: list[str] = []
+    i = 0
+    while i + 1 < len(line) and _is_flag_emoji(line[i : i + 2]):
+        flags.append(line[i : i + 2])
+        i += 2
+    if i < len(line) and line[i] == " " and flags:
+        return tuple(flags), line[i + 1 :]
+    return (), line
 
 
 @lru_cache(maxsize=None)
-def _render_native_flag_emoji(flag: str) -> Image.Image:
-    if not _is_flag_emoji(flag):
-        raise ValueError(f"Expected flag emoji, got {flag!r}")
+def _render_native_color_emoji(emoji: str) -> Image.Image:
     try:
         font = ImageFont.truetype(_EMOJI_FONT_NAME, _EMOJI_FONT_NATIVE_SIZE)
     except OSError as error:
         raise RuntimeError(
-            "Noto Color Emoji is required to render country flags. "
+            "Noto Color Emoji is required to render label emoji. "
             "Install NotoColorEmoji.ttf so Pillow can find it."
         ) from error
 
     canvas = Image.new("RGBA", (160, 140), (0, 0, 0, 0))
     ImageDraw.Draw(canvas).text(
         (0, 0),
-        flag,
+        emoji,
         font=font,
         embedded_color=True,
     )
     bounding_box = canvas.getbbox()
     if bounding_box is None:
-        raise RuntimeError(f"Noto Color Emoji did not render flag {flag!r}")
+        raise RuntimeError(f"Noto Color Emoji did not render emoji {emoji!r}")
     return canvas.crop(bounding_box)
 
 
 @lru_cache(maxsize=512)
-def _render_flag_emoji(flag: str, target_height: int) -> np.ndarray:
+def _render_color_emoji(emoji: str, target_height: int) -> np.ndarray:
     if target_height <= 0:
-        raise ValueError(f"Expected positive flag height, got {target_height}")
-    cropped = _render_native_flag_emoji(flag)
+        raise ValueError(f"Expected positive emoji height, got {target_height}")
+    cropped = _render_native_color_emoji(emoji)
     target_width = max(1, round(cropped.width * target_height / cropped.height))
     resized = cropped.resize(
         (target_width, target_height),
         resample=Image.Resampling.LANCZOS,
     )
     return np.asarray(resized, dtype=np.uint8)
+
+
+@lru_cache(maxsize=None)
+def _render_native_flag_emoji(flag: str) -> Image.Image:
+    if not _is_flag_emoji(flag):
+        raise ValueError(f"Expected flag emoji, got {flag!r}")
+    return _render_native_color_emoji(flag)
+
+
+@lru_cache(maxsize=512)
+def _render_flag_emoji(flag: str, target_height: int) -> np.ndarray:
+    if target_height <= 0:
+        raise ValueError(f"Expected positive flag height, got {target_height}")
+    if not _is_flag_emoji(flag):
+        raise ValueError(f"Expected flag emoji, got {flag!r}")
+    return _render_color_emoji(flag, target_height)
+
+
+def _split_trailing_label_emojis(line: str) -> tuple[str, tuple[str, ...]]:
+    text = line.rstrip()
+    trailing_emojis: list[str] = []
+    while text:
+        emoji = next(
+            (candidate for candidate in TAG_EMOJI_ORDER if text.endswith(candidate)),
+            None,
+        )
+        if emoji is None:
+            break
+        text = text[: -len(emoji)].rstrip()
+        trailing_emojis.append(emoji)
+    trailing_emojis.reverse()
+    return text, tuple(trailing_emojis)
 
 
 def _label_line_layouts(
@@ -139,7 +187,8 @@ def _label_line_layouts(
 ) -> list[_LabelLineLayout]:
     layouts: list[_LabelLineLayout] = []
     for index, line in enumerate(lines):
-        flag, text = _split_leading_flag(line)
+        flags, text = _split_leading_flags(line)
+        text, trailing_emojis = _split_trailing_label_emojis(text)
         thickness = title_thickness if index == 0 else normal_thickness
         size, baseline = cv2.getTextSize(
             text,
@@ -147,17 +196,24 @@ def _label_line_layouts(
             scale,
             thickness,
         )
-        flag_width = 0
-        if flag is not None:
-            flag_width = int(_render_flag_emoji(flag, max(1, int(size[1]))).shape[1])
+        flag_widths = tuple(
+            int(_render_flag_emoji(flag, max(1, int(size[1]))).shape[1])
+            for flag in flags
+        )
+        trailing_emoji_widths = tuple(
+            int(_render_color_emoji(emoji, max(1, int(size[1]))).shape[1])
+            for emoji in trailing_emojis
+        )
         layouts.append(
             _LabelLineLayout(
                 text=text,
-                flag=flag,
+                flags=flags,
                 text_size=(int(size[0]), int(size[1])),
                 baseline=int(baseline),
-                flag_width=flag_width,
-                flag_gap_width=flag_gap_width if flag is not None else 0,
+                flag_widths=flag_widths,
+                flag_gap_width=flag_gap_width,
+                trailing_emojis=trailing_emojis,
+                trailing_emoji_widths=trailing_emoji_widths,
             )
         )
     return layouts
@@ -312,18 +368,17 @@ def _draw_track_label(
     for layout in layouts:
         baseline_y += layout.text_size[1]
         text_x = x1 + padding
-        if layout.flag is not None:
-            flag_image = _render_flag_emoji(
-                layout.flag,
-                max(1, layout.text_size[1]),
-            )
+        for flag, flag_width in zip(layout.flags, layout.flag_widths, strict=True):
+            flag_image = _render_flag_emoji(flag, max(1, layout.text_size[1]))
             _alpha_composite_rgba(
                 frame,
                 flag_image,
                 text_x,
                 baseline_y - int(flag_image.shape[0]),
             )
-            text_x += layout.flag_width + layout.flag_gap_width
+            text_x += flag_width
+        if layout.flags:
+            text_x += layout.flag_gap_width
         cv2.putText(
             frame,
             layout.text,
@@ -334,6 +389,24 @@ def _draw_track_label(
             normal_thickness,
             cv2.LINE_AA,
         )
+        text_x += layout.text_size[0]
+        for emoji, emoji_width in zip(
+            layout.trailing_emojis,
+            layout.trailing_emoji_widths,
+            strict=True,
+        ):
+            text_x += layout.flag_gap_width
+            emoji_image = _render_color_emoji(
+                emoji,
+                max(1, layout.text_size[1]),
+            )
+            _alpha_composite_rgba(
+                frame,
+                emoji_image,
+                text_x,
+                baseline_y - int(emoji_image.shape[0]),
+            )
+            text_x += emoji_width
         baseline_y += layout.baseline + line_gap
 
 

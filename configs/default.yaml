@@ -12,8 +12,8 @@ analysis:
   detector_batch_size: 32
   min_track_frames: 4
   min_box_width_px: 120
-  crop_padding_ratio: 0.00
-  crop_padding_px: 3
+  crop_padding_ratio: 0.05
+  crop_padding_px: 2
   crop_target_box_range_ratio: 0.69420
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
@@ -34,13 +34,13 @@ detector:
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
-  lost_track_buffer: 24
+  lost_track_buffer: 18
   max_reassociation_gap_seconds: 0.4
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.25 # tracker matching threshold
+  minimum_iou_threshold_first_assoc: 0.30 # tracker matching threshold
   minimum_iou_threshold_second_assoc: 0.5
-  minimum_iou_threshold_unconfirmed_assoc: 0.20
+  minimum_iou_threshold_unconfirmed_assoc: 0.25
   high_conf_det_threshold: 0.30
   enable_cmc: false
   cmc_method: sparseOptFlow
@@ -48,7 +48,7 @@ tracker:
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 10
+  edge_margin_px: 5
   suppress_duplicate_tracks: true
   duplicate_track_iou_threshold: 0.90
   duplicate_track_containment_threshold: 0.98
@@ -100,7 +100,7 @@ render:
     observed_smoothing_window: 5
     observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
-    max_missing_analysis_gap_frames: 6
+    max_missing_analysis_gap_frames: 9
     interpolate_source_frames: true
     interpolation_method: linear
     max_interpolation_gap_seconds: 0.25

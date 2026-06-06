@@ -607,6 +607,82 @@ def test_draw_track_label_renders_color_flag_and_plain_opencv_text(
     assert np.any((red > 100) & (green > 100) & (blue < 100))
 
 
+def test_draw_track_label_renders_multiple_leading_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drawn_text: list[str] = []
+    rendered_flags: list[str] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = org, font_face, font_scale, color, thickness, line_type
+        drawn_text.append(text)
+        return img
+
+    def render_test_flag(flag: str, target_height: int) -> np.ndarray:
+        rendered_flags.append(flag)
+        return np.full((target_height, target_height, 4), 255, dtype=np.uint8)
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+    monkeypatch.setattr(annotators_module, "_render_flag_emoji", render_test_flag)
+
+    annotators_module._draw_track_label(
+        np.zeros((120, 180, 3), dtype=np.uint8),
+        _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
+        "🇩🇪🇨🇭 Smart",
+        AppConfig(),
+    )
+
+    assert drawn_text == ["Smart"]
+    assert rendered_flags == ["🇩🇪", "🇨🇭", "🇩🇪", "🇨🇭"]
+
+
+def test_draw_track_label_renders_trailing_tag_emojis_outside_opencv_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drawn_text: list[str] = []
+    rendered_emojis: list[str] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = org, font_face, font_scale, color, thickness, line_type
+        drawn_text.append(text)
+        return img
+
+    def render_test_emoji(emoji: str, target_height: int) -> np.ndarray:
+        rendered_emojis.append(emoji)
+        return np.full((target_height, target_height, 4), 255, dtype=np.uint8)
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+    monkeypatch.setattr(annotators_module, "_render_color_emoji", render_test_emoji)
+
+    annotators_module._draw_track_label(
+        np.zeros((120, 180, 3), dtype=np.uint8),
+        _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
+        "VW Golf 🚓 🚑",
+        AppConfig(),
+    )
+
+    assert drawn_text == ["VW Golf"]
+    assert rendered_emojis == ["🚓", "🚑", "🚓", "🚑"]
+
+
 def test_draw_track_label_uses_configured_scaled_flag_gap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -743,6 +819,29 @@ def test_format_label_text_prefixes_known_make_with_flag_and_one_space() -> None
             {"VW": "🇩🇪"},
         )
         == "Unknown Make Model"
+    )
+
+
+def test_format_label_text_appends_affirmative_tag_emojis_to_first_line() -> None:
+    assert (
+        format_label_text(
+            MMRResult(
+                make="VW",
+                model="Golf",
+                generation="Mk VIII",
+                tags=[
+                    {"name": "pickup", "value": True},
+                    {"name": "taxi", "value": "yes"},
+                    {"name": "damaged", "value": True},
+                    {"name": "ambulance", "value": 1},
+                    {"name": "law enforcement", "value": "true"},
+                    {"name": "fleet", "value": False},
+                ],
+            ),
+            "unknown",
+            {"VW": "🇩🇪"},
+        )
+        == "🇩🇪 VW Golf 🚓 🚑 🛻\nMk VIII"
     )
 
 

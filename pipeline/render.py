@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
@@ -17,6 +18,7 @@ from mmr.powertrain_catalog import (
 )
 from models import FrameRecord, MMRResult, TrackedObject, TrackSummary
 from render.annotators import VideoAnnotator
+from render.label_emojis import TAG_EMOJI_BY_REPORT_COLUMN, TAG_EMOJI_ORDER
 from storage.run_store import RunStore
 from utils.video import (
     FrameWriter,
@@ -44,6 +46,38 @@ def _has_only_old_vehicle_details(result: MMRResult) -> bool:
     )
 
 
+def _normalize_tag_name(name: object) -> str:
+    if name is None:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+    return f"tag_{normalized}" if normalized else ""
+
+
+def _is_affirmative_tag_value(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in {"yes", "true"}
+    return False
+
+
+def _label_tag_emoji_suffix(result: MMRResult) -> str:
+    emojis = {
+        emoji
+        for tag in result.tags
+        if _is_affirmative_tag_value(tag.get("value"))
+        if (
+            emoji := TAG_EMOJI_BY_REPORT_COLUMN.get(
+                _normalize_tag_name(tag.get("name"))
+            )
+        )
+    }
+    ordered_emojis = [emoji for emoji in TAG_EMOJI_ORDER if emoji in emojis]
+    return f" {' '.join(ordered_emojis)}" if ordered_emojis else ""
+
+
 def format_label_text(
     result: MMRResult,
     unknown_label: str,
@@ -58,7 +92,7 @@ def format_label_text(
         ]
         if part and part.strip()
     ).strip()
-    first_line = make_model or unknown_label
+    first_line = f"{make_model or unknown_label}{_label_tag_emoji_suffix(result)}"
     if result.make and origin_country_by_make:
         origin_flag = origin_country_by_make.get(result.make)
         if origin_flag:
