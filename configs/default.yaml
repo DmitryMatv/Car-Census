@@ -10,8 +10,8 @@ analysis:
   fps: 10
   batch_size: 32
   detector_batch_size: 32
-  min_track_frames: 6
-  min_box_width_px: 150
+  min_track_frames: 4
+  min_box_width_px: 120
   crop_padding_ratio: 0.00
   crop_padding_px: 3
   crop_target_box_range_ratio: 0.69420
@@ -34,8 +34,8 @@ detector:
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
-  lost_track_buffer: 20
-  max_reassociation_gap_seconds: 0.6
+  lost_track_buffer: 24
+  max_reassociation_gap_seconds: 0.4
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
   minimum_iou_threshold_first_assoc: 0.25 # tracker matching threshold
@@ -72,7 +72,7 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 6
+  min_visible_track_observations: 4
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
@@ -86,7 +86,7 @@ render:
   label_flag_gap_px: 4
   label_text_color: "#FFFFFF"
   label_bev_text_color: "#33C1FF"
-  label_mixed_text_color: "#00FF84"
+  label_mixed_text_color: "#39FF31"
   label_bg_color: "#000000"
   label_bg_alpha: 0.35
   label_scale_reference_box_width_px: 100
@@ -100,7 +100,7 @@ render:
     observed_smoothing_window: 5
     observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
-    max_missing_analysis_gap_frames: 4
+    max_missing_analysis_gap_frames: 6
     interpolate_source_frames: true
     interpolation_method: linear
     max_interpolation_gap_seconds: 0.25

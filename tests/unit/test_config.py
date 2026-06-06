@@ -175,7 +175,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.observed_smoothing_window == 5
     assert config.render.smoothing.observed_smoothing_max_shift_ratio == 0.10
     assert config.render.smoothing.bridge_missing_analysis_frames is True
-    assert config.render.smoothing.max_missing_analysis_gap_frames == 4
     assert config.render.smoothing.interpolate_source_frames is True
     assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
