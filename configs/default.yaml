@@ -10,8 +10,8 @@ analysis:
   fps: 10
   batch_size: 32
   detector_batch_size: 32
-  min_track_frames: 4
-  min_box_width_px: 120
+  min_track_frames: 3
+  min_box_width_px: 96
   crop_padding_ratio: 0.05
   crop_padding_px: 2
   crop_target_box_range_ratio: 0.69420
@@ -24,7 +24,13 @@ detector:
   allowed_class_names:
     - car
     - truck
-    # - bus
+    - small truck
+    - mid truck
+    - big truck
+    - pickup
+    - pickup truck
+    - van
+    - bus
     # - motorcycle
   pretrain_weights: null
   include_source_image: false
@@ -72,7 +78,7 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 4
+  min_visible_track_observations: 3
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
@@ -82,7 +88,7 @@ render:
   label_font_scale: 0.5
   label_thickness: 1
   label_padding_px: 6
-  label_gap_px: 4
+  label_gap_px: 2
   label_flag_gap_px: 4
   label_text_color: "#FFFFFF"
   label_bev_text_color: "#33C1FF"
@@ -100,7 +106,7 @@ render:
     observed_smoothing_window: 5
     observed_smoothing_max_shift_ratio: 0.10
     bridge_missing_analysis_frames: true
-    max_missing_analysis_gap_frames: 9
+    max_missing_analysis_gap_frames: 15
     interpolate_source_frames: true
     interpolation_method: linear
     max_interpolation_gap_seconds: 0.25
