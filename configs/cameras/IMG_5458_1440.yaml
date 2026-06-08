@@ -1,13 +1,13 @@
-camera_id: IMG_5458_1440.mp4
+camera_id: IMG_5458_1440
 polygon:
   points:
   - - 0
-  - 450
+    - 450
   - - 2559
-  - 450
+    - 450
   - - 2559
-  - 1439
+    - 1439
   - - 0
-  - 1439
+    - 1439
 count_line: null
 

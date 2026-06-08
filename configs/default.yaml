@@ -10,7 +10,7 @@ analysis:
   fps: 10
   batch_size: 32
   detector_batch_size: 32
-  min_track_frames: 3
+  min_track_frames: 4
   min_box_width_px: 96
   crop_padding_ratio: 0.05
   crop_padding_px: 2
@@ -40,14 +40,14 @@ detector:
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
-  lost_track_buffer: 18
-  max_reassociation_gap_seconds: 0.4
+  lost_track_buffer: 30
+  max_reassociation_gap_seconds: 0.5
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.30 # tracker matching threshold
+  minimum_iou_threshold_first_assoc: 0.20 # tracker matching threshold
   minimum_iou_threshold_second_assoc: 0.5
   minimum_iou_threshold_unconfirmed_assoc: 0.25
-  high_conf_det_threshold: 0.30
+  high_conf_det_threshold: 0.20
   enable_cmc: false
   cmc_method: sparseOptFlow
   cmc_downscale: 2
@@ -56,8 +56,8 @@ tracker:
   ignore_edge_touches: true
   edge_margin_px: 5
   suppress_duplicate_tracks: true
-  duplicate_track_iou_threshold: 0.90
-  duplicate_track_containment_threshold: 0.98
+  duplicate_track_iou_threshold: 0.80
+  duplicate_track_containment_threshold: 0.95
   duplicate_track_min_area_ratio: 0.30
   duplicate_track_center_distance_ratio: 0.30
 
@@ -78,7 +78,7 @@ mmr:
 
 render:
   codec: mp4v
-  min_visible_track_observations: 3
+  min_visible_track_observations: 4
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"

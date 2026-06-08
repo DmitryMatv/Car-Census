@@ -206,7 +206,8 @@ def load_app_config(path: Path) -> AppConfig:
 
 
 def camera_profile_path(config: AppConfig, camera_id: str, root: Path) -> Path:
-    return root / config.project.camera_profiles_dir / f"{camera_id}.yaml"
+    clean_id = camera_id.removesuffix(".mp4")
+    return root / config.project.camera_profiles_dir / f"{clean_id}.yaml"
 
 
 def load_camera_profile(config: AppConfig, camera_id: str, root: Path) -> CameraProfile:
