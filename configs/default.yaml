@@ -20,17 +20,17 @@ analysis:
 
 detector:
   confidence: 0.30
-  input_size: 512
+  input_size: 576
   allowed_class_names:
     - car
     - truck
-    - small truck
-    - mid truck
-    - big truck
-    - pickup
-    - pickup truck
-    - van
-    - bus
+    # - small truck
+    # - mid truck
+    # - big truck
+    # - pickup
+    # - pickup truck
+    # - van
+    # - bus
     # - motorcycle
   pretrain_weights: null
   include_source_image: false
@@ -40,24 +40,24 @@ detector:
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
-  lost_track_buffer: 30
-  max_reassociation_gap_seconds: 0.5
+  lost_track_buffer: 60
+  max_reassociation_gap_seconds: 1.2
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.20 # tracker matching threshold
-  minimum_iou_threshold_second_assoc: 0.5
-  minimum_iou_threshold_unconfirmed_assoc: 0.25
-  high_conf_det_threshold: 0.20
+  minimum_iou_threshold_first_assoc: 0.20 # tracker matching threshold for first association attempt
+  minimum_iou_threshold_second_assoc: 0.50
+  minimum_iou_threshold_unconfirmed_assoc: 0.20
+  high_conf_det_threshold: 0.30
   enable_cmc: false
   cmc_method: sparseOptFlow
   cmc_downscale: 2
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 5
+  edge_margin_px: 10
   suppress_duplicate_tracks: true
-  duplicate_track_iou_threshold: 0.80
-  duplicate_track_containment_threshold: 0.95
+  duplicate_track_iou_threshold: 0.90
+  duplicate_track_containment_threshold: 0.98
   duplicate_track_min_area_ratio: 0.30
   duplicate_track_center_distance_ratio: 0.30
 

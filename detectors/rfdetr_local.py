@@ -22,15 +22,15 @@ from pipeline.detections import (
 logger = logging.getLogger(__name__)
 
 
-def _load_rfdetr_small() -> type[Any]:
+def _load_rfdetr_medium() -> type[Any]:
     try:
-        from rfdetr import RFDETRSmall
+        from rfdetr import RFDETRMedium
     except ImportError as exc:
         raise RuntimeError(
-            "rfdetr is required for RF-DETR-S detection. "
+            "rfdetr is required for RF-DETR-M detection. "
             "Install the project with `pip install -e .`."
         ) from exc
-    return RFDETRSmall
+    return RFDETRMedium
 
 
 def _coerce_class_names(raw: object) -> dict[int, str]:
@@ -68,7 +68,7 @@ def _resolved_inference_dtype(configured_dtype: str, device: object) -> str:
     return "float32"
 
 
-class RfDetrSmallDetector(Detector):
+class RfDetrMediumDetector(Detector):
     def __init__(self, config: AppConfig, project_root: Path) -> None:
         self.config = config
         self.input_size = config.detector.input_size
@@ -79,7 +79,7 @@ class RfDetrSmallDetector(Detector):
         self._confidence_histogram = HistogramAccumulator(CONFIDENCE_BINS)
 
         weights = config.detector.pretrain_weights
-        model_class = _load_rfdetr_small()
+        model_class = _load_rfdetr_medium()
         model_kwargs: dict[str, object] = {"resolution": self.input_size}
         if config.detector.device != "auto":
             model_kwargs["device"] = config.detector.device
@@ -91,7 +91,7 @@ class RfDetrSmallDetector(Detector):
                 weights_path = project_root / weights_path
             if not weights_path.exists():
                 raise FileNotFoundError(
-                    f"RF-DETR-S checkpoint not found: {weights_path}"
+                    f"RF-DETR-M checkpoint not found: {weights_path}"
                 )
             self.model = model_class(pretrain_weights=str(weights_path), **model_kwargs)
         self.class_names = _coerce_class_names(getattr(self.model, "class_names", {}))
@@ -126,7 +126,7 @@ class RfDetrSmallDetector(Detector):
         detections_by_image = self._normalize_prediction_result(predictions)
         if len(detections_by_image) != len(images):
             raise RuntimeError(
-                "RF-DETR-S returned "
+                "RF-DETR-M returned "
                 f"{len(detections_by_image)} detection sets for {len(images)} images"
             )
         return [
@@ -138,7 +138,7 @@ class RfDetrSmallDetector(Detector):
         return {
             "counts": dict(self._counts),
             "confidence_histogram": self._confidence_histogram.payload(),
-            "model": "rfdetr-small",
+            "model": "rfdetr-medium",
             "input_size": self.input_size,
             "runtime": "rfdetr",
             "optimized_for_inference": self.config.detector.optimize_for_inference,
@@ -157,7 +157,7 @@ class RfDetrSmallDetector(Detector):
                 if isinstance(prediction, sv.Detections)
             ]
         raise TypeError(
-            "Unsupported RF-DETR-S prediction result type: "
+            "Unsupported RF-DETR-M prediction result type: "
             f"{type(predictions).__name__}"
         )
 

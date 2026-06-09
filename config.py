@@ -40,7 +40,7 @@ class AnalysisConfig(StrictBaseModel):
 class DetectorConfig(StrictBaseModel):
     device: Literal["auto", "cpu", "cuda"] = "auto"
     confidence: float = 0.30
-    input_size: int = Field(default=512, ge=64)
+    input_size: int = Field(default=576, ge=64)
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
     pretrain_weights: str | None = None
     include_source_image: bool = False

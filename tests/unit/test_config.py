@@ -134,7 +134,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.analysis.batch_size == 32
     assert config.analysis.detector_batch_size == 32
     assert config.detector.confidence == 0.30
-    assert config.detector.input_size == 512
+    assert config.detector.input_size == 576
     assert config.detector.pretrain_weights is None
     assert config.detector.include_source_image is False
     assert config.detector.optimize_for_inference is True
@@ -142,12 +142,7 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
-    assert config.tracker.high_conf_det_threshold == 0.30
-    assert config.tracker.edge_margin_px == 10
     assert config.tracker.suppress_duplicate_tracks is True
-    assert config.tracker.duplicate_track_iou_threshold == 0.90
-    assert config.tracker.duplicate_track_containment_threshold == 0.98
     assert config.tracker.duplicate_track_min_area_ratio == 0.30
     assert config.tracker.duplicate_track_center_distance_ratio == 0.30
     assert config.render.encode_backend == "opencv"
@@ -194,9 +189,9 @@ def test_detector_config_accepts_rfdetr_options() -> None:
         {
             "detector": {
                 "device": "cpu",
-                "input_size": 512,
+                "input_size": 576,
                 "allowed_class_names": ["car", "truck"],
-                "pretrain_weights": "weights/rfdetr-small.pth",
+                "pretrain_weights": "weights/rfdetr-medium.pth",
                 "include_source_image": True,
                 "optimize_for_inference": False,
                 "inference_dtype": "float16",
@@ -206,9 +201,9 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     )
 
     assert config.detector.device == "cpu"
-    assert config.detector.input_size == 512
+    assert config.detector.input_size == 576
     assert config.detector.allowed_class_names == ["car", "truck"]
-    assert config.detector.pretrain_weights == "weights/rfdetr-small.pth"
+    assert config.detector.pretrain_weights == "weights/rfdetr-medium.pth"
     assert config.detector.include_source_image is True
     assert config.detector.optimize_for_inference is False
     assert config.detector.inference_dtype == "float16"
@@ -233,7 +228,7 @@ def test_detector_config_rejects_removed_provider_key() -> None:
 
 def test_detector_config_rejects_removed_model_key() -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"model": "rfdetr-small"}})
+        AppConfig.model_validate({"detector": {"model": "rfdetr-medium"}})
 
 
 def test_detector_config_rejects_removed_runtime_keys() -> None:

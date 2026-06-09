@@ -18,7 +18,7 @@ If `--camera-id` is omitted for `analyze` or `run`, the full frame is used as th
 
 ## Environment
 
-This project uses local RF-DETR-S inference. Install project dependencies:
+This project uses local RF-DETR-M inference. Install project dependencies:
 
 ```bash
 pip install -e .
@@ -33,12 +33,12 @@ installed and discoverable by Pillow. On Debian/Ubuntu systems, install the
 
 ## Model Setup
 
-The default detector is RF-DETR-S through Roboflow's `rfdetr` package. RF-DETR-S
-uses a 512x512 detector input by default. The first run may download and cache
+The default detector is RF-DETR-M through Roboflow's `rfdetr` package. RF-DETR-M
+uses a 576x576 detector input by default. The first run may download and cache
 the pretrained COCO checkpoint through the package.
 
 For offline reproducibility, set `detector.pretrain_weights` to a local
-RF-DETR-S checkpoint path.
+RF-DETR-M checkpoint path.
 
 ## Google Colab T4
 
@@ -87,6 +87,11 @@ that color flag. The flag is rendered separately from OpenCV text and scales
 with the label according to the tracked vehicle's box width. Set
 `render.label_flag_gap_px` to control the scaled horizontal gap between the flag
 and make/model text.
+
+The live render overlay uses the same catalog to show the top counted makes with
+origin flags, descending counts, and proportional bars. It uses the same
+accepted-label, visibility, and counting rules as the legacy live counter;
+Roboflow detector and tracker behavior is unchanged.
 
 ## Powertrain Catalog
 
@@ -175,6 +180,8 @@ output/<run-id>/
 - The installed BoT-SORT implementation associates tracks using Kalman motion, IoU, and detection confidence; it does not use appearance/ReID features. `tracker.max_reassociation_gap_seconds` retires IDs that return after a longer absence instead of allowing a stale ID to attach to another vehicle. Set it to `null` to disable this guard.
 - `tracker.lost_track_buffer` is a 30-FPS-equivalent value that the `trackers` package scales by the analysis FPS; it is not a direct count of analysis frames.
 - Rendering shows make, model, generation, and variation when available.
+- The live render overlay shows the top counted makes with origin flags and
+  proportional bars once accepted MMR labels are available.
 - `report.csv` contains one row per identified vehicle. It preserves the
   detailed MMR fields and affirmative tags as boolean columns with matching
   confidence columns so downstream analytics can aggregate the CSV as needed.

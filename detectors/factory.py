@@ -4,8 +4,8 @@ from pathlib import Path
 
 from config import AppConfig
 from detectors.base import Detector
-from detectors.rfdetr_local import RfDetrSmallDetector
+from detectors.rfdetr_local import RfDetrMediumDetector
 
 
 def create_detector(config: AppConfig, project_root: Path) -> Detector:
-    return RfDetrSmallDetector(config=config, project_root=project_root)
+    return RfDetrMediumDetector(config=config, project_root=project_root)

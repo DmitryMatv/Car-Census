@@ -22,7 +22,7 @@ Maintain a strict type-safety direction for the project.
 
 ## Environment & Setup
 
-- Default detector is RF-DETR-S through the `rfdetr` package at 512x512.
+- Default detector is RF-DETR-M through the `rfdetr` package at 576x576.
   Optional local offline checkpoint path: `detector.pretrain_weights`.
 - Tracking uses Roboflow's `trackers` package. Do not create a local top-level
   Python package named `trackers`; it collides with the third-party dependency.
