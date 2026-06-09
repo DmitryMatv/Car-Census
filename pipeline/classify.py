@@ -8,6 +8,7 @@ from config import AppConfig
 from mmr.trafficeye import TrafficEyeClient
 from models import CropCandidate, MMRResult, TrackSummary
 from pipeline.analysis_crops import rank_crop_candidate
+from pipeline.sequential_duplicates import deduplicate_classified_tracks
 from storage.run_store import RunStore
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,9 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 labels_by_track[summary.track_id] = result
 
     run_store.labels.write(labels_by_track)
+    if hasattr(run_store, "frames") and hasattr(run_store.labels, "read"):
+        deduplicate_classified_tracks(config=config, run_store=run_store)
+        labels_by_track = run_store.labels.read()
     logger.info("Classification complete for %s tracks", len(labels_by_track))
     return labels_by_track
 

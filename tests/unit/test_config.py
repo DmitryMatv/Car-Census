@@ -32,27 +32,27 @@ def test_camera_profile_accepts_polygon_without_count_line() -> None:
 def test_edge_touch_filtering_is_enabled_by_default() -> None:
     config = AppConfig()
     assert config.tracker.ignore_edge_touches is True
-    assert config.tracker.edge_margin_px == 0
+    assert config.tracker.edge_margin_px == 10
 
 
-def test_tracker_config_uses_roboflow_botsort_defaults() -> None:
+def test_tracker_config_uses_recommended_split_swap_mitigation_defaults() -> None:
     config = AppConfig()
 
-    assert config.tracker.lost_track_buffer == 30
-    assert config.tracker.max_reassociation_gap_seconds == 0.5
-    assert config.tracker.track_activation_threshold == 0.35
+    assert config.tracker.lost_track_buffer == 12
+    assert config.tracker.max_reassociation_gap_seconds == 0.35
+    assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_first_assoc == 0.2
-    assert config.tracker.minimum_iou_threshold_second_assoc == 0.5
-    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.3
-    assert config.tracker.high_conf_det_threshold == 0.35
+    assert config.tracker.minimum_iou_threshold_first_assoc == 0.25
+    assert config.tracker.minimum_iou_threshold_second_assoc == 0.50
+    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
+    assert config.tracker.high_conf_det_threshold == 0.30
     assert config.tracker.enable_cmc is False
     assert config.tracker.cmc_method == "sparseOptFlow"
     assert config.tracker.cmc_downscale == 2
     assert config.tracker.instant_first_frame_activation is True
     assert config.tracker.suppress_duplicate_tracks is True
-    assert config.tracker.duplicate_track_iou_threshold == 0.90
-    assert config.tracker.duplicate_track_containment_threshold == 0.98
+    assert config.tracker.duplicate_track_iou_threshold == 0.80
+    assert config.tracker.duplicate_track_containment_threshold == 0.95
     assert config.tracker.duplicate_track_min_area_ratio == 0.30
     assert config.tracker.duplicate_track_center_distance_ratio == 0.30
 
@@ -81,6 +81,50 @@ def test_tracker_config_accepts_duplicate_suppression_options() -> None:
     assert config.tracker.duplicate_track_containment_threshold == 0.99
     assert config.tracker.duplicate_track_min_area_ratio == 0.40
     assert config.tracker.duplicate_track_center_distance_ratio == 0.20
+
+
+def test_tracker_config_accepts_sequential_duplicate_options() -> None:
+    config = AppConfig.model_validate(
+        {
+            "tracker": {
+                "suppress_sequential_duplicate_tracks": False,
+                "sequential_duplicate_max_gap_seconds": 0.40,
+                "sequential_duplicate_prediction_error_ratio": 0.20,
+                "sequential_duplicate_min_width_ratio": 0.80,
+                "sequential_duplicate_min_height_ratio": 0.75,
+                "sequential_duplicate_min_handoff_iou": 0.15,
+                "sequential_duplicate_require_same_color": False,
+            }
+        }
+    )
+
+    assert config.tracker.suppress_sequential_duplicate_tracks is False
+    assert config.tracker.sequential_duplicate_max_gap_seconds == 0.40
+    assert config.tracker.sequential_duplicate_prediction_error_ratio == 0.20
+    assert config.tracker.sequential_duplicate_min_width_ratio == 0.80
+    assert config.tracker.sequential_duplicate_min_height_ratio == 0.75
+    assert config.tracker.sequential_duplicate_min_handoff_iou == 0.15
+    assert config.tracker.sequential_duplicate_require_same_color is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("sequential_duplicate_max_gap_seconds", 0.0),
+        ("sequential_duplicate_prediction_error_ratio", -0.1),
+        ("sequential_duplicate_min_width_ratio", 0.0),
+        ("sequential_duplicate_min_width_ratio", 1.1),
+        ("sequential_duplicate_min_height_ratio", 0.0),
+        ("sequential_duplicate_min_height_ratio", 1.1),
+        ("sequential_duplicate_min_handoff_iou", -0.1),
+        ("sequential_duplicate_min_handoff_iou", 1.1),
+    ],
+)
+def test_tracker_config_rejects_invalid_sequential_duplicate_bounds(
+    field: str, value: float
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"tracker": {field: value}})
 
 
 def test_tracker_config_rejects_null_cmc_method() -> None:

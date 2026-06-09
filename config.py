@@ -50,26 +50,33 @@ class DetectorConfig(StrictBaseModel):
 
 
 class TrackerConfig(StrictBaseModel):
-    lost_track_buffer: int = 30
-    max_reassociation_gap_seconds: float | None = Field(default=0.5, ge=0.0)
-    track_activation_threshold: float = 0.35
+    lost_track_buffer: int = 12
+    max_reassociation_gap_seconds: float | None = Field(default=0.35, ge=0.0)
+    track_activation_threshold: float = 0.30
     minimum_consecutive_frames: int = 2
-    minimum_iou_threshold_first_assoc: float = 0.2
-    minimum_iou_threshold_second_assoc: float = 0.5
-    minimum_iou_threshold_unconfirmed_assoc: float = 0.3
-    high_conf_det_threshold: float = 0.35
+    minimum_iou_threshold_first_assoc: float = 0.25
+    minimum_iou_threshold_second_assoc: float = 0.50
+    minimum_iou_threshold_unconfirmed_assoc: float = 0.20
+    high_conf_det_threshold: float = 0.30
     enable_cmc: bool = False
     cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
     cmc_downscale: int = 2
     instant_first_frame_activation: bool = True
     frame_rate: int = 0
     ignore_edge_touches: bool = True
-    edge_margin_px: int = 0
+    edge_margin_px: int = 10
     suppress_duplicate_tracks: bool = True
-    duplicate_track_iou_threshold: float = Field(default=0.90, gt=0.0, le=1.0)
-    duplicate_track_containment_threshold: float = Field(default=0.98, gt=0.0, le=1.0)
+    duplicate_track_iou_threshold: float = Field(default=0.80, gt=0.0, le=1.0)
+    duplicate_track_containment_threshold: float = Field(default=0.95, gt=0.0, le=1.0)
     duplicate_track_min_area_ratio: float = Field(default=0.30, ge=0.0, le=1.0)
     duplicate_track_center_distance_ratio: float = Field(default=0.30, ge=0.0)
+    suppress_sequential_duplicate_tracks: bool = True
+    sequential_duplicate_max_gap_seconds: float = Field(default=0.35, gt=0.0)
+    sequential_duplicate_prediction_error_ratio: float = Field(default=0.25, ge=0.0)
+    sequential_duplicate_min_width_ratio: float = Field(default=0.75, gt=0.0, le=1.0)
+    sequential_duplicate_min_height_ratio: float = Field(default=0.70, gt=0.0, le=1.0)
+    sequential_duplicate_min_handoff_iou: float = Field(default=0.10, ge=0.0, le=1.0)
+    sequential_duplicate_require_same_color: bool = True
 
 
 class RenderSmoothingConfig(StrictBaseModel):
