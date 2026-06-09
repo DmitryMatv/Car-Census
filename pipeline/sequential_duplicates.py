@@ -45,27 +45,50 @@ class _DisjointSet:
         return {item: self.find(item) for item in self._parent}
 
 
-def _identity_tuple(label: MMRResult, *, require_same_color: bool) -> tuple[str, ...]:
+def _identity_tuple(
+    label: MMRResult,
+    *,
+    require_same_color: bool,
+    require_same_generation: bool,
+    require_same_variation: bool,
+) -> tuple[str, ...]:
     values = [
         label.category,
         label.make,
         label.model,
-        label.generation,
-        label.variation,
     ]
+    if require_same_generation:
+        values.append(label.generation)
+    if require_same_variation:
+        values.append(label.variation)
     if require_same_color:
         values.append(label.color)
     return tuple("" if value is None else value.strip().casefold() for value in values)
 
 
 def _labels_match(
-    left: MMRResult, right: MMRResult, *, require_same_color: bool
+    left: MMRResult,
+    right: MMRResult,
+    *,
+    require_same_color: bool,
+    require_same_generation: bool,
+    require_same_variation: bool,
 ) -> bool:
     return (
         left.accepted
         and right.accepted
-        and _identity_tuple(left, require_same_color=require_same_color)
-        == _identity_tuple(right, require_same_color=require_same_color)
+        and _identity_tuple(
+            left,
+            require_same_color=require_same_color,
+            require_same_generation=require_same_generation,
+            require_same_variation=require_same_variation,
+        )
+        == _identity_tuple(
+            right,
+            require_same_color=require_same_color,
+            require_same_generation=require_same_generation,
+            require_same_variation=require_same_variation,
+        )
     )
 
 
@@ -345,6 +368,8 @@ def _thresholds(config: AppConfig) -> dict[str, object]:
         "min_height_ratio": tracker.sequential_duplicate_min_height_ratio,
         "min_handoff_iou": tracker.sequential_duplicate_min_handoff_iou,
         "require_same_color": tracker.sequential_duplicate_require_same_color,
+        "require_same_generation": tracker.sequential_duplicate_require_same_generation,
+        "require_same_variation": tracker.sequential_duplicate_require_same_variation,
     }
 
 
@@ -389,6 +414,8 @@ def deduplicate_classified_tracks(
                 left_label,
                 right_label,
                 require_same_color=config.tracker.sequential_duplicate_require_same_color,
+                require_same_generation=config.tracker.sequential_duplicate_require_same_generation,
+                require_same_variation=config.tracker.sequential_duplicate_require_same_variation,
             ):
                 continue
             passes_geometry, metrics = _passes_geometry(config, left, right)

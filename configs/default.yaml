@@ -66,7 +66,9 @@ tracker:
   sequential_duplicate_min_width_ratio: 0.75
   sequential_duplicate_min_height_ratio: 0.70
   sequential_duplicate_min_handoff_iou: 0.10
-  sequential_duplicate_require_same_color: true
+  sequential_duplicate_require_same_color: false
+  sequential_duplicate_require_same_generation: false
+  sequential_duplicate_require_same_variation: false
 
 mmr:
   api_url: https://trafficeye.ai/recognition
@@ -84,7 +86,7 @@ mmr:
   batch_cell_size_px: 512
 
 render:
-  codec: avc1
+  codec: mp4v
   min_visible_track_observations: 5
   require_crop_eligible_track: true
   show_unclassified_tracks: false

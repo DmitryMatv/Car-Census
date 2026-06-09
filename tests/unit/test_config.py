@@ -94,6 +94,8 @@ def test_tracker_config_accepts_sequential_duplicate_options() -> None:
                 "sequential_duplicate_min_height_ratio": 0.75,
                 "sequential_duplicate_min_handoff_iou": 0.15,
                 "sequential_duplicate_require_same_color": False,
+                "sequential_duplicate_require_same_generation": False,
+                "sequential_duplicate_require_same_variation": False,
             }
         }
     )
@@ -105,6 +107,8 @@ def test_tracker_config_accepts_sequential_duplicate_options() -> None:
     assert config.tracker.sequential_duplicate_min_height_ratio == 0.75
     assert config.tracker.sequential_duplicate_min_handoff_iou == 0.15
     assert config.tracker.sequential_duplicate_require_same_color is False
+    assert config.tracker.sequential_duplicate_require_same_generation is False
+    assert config.tracker.sequential_duplicate_require_same_variation is False
 
 
 @pytest.mark.parametrize(

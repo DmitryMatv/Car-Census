@@ -77,6 +77,8 @@ class TrackerConfig(StrictBaseModel):
     sequential_duplicate_min_height_ratio: float = Field(default=0.70, gt=0.0, le=1.0)
     sequential_duplicate_min_handoff_iou: float = Field(default=0.10, ge=0.0, le=1.0)
     sequential_duplicate_require_same_color: bool = True
+    sequential_duplicate_require_same_generation: bool = True
+    sequential_duplicate_require_same_variation: bool = True
 
 
 class RenderSmoothingConfig(StrictBaseModel):

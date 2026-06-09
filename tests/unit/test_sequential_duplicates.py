@@ -36,6 +36,7 @@ def _label(
     make: str = "Toyota",
     model: str = "Corolla",
     generation: str = "E210",
+    variation: str = "sedan",
     color: str = "white",
 ) -> MMRResult:
     return MMRResult(
@@ -43,7 +44,7 @@ def _label(
         make=make,
         model=model,
         generation=generation,
-        variation="sedan",
+        variation=variation,
         color=color,
         accepted=True,
         vehicle_index=vehicle_index,
@@ -147,6 +148,50 @@ def test_sequential_duplicate_allows_color_differs_when_not_required(tmp_path) -
 
     deduplicate_classified_tracks(
         _config(sequential_duplicate_require_same_color=False), store
+    )
+
+    assert store.labels.read()[2].vehicle_index == 1
+
+
+def test_sequential_duplicate_no_merge_when_generation_differs_and_required(
+    tmp_path,
+) -> None:
+    store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, generation="E211")})
+
+    deduplicate_classified_tracks(_config(), store)
+
+    assert store.labels.read()[2].vehicle_index == 2
+
+
+def test_sequential_duplicate_allows_generation_differs_when_not_required(
+    tmp_path,
+) -> None:
+    store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, generation="E211")})
+
+    deduplicate_classified_tracks(
+        _config(sequential_duplicate_require_same_generation=False), store
+    )
+
+    assert store.labels.read()[2].vehicle_index == 1
+
+
+def test_sequential_duplicate_no_merge_when_variation_differs_and_required(
+    tmp_path,
+) -> None:
+    store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, variation="wagon")})
+
+    deduplicate_classified_tracks(_config(), store)
+
+    assert store.labels.read()[2].vehicle_index == 2
+
+
+def test_sequential_duplicate_allows_variation_differs_when_not_required(
+    tmp_path,
+) -> None:
+    store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, variation="wagon")})
+
+    deduplicate_classified_tracks(
+        _config(sequential_duplicate_require_same_variation=False), store
     )
 
     assert store.labels.read()[2].vehicle_index == 1
