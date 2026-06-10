@@ -64,7 +64,7 @@ def test_decode_image_raises_for_invalid_image_bytes(tmp_path) -> None:
         decode_image(b"not-an-image", image_path)
 
 
-def test_traffic_eye_acceptance_requires_make_and_model(tmp_path) -> None:
+def test_traffic_eye_acceptance_requires_make_confidence_and_model(tmp_path) -> None:
     config = AppConfig.model_validate({"mmr": {"accept_model_confidence": 0.30}})
     client = TrafficEyeClient(
         config=config,
@@ -106,7 +106,7 @@ def test_traffic_eye_acceptance_requires_make_and_model(tmp_path) -> None:
     assert make_only.accepted is False
     assert model_only.accepted is False
     assert low_make_confidence.accepted is False
-    assert low_model_confidence.accepted is False
+    assert low_model_confidence.accepted is True
     assert accepted.accepted is True
 
 
@@ -211,6 +211,40 @@ def test_match_batch_results_prefers_combination_order_before_box_fallback(
         tmp_path / "second.jpg",
     ]
     assert results[1].raw["skipped_reason"] == "batch_no_mmr_result"
+
+
+def test_parse_mmr_response_replaces_underscores_with_spaces() -> None:
+    payload = {
+        "combinations": [
+            {
+                "roadUsers": [
+                    {
+                        "box": {
+                            "position": {
+                                "topLeftCol": 0,
+                                "topLeftRow": 0,
+                                "bottomRightCol": 20,
+                                "bottomRightRow": 20,
+                            }
+                        },
+                        "mmr": {
+                            "make": {"value": "Hyundai", "score": 0.95},
+                            "model": {"value": "Santa_Fe", "score": 0.93},
+                            "generation": {"value": "Mk_IV (2018)", "score": 0.91},
+                            "variation": {"value": "Ultimate", "score": 0.80},
+                        },
+                    }
+                ]
+            }
+        ]
+    }
+
+    result = parse_mmr_response(payload)
+
+    assert result.make == "Hyundai"
+    assert result.model == "Santa Fe"
+    assert result.generation == "Mk IV (2018)"
+    assert result.variation == "Ultimate"
 
 
 def test_parse_mmr_response_reads_largest_detected_road_user() -> None:

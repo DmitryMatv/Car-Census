@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 import supervision as sv
 from trackers import BoTSORTTracker
 

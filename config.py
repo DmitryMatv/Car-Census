@@ -71,11 +71,11 @@ class TrackerConfig(StrictBaseModel):
     duplicate_track_min_area_ratio: float = Field(default=0.30, ge=0.0, le=1.0)
     duplicate_track_center_distance_ratio: float = Field(default=0.30, ge=0.0)
     suppress_sequential_duplicate_tracks: bool = True
-    sequential_duplicate_max_gap_seconds: float = Field(default=0.35, gt=0.0)
-    sequential_duplicate_prediction_error_ratio: float = Field(default=0.25, ge=0.0)
-    sequential_duplicate_min_width_ratio: float = Field(default=0.75, gt=0.0, le=1.0)
-    sequential_duplicate_min_height_ratio: float = Field(default=0.70, gt=0.0, le=1.0)
-    sequential_duplicate_min_handoff_iou: float = Field(default=0.10, ge=0.0, le=1.0)
+    sequential_duplicate_max_gap_seconds: float = Field(default=0.50, gt=0.0)
+    sequential_duplicate_prediction_error_ratio: float = Field(default=0.70, ge=0.0)
+    sequential_duplicate_min_width_ratio: float = Field(default=0.65, gt=0.0, le=1.0)
+    sequential_duplicate_min_height_ratio: float = Field(default=0.65, gt=0.0, le=1.0)
+    sequential_duplicate_min_handoff_iou: float = Field(default=0.05, ge=0.0, le=1.0)
     sequential_duplicate_require_same_color: bool = True
     sequential_duplicate_require_same_generation: bool = True
     sequential_duplicate_require_same_variation: bool = True

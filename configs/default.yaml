@@ -24,12 +24,12 @@ detector:
   allowed_class_names:
     - car
     - truck
-    # - small truck
-    # - mid truck
-    # - big truck
-    # - pickup
-    # - pickup truck
-    # - van
+    - small truck
+    - mid truck
+    - big truck
+    - pickup
+    - pickup truck
+    - van
     # - bus
     # - motorcycle
   pretrain_weights: null
@@ -61,11 +61,11 @@ tracker:
   duplicate_track_min_area_ratio: 0.30
   duplicate_track_center_distance_ratio: 0.30
   suppress_sequential_duplicate_tracks: true
-  sequential_duplicate_max_gap_seconds: 0.35
-  sequential_duplicate_prediction_error_ratio: 0.25
-  sequential_duplicate_min_width_ratio: 0.75
-  sequential_duplicate_min_height_ratio: 0.70
-  sequential_duplicate_min_handoff_iou: 0.10
+  sequential_duplicate_max_gap_seconds: 0.55
+  sequential_duplicate_prediction_error_ratio: 0.70
+  sequential_duplicate_min_width_ratio: 0.65
+  sequential_duplicate_min_height_ratio: 0.65
+  sequential_duplicate_min_handoff_iou: 0.05
   sequential_duplicate_require_same_color: false
   sequential_duplicate_require_same_generation: false
   sequential_duplicate_require_same_variation: false

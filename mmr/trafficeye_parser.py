@@ -22,12 +22,12 @@ def _coerce_label(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        stripped = value.strip()
+        stripped = value.strip().replace("_", " ")
         return stripped or None
     if isinstance(value, dict):
         nested = value.get("value") or value.get("name") or value.get("label")
         if isinstance(nested, str):
-            stripped = nested.strip()
+            stripped = nested.strip().replace("_", " ")
             return stripped or None
     return None
 
