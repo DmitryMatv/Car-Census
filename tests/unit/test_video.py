@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -15,6 +16,69 @@ from utils.video import (
     iter_video_frames,
     validate_video_fps,
 )
+
+
+class _FakeFFmpegProcess:
+    def __init__(
+        self,
+        *,
+        stdin,
+        stdout,
+        return_code: int,
+    ) -> None:
+        self.stdin = BytesIO() if stdin == video_module.subprocess.PIPE else None
+        self.stdout = BytesIO() if stdout == video_module.subprocess.PIPE else None
+        self.stderr = None
+        self._return_code = return_code
+
+    def wait(self) -> int:
+        return self._return_code
+
+
+def _install_fake_ffmpeg_process(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    return_code: int = 0,
+    stderr: bytes = b"",
+) -> list[tuple[list[str], dict[str, object]]]:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_popen(command, **kwargs):
+        stderr_target = kwargs["stderr"]
+        stderr_target.write(stderr)
+        stderr_target.flush()
+        calls.append((command, kwargs))
+        return _FakeFFmpegProcess(
+            stdin=kwargs.get("stdin"),
+            stdout=kwargs.get("stdout"),
+            return_code=return_code,
+        )
+
+    monkeypatch.setattr(video_module.subprocess, "Popen", fake_popen)
+    return calls
+
+
+def _raw_ffmpeg_writer(tmp_path: Path):
+    return video_module.FFmpegRawVideoWriter(
+        output_path=tmp_path / "raw.mp4",
+        fps=30.0,
+        width=16,
+        height=16,
+        ffmpeg_path="ffmpeg",
+        encoder="h264_nvenc",
+        preset="p4",
+        cq=23,
+    )
+
+
+def _cpu_ffmpeg_writer(tmp_path: Path):
+    return video_module.FFmpegCPUFrameWriter(
+        output_path=tmp_path / "cpu.mp4",
+        fps=30.0,
+        width=16,
+        height=16,
+        ffmpeg_path="ffmpeg",
+    )
 
 
 def test_iter_video_frames_yields_every_frame_with_configured_timestamps(
@@ -176,6 +240,80 @@ def test_validate_video_fps_rejects_unknown_fps() -> None:
 
     with pytest.raises(RuntimeError, match="Could not determine input video FPS"):
         validate_video_fps(metadata, expected_fps=30.0, tolerance=0.05)
+
+
+def test_ffmpeg_streaming_processes_disable_progress_and_use_file_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _install_fake_ffmpeg_process(monkeypatch)
+    raw_writer = _raw_ffmpeg_writer(tmp_path)
+    cpu_writer = _cpu_ffmpeg_writer(tmp_path)
+    decoder = video_module.FFmpegFrameDecoder(tmp_path / "input.mp4")
+
+    try:
+        assert len(calls) == 3
+        for command, kwargs in calls:
+            assert command[1:5] == [
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostats",
+            ]
+            assert kwargs["stderr"] != video_module.subprocess.PIPE
+            assert hasattr(kwargs["stderr"], "seek")
+    finally:
+        raw_writer.release()
+        cpu_writer.release()
+        decoder.close()
+
+
+def test_ffmpeg_temp_stderr_preserves_failure_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_fake_ffmpeg_process(
+        monkeypatch,
+        return_code=1,
+        stderr=b"simulated ffmpeg failure",
+    )
+    writer = _cpu_ffmpeg_writer(tmp_path)
+
+    with pytest.raises(RuntimeError, match="simulated ffmpeg failure"):
+        writer.release()
+
+    assert writer._stderr_file.closed
+
+
+@pytest.mark.parametrize("process_kind", ["raw", "cpu", "decoder"])
+def test_ffmpeg_start_failure_closes_temp_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process_kind: str,
+) -> None:
+    created_stderr_files = []
+    temporary_file = video_module.tempfile.TemporaryFile
+
+    def tracked_temporary_file(*args, **kwargs):
+        handle = temporary_file(*args, **kwargs)
+        created_stderr_files.append(handle)
+        return handle
+
+    def fail_popen(*args, **kwargs):
+        _ = args, kwargs
+        raise OSError("cannot start")
+
+    monkeypatch.setattr(video_module.tempfile, "TemporaryFile", tracked_temporary_file)
+    monkeypatch.setattr(video_module.subprocess, "Popen", fail_popen)
+
+    with pytest.raises(RuntimeError, match="Could not start FFmpeg"):
+        if process_kind == "raw":
+            _raw_ffmpeg_writer(tmp_path)
+        elif process_kind == "cpu":
+            _cpu_ffmpeg_writer(tmp_path)
+        else:
+            video_module.FFmpegFrameDecoder(tmp_path / "input.mp4")
+
+    assert len(created_stderr_files) == 1
+    assert created_stderr_files[0].closed
 
 
 def test_build_frame_writer_uses_opencv_backend(tmp_path: Path) -> None:

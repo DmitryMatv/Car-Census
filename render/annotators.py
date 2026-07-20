@@ -15,6 +15,21 @@ from render.label_emojis import TAG_EMOJI_ORDER
 
 _EMOJI_FONT_NAME = "NotoColorEmoji.ttf"
 _EMOJI_FONT_NATIVE_SIZE = 109
+_MAKE_STATS_BAR_COLOR = "#D6D6D6"
+_MAKE_STATS_PULSE_BAR_COLOR = "#E8E8E8"
+_MAKE_STATS_TRACK_COLOR = "#505050"
+_MAKE_STATS_SEPARATOR_COLOR = "#8A8A8A"
+_MAKE_STATS_PULSE_FRAMES = 8
+_MAKE_STATS_ROW_EASING = 0.35
+_MAKE_STATS_PROGRESS_EASING = 0.30
+
+
+@dataclass(frozen=True)
+class MakeStatisticRow:
+    make: str
+    origin_flag: str | None
+    count: int
+    progress: float
 
 
 @dataclass(frozen=True)
@@ -46,6 +61,10 @@ class _LabelLineLayout:
 class VideoAnnotator:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
+        self._make_row_y_by_make: dict[str, float] = {}
+        self._make_progress_by_make: dict[str, float] = {}
+        self._make_count_by_make: dict[str, int] = {}
+        self._make_pulse_frames_by_make: dict[str, int] = {}
 
     def annotate(
         self,
@@ -54,31 +73,322 @@ class VideoAnnotator:
         labels_by_track: dict[int, str],
         counter_value: int | None = None,
         label_text_colors_by_track: Mapping[int, str] | None = None,
+        make_statistics_rows: Sequence[MakeStatisticRow] = (),
     ) -> np.ndarray:
-        annotated = frame.copy()
+        draw_items: list[tuple[float, TrackedObject, str, str | None]] = []
         for track in tracks:
-            _draw_track_box(annotated, track, self.config)
-        label_draw_items: list[tuple[float, int, TrackedObject, str]] = []
-        for index, track in enumerate(tracks):
             label = labels_by_track.get(
                 track.track_id, self.config.render.unknown_label
             )
-            label_draw_items.append((track.bbox.area, index, track, label))
-        for _, _, track, display_label in sorted(label_draw_items):
+            text_color = (
+                label_text_colors_by_track.get(track.track_id)
+                if label_text_colors_by_track is not None
+                else None
+            )
+            draw_items.append((track.bbox.area, track, label, text_color))
+        draw_items.sort(key=lambda item: item[0])
+
+        annotated = frame.copy()
+        for track in tracks:
+            _draw_track_box(annotated, track, self.config)
+        for _, track, label, tc in draw_items:
             _draw_track_label(
                 annotated,
                 track,
-                display_label,
+                label,
                 self.config,
-                text_color=(
-                    label_text_colors_by_track.get(track.track_id)
-                    if label_text_colors_by_track is not None
-                    else None
-                ),
+                text_color=tc,
             )
-        if self.config.render.counter_enabled and counter_value is not None:
-            _draw_counter(annotated, counter_value, self.config)
+
+        if self.config.render.counter_enabled:
+            if make_statistics_rows:
+                self._draw_make_statistics(
+                    annotated,
+                    make_statistics_rows,
+                    counter_value=counter_value,
+                )
+            elif counter_value is not None:
+                _draw_counter(annotated, counter_value, self.config)
         return annotated
+
+    def _draw_make_statistics(
+        self,
+        frame: np.ndarray,
+        rows: Sequence[MakeStatisticRow],
+        *,
+        counter_value: int | None,
+    ) -> None:
+        font = cv2.FONT_HERSHEY_DUPLEX
+        scale = max(0.45, self.config.render.label_font_scale)
+        total_scale = scale * 1.12
+        thickness = max(1, self.config.render.label_thickness)
+        padding = max(2, self.config.render.label_padding_px * 2)
+        row_gap = max(2, padding // 3)
+        total_gap = max(4, padding // 2)
+        column_gap = max(4, padding)
+        flag_gap = max(0, self.config.render.label_flag_gap_px)
+        frame_height, frame_width = frame.shape[:2]
+        if frame_height <= padding * 2 or frame_width <= padding * 2:
+            return
+
+        (_, text_height), baseline = cv2.getTextSize("Ag", font, scale, thickness)
+        row_height = int(text_height) + max(2, int(baseline))
+        (_, total_text_height), total_baseline = cv2.getTextSize(
+            str(counter_value or 0),
+            font,
+            total_scale,
+            thickness,
+        )
+        total_row_height = int(total_text_height) + max(2, int(total_baseline))
+        total_block_height = total_gap + 1 + total_gap + total_row_height
+        available_height = frame_height - padding * 2
+        max_rows = max(
+            0,
+            (available_height - padding * 2 - total_block_height + row_gap)
+            // (row_height + row_gap),
+        )
+        visible_rows = list(rows[:max_rows])
+        if not visible_rows:
+            return
+
+        count_width = max(
+            cv2.getTextSize(str(row.count), font, scale, thickness)[0][0]
+            for row in visible_rows
+        )
+        flag_widths = [
+            int(
+                _render_flag_emoji(
+                    row.origin_flag,
+                    max(1, int(text_height)),
+                ).shape[1]
+            )
+            for row in visible_rows
+            if row.origin_flag
+        ]
+        flag_slot_width = max(flag_widths, default=0)
+        bar_width = max(32, round(120 * scale))
+        bar_height = max(4, round(text_height * 0.38))
+        desired_make_width = max(
+            cv2.getTextSize(row.make, font, scale, thickness)[0][0]
+            for row in visible_rows
+        )
+        max_panel_width = frame_width - padding * 2
+        fixed_width = (
+            padding * 2
+            + flag_slot_width
+            + (flag_gap if flag_slot_width else 0)
+            + column_gap
+            + count_width
+            + column_gap
+            + bar_width
+        )
+        make_width = min(desired_make_width, max(0, max_panel_width - fixed_width))
+        if make_width <= 0:
+            return
+        panel_width = min(max_panel_width, fixed_width + make_width)
+        panel_height = (
+            padding * 2
+            + len(visible_rows) * row_height
+            + (len(visible_rows) - 1) * row_gap
+            + total_block_height
+        )
+        if panel_width <= 0 or panel_height <= 0:
+            return
+
+        x1, y1 = _counter_origin(
+            frame_width=frame_width,
+            frame_height=frame_height,
+            box_width=panel_width,
+            box_height=panel_height,
+            padding=padding,
+            position=self.config.render.counter_position,
+        )
+        x2 = min(frame_width, x1 + panel_width)
+        y2 = min(frame_height, y1 + panel_height)
+        if x2 <= x1 or y2 <= y1:
+            return
+
+        panel_region = frame[y1:y2, x1:x2]
+        overlay = panel_region.copy()
+        cv2.rectangle(
+            overlay,
+            (0, 0),
+            (x2 - x1, y2 - y1),
+            _hex_to_bgr(self.config.render.label_bg_color),
+            -1,
+        )
+        cv2.addWeighted(
+            overlay,
+            self.config.render.label_bg_alpha,
+            panel_region,
+            1.0 - self.config.render.label_bg_alpha,
+            0,
+            dst=panel_region,
+        )
+        panel = panel_region.copy()
+
+        row_stride = row_height + row_gap
+        visible_labels = {row.make for row in visible_rows}
+        for label in set(self._make_row_y_by_make) - visible_labels:
+            self._make_row_y_by_make.pop(label, None)
+            self._make_progress_by_make.pop(label, None)
+            self._make_count_by_make.pop(label, None)
+            self._make_pulse_frames_by_make.pop(label, None)
+
+        animated_rows: list[tuple[float, MakeStatisticRow, float, int]] = []
+        for index, row in enumerate(visible_rows):
+            label = row.make
+            target_y = float(index * row_stride)
+            previous_y = self._make_row_y_by_make.get(
+                label,
+                target_y + row_stride,
+            )
+            current_y = previous_y + (target_y - previous_y) * _MAKE_STATS_ROW_EASING
+            self._make_row_y_by_make[label] = current_y
+
+            previous_progress = self._make_progress_by_make.get(label, 0.0)
+            target_progress = min(max(row.progress, 0.0), 1.0)
+            current_progress = (
+                previous_progress
+                + (target_progress - previous_progress) * _MAKE_STATS_PROGRESS_EASING
+            )
+            self._make_progress_by_make[label] = current_progress
+
+            previous_count = self._make_count_by_make.get(label)
+            if previous_count is None or row.count > previous_count:
+                self._make_pulse_frames_by_make[label] = _MAKE_STATS_PULSE_FRAMES
+            self._make_count_by_make[label] = row.count
+
+            pulse_frames = self._make_pulse_frames_by_make.get(label, 0)
+            animated_rows.append((current_y, row, current_progress, pulse_frames))
+
+        text_color = _hex_to_bgr(self.config.render.label_text_color)
+        bar_color = _hex_to_bgr(_MAKE_STATS_BAR_COLOR)
+        pulse_bar_color = _hex_to_bgr(_MAKE_STATS_PULSE_BAR_COLOR)
+        track_color = _hex_to_bgr(_MAKE_STATS_TRACK_COLOR)
+        separator_color = _hex_to_bgr(_MAKE_STATS_SEPARATOR_COLOR)
+
+        for animated_y, row, animated_progress, pulse_frames in sorted(
+            animated_rows, key=lambda item: item[0]
+        ):
+            row_top = padding + round(animated_y)
+            baseline_y = row_top + int(text_height)
+            if row_top + row_height < 0 or row_top >= panel.shape[0]:
+                continue
+
+            text_x = padding
+            if flag_slot_width and row.origin_flag:
+                flag_image = _render_flag_emoji(
+                    row.origin_flag,
+                    max(1, int(text_height)),
+                )
+                _alpha_composite_rgba(
+                    panel,
+                    flag_image,
+                    text_x,
+                    baseline_y - int(flag_image.shape[0]),
+                )
+            text_x += flag_slot_width + (flag_gap if flag_slot_width else 0)
+
+            display_make = _truncate_text_to_width(
+                row.make,
+                max_width=make_width,
+                font=font,
+                scale=scale,
+                thickness=thickness,
+            )
+            cv2.putText(
+                panel,
+                display_make,
+                (text_x, baseline_y),
+                font,
+                scale,
+                text_color,
+                thickness,
+                cv2.LINE_AA,
+            )
+
+            count_text = str(row.count)
+            count_text_width = cv2.getTextSize(
+                count_text,
+                font,
+                scale,
+                thickness,
+            )[0][0]
+            count_x = text_x + make_width + column_gap + count_width - count_text_width
+            cv2.putText(
+                panel,
+                count_text,
+                (count_x, baseline_y),
+                font,
+                scale,
+                text_color,
+                thickness,
+                cv2.LINE_AA,
+            )
+
+            bar_x = text_x + make_width + column_gap + count_width + column_gap
+            bar_y = row_top + max(0, (row_height - bar_height) // 2)
+            cv2.rectangle(
+                panel,
+                (bar_x, bar_y),
+                (bar_x + bar_width, bar_y + bar_height),
+                track_color,
+                -1,
+            )
+            fill_width = max(1, round(bar_width * animated_progress))
+            cv2.rectangle(
+                panel,
+                (bar_x, bar_y),
+                (bar_x + fill_width, bar_y + bar_height),
+                pulse_bar_color if pulse_frames > 0 else bar_color,
+                -1,
+            )
+            cv2.rectangle(
+                panel,
+                (bar_x, bar_y),
+                (bar_x + bar_width, bar_y + bar_height),
+                bar_color,
+                max(1, thickness),
+            )
+            if pulse_frames > 0:
+                self._make_pulse_frames_by_make[row.make] = pulse_frames - 1
+
+        total_separator_y = (
+            padding
+            + len(visible_rows) * row_height
+            + (len(visible_rows) - 1) * row_gap
+            + total_gap
+        )
+        cv2.line(
+            panel,
+            (padding, total_separator_y),
+            (max(padding, panel.shape[1] - padding), total_separator_y),
+            separator_color,
+            1,
+            cv2.LINE_AA,
+        )
+        total_text = str(counter_value or 0)
+        total_text_size = cv2.getTextSize(
+            total_text,
+            font,
+            total_scale,
+            thickness,
+        )[0]
+        total_x = max(0, (panel.shape[1] - total_text_size[0]) // 2)
+        total_baseline_y = total_separator_y + total_gap + int(total_text_height)
+        cv2.putText(
+            panel,
+            total_text,
+            (total_x, total_baseline_y),
+            font,
+            total_scale,
+            text_color,
+            thickness,
+            cv2.LINE_AA,
+        )
+
+        panel_region[:] = panel
 
 
 def _hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
@@ -89,6 +399,30 @@ def _hex_to_bgr(hex_color: str) -> tuple[int, int, int]:
     green = int(normalized[2:4], 16)
     blue = int(normalized[4:6], 16)
     return blue, green, red
+
+
+def _truncate_text_to_width(
+    text: str,
+    *,
+    max_width: int,
+    font: int,
+    scale: float,
+    thickness: int,
+) -> str:
+    if max_width <= 0:
+        return ""
+    if cv2.getTextSize(text, font, scale, thickness)[0][0] <= max_width:
+        return text
+    ellipsis = "..."
+    if cv2.getTextSize(ellipsis, font, scale, thickness)[0][0] > max_width:
+        return ""
+    truncated = text.rstrip()
+    while truncated:
+        candidate = f"{truncated}{ellipsis}"
+        if cv2.getTextSize(candidate, font, scale, thickness)[0][0] <= max_width:
+            return candidate
+        truncated = truncated[:-1].rstrip()
+    return ellipsis
 
 
 def _is_flag_emoji(value: str) -> bool:
@@ -436,7 +770,7 @@ def _counter_origin(
 def _draw_counter(frame: np.ndarray, value: int, config: AppConfig) -> None:
     text = f"{value}"
     font = cv2.FONT_HERSHEY_DUPLEX
-    scale = config.render.label_font_scale * 2
+    scale = config.render.label_font_scale
     thickness = max(1, config.render.label_thickness)
     padding = config.render.label_padding_px * 2
     (text_width, text_height), baseline = cv2.getTextSize(

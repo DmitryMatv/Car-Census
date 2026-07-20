@@ -8,13 +8,12 @@ video:
 
 analysis:
   fps: 10
-  batch_size: 32
-  detector_batch_size: 32
+  batch_size: 64
   min_track_frames: 5
   min_box_width_px: 96
   crop_padding_ratio: 0.05
   crop_padding_px: 2
-  crop_target_box_range_ratio: 0.69420
+  crop_target_box_range_ratio: 0.777
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
 
@@ -75,36 +74,32 @@ mmr:
   api_key_env: TRAFFICEYE_API_KEY
   timeout_seconds: 30
   accept_model_confidence: 0.50
-  tasks:
-    - DETECTION
-    - MMR
-  requested_detection_types:
-    - BOX
   mmr_preference: BOX
-  batch_size: 25
-  batch_grid_columns: 5
+  batch_size: 1
+  batch_grid_columns: 1
   batch_cell_size_px: 512
 
 render:
   codec: mp4v
+  # workers: 8
   min_visible_track_observations: 5
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
-  box_enabled: true
+  box_enabled: false
   box_alpha: 0.5
   box_thickness: 2
-  label_font_scale: 0.5
+  label_font_scale: 1
   label_thickness: 1
   label_padding_px: 6
   label_gap_px: 2
   label_flag_gap_px: 4
   label_text_color: "#FFFFFF"
-  label_bev_text_color: "#33C1FF"
+  label_bev_text_color: "#47C8FF"
   label_mixed_text_color: "#39FF31"
   label_bg_color: "#000000"
-  label_bg_alpha: 0.35
-  label_scale_reference_box_width_px: 100
+  label_bg_alpha: 0.333
+  label_scale_reference_box_width_px: 200
   counter_enabled: true
   counter_position: top_left
   unknown_label: UNKNOWN

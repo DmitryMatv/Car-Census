@@ -101,8 +101,6 @@ class MMRConfig(StrictBaseModel):
     api_key_env: str = "TRAFFICEYE_API_KEY"
     timeout_seconds: float = 45.0
     accept_model_confidence: float = 0.60
-    tasks: list[str] = Field(default_factory=lambda: ["DETECTION", "MMR"])
-    requested_detection_types: list[str] = Field(default_factory=lambda: ["BOX"])
     mmr_preference: str = "BOX"
     batch_size: int = Field(default=16, ge=1)
     batch_grid_columns: int = Field(default=4, ge=1)
@@ -112,7 +110,8 @@ class MMRConfig(StrictBaseModel):
 class RenderConfig(StrictBaseModel):
     codec: str = "mp4v"
     output_fps: float | None = Field(default=None, gt=0.0)
-    encode_backend: Literal["opencv", "auto-nvenc", "ffmpeg-nvenc"] = "opencv"
+    encode_backend: Literal["opencv", "ffmpeg", "auto-nvenc", "ffmpeg-nvenc"] = "opencv"
+    workers: int = Field(default=1, ge=1)
     ffmpeg_path: str = "ffmpeg"
     nvenc_codec: str = "h264_nvenc"
     nvenc_preset: str = "p4"
@@ -133,8 +132,8 @@ class RenderConfig(StrictBaseModel):
     label_bev_text_color: str = "#00BFFF"
     label_mixed_text_color: str = "#39FF14"
     label_bg_color: str = "#000000"
-    label_bg_alpha: float = Field(default=0.35, ge=0.0, le=1.0)
-    label_scale_reference_box_width_px: int = Field(default=90, gt=0)
+    label_bg_alpha: float = Field(default=0.25, ge=0.0, le=1.0)
+    label_scale_reference_box_width_px: int = Field(default=200, gt=0)
     counter_enabled: bool = True
     counter_position: Literal[
         "top_left", "top_right", "bottom_left", "bottom_right"

@@ -34,8 +34,6 @@ class TrafficEyeClient:
             )
         self.cache_dir = cache_dir
         self.accept_model_confidence = config.mmr.accept_model_confidence
-        self.tasks = config.mmr.tasks
-        self.requested_detection_types = config.mmr.requested_detection_types
         self.mmr_preference = config.mmr.mmr_preference
         self.batch_size = config.mmr.batch_size
         self.batch_grid_columns = config.mmr.batch_grid_columns
@@ -52,12 +50,29 @@ class TrafficEyeClient:
             http_client_factory=httpx.Client,
         )
 
-    def _request_payload(self) -> dict[str, Any]:
-        return {
-            "tasks": self.tasks,
-            "requestedDetectionTypes": self.requested_detection_types,
+    def _request_payload(self, width: int = 0, height: int = 0) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "tasks": ["MMR"],
             "mmrPreference": self.mmr_preference,
         }
+        if width > 0 and height > 0:
+            payload["combinations"] = [
+                {
+                    "roadUsers": [
+                        {
+                            "box": {
+                                "position": {
+                                    "topLeftCol": 0,
+                                    "topLeftRow": 0,
+                                    "bottomRightCol": width,
+                                    "bottomRightRow": height,
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        return payload
 
     def _mark_acceptance(self, result: MMRResult) -> MMRResult:
         make_confidence = result.make_confidence or 0.0
@@ -91,8 +106,9 @@ class TrafficEyeClient:
 
     def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
         image_bytes = image_path.read_bytes()
-        decode_image(image_bytes, image_path)
-        request_payload = self._request_payload()
+        image = decode_image(image_bytes, image_path)
+        height, width = image.shape[:2]
+        request_payload = self._request_payload(width=width, height=height)
         payload, _cache_key = self._cache_client.load_or_request(
             image_bytes=image_bytes,
             filename=image_path.name,

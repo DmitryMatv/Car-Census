@@ -571,12 +571,25 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
     client.recognize_vehicle_crop(image_path)
 
     request = captured["request"]
-    assert request["tasks"] == ["DETECTION", "MMR"]
-    assert request["requestedDetectionTypes"] == ["BOX"]
+    assert request["tasks"] == ["MMR"]
     assert request["mmrPreference"] == "BOX"
-    assert "OCR" not in request["tasks"]
-    assert "PLATE" not in request["requestedDetectionTypes"]
-    assert "combinations" not in request
+    assert "requestedDetectionTypes" not in request
+    assert request["combinations"] == [
+        {
+            "roadUsers": [
+                {
+                    "box": {
+                        "position": {
+                            "topLeftCol": 0,
+                            "topLeftRow": 0,
+                            "bottomRightCol": 20,
+                            "bottomRightRow": 10,
+                        }
+                    }
+                }
+            ]
+        }
+    ]
 
 
 def test_traffic_eye_client_batches_crops_with_manual_boxes(

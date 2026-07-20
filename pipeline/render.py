@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import logging
+import queue
 import re
+import sys
+import threading
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
 
@@ -17,7 +21,7 @@ from mmr.powertrain_catalog import (
     lookup_powertrain_class,
 )
 from models import FrameRecord, MMRResult, TrackedObject, TrackSummary
-from render.annotators import VideoAnnotator
+from render.annotators import MakeStatisticRow, VideoAnnotator
 from render.label_emojis import TAG_EMOJI_BY_REPORT_COLUMN, TAG_EMOJI_ORDER
 from storage.run_store import RunStore
 from utils.video import (
@@ -216,7 +220,7 @@ def _label_text_and_colors_by_track(
     allow_unclassified_annotations: bool,
     origin_country_by_make: Mapping[str, str],
     powertrain_catalog: PowertrainCatalog,
-) -> tuple[dict[int, str], dict[int, str]]:
+) -> tuple[dict[int, str], dict[int, str], dict[int, MMRResult]]:
     labels = run_store.labels.read()
     if labels:
         accepted_labels = {
@@ -241,7 +245,7 @@ def _label_text_and_colors_by_track(
             )
             is not None
         }
-        return label_text, label_text_colors
+        return label_text, label_text_colors, accepted_labels
     if allow_unclassified_annotations or config.render.show_unclassified_tracks:
         return (
             visible_track_label_text_by_track(
@@ -251,8 +255,33 @@ def _label_text_and_colors_by_track(
                 config.render.unknown_label,
             ),
             {},
+            {},
         )
-    return {}, {}
+    return {}, {}, {}
+
+
+def _make_statistics_rows(
+    make_by_vehicle_index: Mapping[int, str],
+    origin_country_by_make: Mapping[str, str],
+    *,
+    row_limit: int = 15,
+) -> list[MakeStatisticRow]:
+    label_counts: Counter[str] = Counter(make_by_vehicle_index.values())
+    if not label_counts:
+        return []
+    top_items = sorted(label_counts.items(), key=lambda item: (-item[1], item[0]))[
+        :row_limit
+    ]
+    top_count = max(count for _, count in top_items)
+    return [
+        MakeStatisticRow(
+            make=make,
+            origin_flag=origin_country_by_make.get(make),
+            count=count,
+            progress=count / top_count,
+        )
+        for make, count in top_items
+    ]
 
 
 def _output_fps(config: AppConfig) -> float:
@@ -293,6 +322,193 @@ def _iter_render_frames(
     return iter_video_frames(video_path, config.video.fps)
 
 
+_END_OF_STREAM: object = object()
+_QUEUE_WAIT_SECONDS = 0.1
+_WORKER_JOIN_TIMEOUT_SECONDS = 5.0
+_QueueItem = TypeVar("_QueueItem")
+
+
+def _put_until_cancelled(
+    target_queue: queue.Queue[_QueueItem],
+    item: _QueueItem,
+    cancel: threading.Event,
+) -> bool:
+    while not cancel.is_set():
+        try:
+            target_queue.put(item, timeout=_QUEUE_WAIT_SECONDS)
+            return True
+        except queue.Full:
+            continue
+    return False
+
+
+def _decode_worker(
+    frame_iter: Iterator[tuple[int, float, np.ndarray]],
+    out_queue: queue.Queue[tuple[int, float, np.ndarray] | object],
+    cancel: threading.Event,
+    error_q: queue.Queue[BaseException],
+) -> None:
+    try:
+        for item in frame_iter:
+            if not _put_until_cancelled(out_queue, item, cancel):
+                break
+    except Exception as exc:
+        cancel.set()
+        error_q.put(exc)
+    finally:
+        _put_until_cancelled(out_queue, _END_OF_STREAM, cancel)
+
+
+def _encode_worker(
+    in_queue: queue.Queue[np.ndarray | object],
+    writer: FrameWriter,
+    cancel: threading.Event,
+    error_q: queue.Queue[BaseException],
+) -> None:
+    try:
+        while not cancel.is_set():
+            try:
+                item = in_queue.get(timeout=_QUEUE_WAIT_SECONDS)
+            except queue.Empty:
+                continue
+            if item is _END_OF_STREAM:
+                break
+            if isinstance(item, np.ndarray):
+                writer.write(item)
+    except Exception as exc:
+        cancel.set()
+        error_q.put(exc)
+    finally:
+        try:
+            writer.release()
+        except Exception as exc:
+            cancel.set()
+            error_q.put(exc)
+
+
+def _render_annotated_frames_pipeline(
+    *,
+    frame_iter: Iterator[tuple[int, float, np.ndarray]],
+    record_iter: Iterator[FrameRecord],
+    annotator: VideoAnnotator,
+    writer: FrameWriter,
+    label_text: dict[int, str],
+    label_text_colors: dict[int, str],
+    accepted_labels_by_track: dict[int, MMRResult],
+    origin_country_by_make: Mapping[str, str],
+    visible_track_ids: set[int],
+    num_workers: int,
+) -> None:
+    decode_queue_size = max(1, num_workers * 2)
+    encode_queue_size = max(1, num_workers * 2)
+    decode_q: queue.Queue[tuple[int, float, np.ndarray] | object] = queue.Queue(
+        maxsize=decode_queue_size,
+    )
+    encode_q: queue.Queue[np.ndarray | object] = queue.Queue(
+        maxsize=encode_queue_size,
+    )
+    error_q: queue.Queue[BaseException] = queue.Queue()
+    cancel = threading.Event()
+
+    decode_thread = threading.Thread(
+        target=_decode_worker,
+        args=(frame_iter, decode_q, cancel, error_q),
+        daemon=True,
+    )
+    encode_thread = threading.Thread(
+        target=_encode_worker,
+        args=(encode_q, writer, cancel, error_q),
+        daemon=True,
+    )
+    decode_thread.start()
+    encode_thread.start()
+
+    queue_writer = _QueueFrameWriter(encode_q, cancel)
+    try:
+        _render_annotated_frames(
+            frame_iter=_iter_from_queue(decode_q, cancel),
+            record_iter=record_iter,
+            annotator=annotator,
+            writer=queue_writer,
+            label_text=label_text,
+            label_text_colors=label_text_colors,
+            accepted_labels_by_track=accepted_labels_by_track,
+            origin_country_by_make=origin_country_by_make,
+            visible_track_ids=visible_track_ids,
+        )
+        queue_writer.release()
+    except Exception:
+        cancel.set()
+        queue_writer.release()
+        raise
+    finally:
+        if cancel.is_set():
+            _drain_queue(decode_q)
+            _drain_queue(encode_q)
+        decode_thread.join(timeout=_WORKER_JOIN_TIMEOUT_SECONDS)
+        encode_thread.join(timeout=_WORKER_JOIN_TIMEOUT_SECONDS)
+        if sys.exc_info()[1] is None:
+            if not error_q.empty():
+                raise error_q.get()
+            live_workers = [
+                name
+                for name, thread in [
+                    ("decode", decode_thread),
+                    ("encode", encode_thread),
+                ]
+                if thread.is_alive()
+            ]
+            if live_workers:
+                cancel.set()
+                raise RuntimeError(
+                    "Render worker threads did not terminate: "
+                    + ", ".join(live_workers)
+                )
+
+
+def _iter_from_queue(
+    q: queue.Queue[tuple[int, float, np.ndarray] | object],
+    cancel: threading.Event,
+) -> Iterator[tuple[int, float, np.ndarray]]:
+    while not cancel.is_set():
+        try:
+            item = q.get(timeout=_QUEUE_WAIT_SECONDS)
+        except queue.Empty:
+            continue
+        if item is _END_OF_STREAM:
+            break
+        if isinstance(item, tuple):
+            yield item
+
+
+class _QueueFrameWriter:
+    def __init__(
+        self,
+        q: queue.Queue[np.ndarray | object],
+        cancel: threading.Event,
+    ) -> None:
+        self._q = q
+        self._cancel = cancel
+        self._released = False
+
+    def write(self, frame: np.ndarray) -> None:
+        _put_until_cancelled(self._q, frame, self._cancel)
+
+    def release(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        _put_until_cancelled(self._q, _END_OF_STREAM, self._cancel)
+
+
+def _drain_queue(q: queue.Queue[object]) -> None:
+    while True:
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break
+
+
 def _render_annotated_frames(
     *,
     frame_iter: Iterator[tuple[int, float, np.ndarray]],
@@ -301,11 +517,14 @@ def _render_annotated_frames(
     writer: FrameWriter,
     label_text: dict[int, str],
     label_text_colors: dict[int, str],
+    accepted_labels_by_track: dict[int, MMRResult],
+    origin_country_by_make: Mapping[str, str],
     visible_track_ids: set[int],
 ) -> None:
     current_record = next(record_iter, None)
     latest_tracks: list[TrackedObject] = []
     counted_vehicle_indices: set[int] = set()
+    counted_vehicle_make_by_index: dict[int, str] = {}
 
     for frame_index, _timestamp_seconds, frame in frame_iter:
         while current_record is not None and current_record.frame_index <= frame_index:
@@ -316,15 +535,34 @@ def _render_annotated_frames(
             for track in latest_tracks
             if track.track_id in label_text and track.track_id in visible_track_ids
         ]
+        seen_vehicle_indices: set[int] = set()
+        deduped_render_tracks: list[TrackedObject] = []
+        for track in render_tracks:
+            vi = track.vehicle_index
+            if vi is not None and vi in seen_vehicle_indices:
+                continue
+            if vi is not None:
+                seen_vehicle_indices.add(vi)
+            deduped_render_tracks.append(track)
+        render_tracks = deduped_render_tracks
         for track in render_tracks:
             if track.counted and track.vehicle_index is not None:
                 counted_vehicle_indices.add(track.vehicle_index)
+                if track.vehicle_index not in counted_vehicle_make_by_index:
+                    result = accepted_labels_by_track.get(track.track_id)
+                    make = result.make.strip() if result and result.make else ""
+                    if make:
+                        counted_vehicle_make_by_index[track.vehicle_index] = make
         annotated = annotator.annotate(
             frame=frame,
             tracks=render_tracks,
             labels_by_track=label_text,
             counter_value=len(counted_vehicle_indices),
             label_text_colors_by_track=label_text_colors,
+            make_statistics_rows=_make_statistics_rows(
+                counted_vehicle_make_by_index,
+                origin_country_by_make,
+            ),
         )
         writer.write(annotated)
 
@@ -349,32 +587,56 @@ def render_video(
     )
     origin_country_by_make: MakeCountryCatalog = load_default_make_country_catalog()
     powertrain_catalog: PowertrainCatalog = load_default_powertrain_catalog()
-    label_text, label_text_colors = _label_text_and_colors_by_track(
-        config,
-        run_store,
-        frames_path,
-        allow_unclassified_annotations,
-        origin_country_by_make,
-        powertrain_catalog,
+    label_text, label_text_colors, accepted_labels_by_track = (
+        _label_text_and_colors_by_track(
+            config,
+            run_store,
+            frames_path,
+            allow_unclassified_annotations,
+            origin_country_by_make,
+            powertrain_catalog,
+        )
     )
     annotator = VideoAnnotator(config)
     output_fps = _output_fps(config)
     writer = _build_render_writer(config, run_store, metadata, output_fps)
 
-    try:
-        _render_annotated_frames(
-            frame_iter=_iter_render_frames(config, video_path, output_fps),
-            record_iter=run_store.frames.iter(
-                smoothed=_uses_smoothed_frames(frames_path, run_store)
-            ),
+    frame_iter = _iter_render_frames(config, video_path, output_fps)
+    record_iter = run_store.frames.iter(
+        smoothed=_uses_smoothed_frames(frames_path, run_store)
+    )
+
+    if config.render.workers > 1:
+        logger.info(
+            "Rendering with %d workers (decode/encode pipelined)", config.render.workers
+        )
+        _render_annotated_frames_pipeline(
+            frame_iter=frame_iter,
+            record_iter=record_iter,
             annotator=annotator,
             writer=writer,
             label_text=label_text,
             label_text_colors=label_text_colors,
+            accepted_labels_by_track=accepted_labels_by_track,
+            origin_country_by_make=origin_country_by_make,
             visible_track_ids=visible_track_ids,
+            num_workers=config.render.workers,
         )
-    finally:
-        writer.release()
+    else:
+        try:
+            _render_annotated_frames(
+                frame_iter=frame_iter,
+                record_iter=record_iter,
+                annotator=annotator,
+                writer=writer,
+                label_text=label_text,
+                label_text_colors=label_text_colors,
+                accepted_labels_by_track=accepted_labels_by_track,
+                origin_country_by_make=origin_country_by_make,
+                visible_track_ids=visible_track_ids,
+            )
+        finally:
+            writer.release()
 
     logger.info("Rendered annotated video to %s", run_store.output_video_path)
     return run_store.output_video_path

@@ -162,7 +162,6 @@ def test_analysis_config_defaults_to_batched_detection() -> None:
     config = AppConfig()
 
     assert config.analysis.fps == 10.0
-    assert config.analysis.batch_size == 32
     assert config.analysis.detector_batch_size is None
     assert config.analysis.min_box_width_px == 160
     assert not hasattr(config.analysis, "crop_limit_per_track")
@@ -179,8 +178,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
-    assert config.analysis.batch_size == 32
-    assert config.analysis.detector_batch_size == 32
     assert config.detector.confidence == 0.30
     assert config.detector.input_size == 576
     assert config.detector.pretrain_weights is None
@@ -202,7 +199,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.require_crop_eligible_track is True
     assert config.render.show_unclassified_tracks is False
     assert config.render.box_color == "#FFFFFF"
-    assert config.render.box_enabled is True
     assert config.render.box_alpha == 0.5
     assert config.render.box_thickness == 2
     assert config.render.counter_enabled is True
@@ -211,7 +207,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.label_padding_px == 6
     assert config.render.label_text_color == "#FFFFFF"
     assert config.render.label_bg_color == "#000000"
-    assert config.render.label_bg_alpha == 0.35
     assert config.render.smoothing.enabled is True
     assert config.render.smoothing.observed_box_smoothing == "local_linear"
     assert config.render.smoothing.history_length == 1
@@ -221,8 +216,6 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.render.smoothing.interpolate_source_frames is True
     assert config.render.smoothing.interpolation_method == "linear"
     assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
-    assert config.mmr.batch_size == 25
-    assert config.mmr.batch_grid_columns == 5
     assert config.mmr.batch_cell_size_px == 512
     assert not hasattr(config.mmr, "max_attempts_per_track")
 

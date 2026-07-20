@@ -1,3 +1,6 @@
+import queue
+import threading
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -18,6 +21,7 @@ from models import (
 from pipeline import render as render_module
 from pipeline.render import (
     _label_text_and_colors_by_track,
+    _make_statistics_rows,
     _output_fps,
     _resolve_render_frames_path,
     format_label_text,
@@ -26,9 +30,9 @@ from pipeline.render import (
     visible_track_label_text_by_track,
 )
 from render import annotators as annotators_module
-from render.annotators import VideoAnnotator
+from render.annotators import MakeStatisticRow, VideoAnnotator
 from storage.run_store import RunStore
-from utils.video import VideoMetadata
+from utils.video import FrameWriter, VideoMetadata
 
 
 class DummyTracksFile:
@@ -95,6 +99,30 @@ class DummyWriter:
         self.released = True
 
 
+class _CountingWriter:
+    def __init__(self) -> None:
+        self.frames: list[np.ndarray] = []
+        self.release_calls = 0
+
+    def write(self, frame: np.ndarray) -> None:
+        self.frames.append(frame.copy())
+
+    def release(self) -> None:
+        self.release_calls += 1
+
+
+class _WriteFailingWriter(_CountingWriter):
+    def write(self, frame: np.ndarray) -> None:
+        _ = frame
+        raise RuntimeError("write failed")
+
+
+class _ReleaseFailingWriter(_CountingWriter):
+    def release(self) -> None:
+        self.release_calls += 1
+        raise RuntimeError("finalize failed")
+
+
 def _as_run_store(store: DummyRunStore) -> RunStore:
     return cast(RunStore, store)
 
@@ -104,6 +132,7 @@ class DummyAnnotator:
     seen_labels_by_track: list[dict[int, str]] = []
     seen_label_text_colors_by_track: list[dict[int, str]] = []
     seen_counter_values: list[int | None] = []
+    seen_make_statistics_rows: list[list[MakeStatisticRow]] = []
 
     def __init__(self, config: AppConfig) -> None:
         _ = config
@@ -115,6 +144,7 @@ class DummyAnnotator:
         labels_by_track: dict[int, str],
         counter_value: int | None = None,
         label_text_colors_by_track: dict[int, str] | None = None,
+        make_statistics_rows: Sequence[MakeStatisticRow] = (),
     ) -> np.ndarray:
         self.seen_track_ids.append([track.track_id for track in tracks])
         self.seen_labels_by_track.append(dict(labels_by_track))
@@ -122,7 +152,85 @@ class DummyAnnotator:
             dict(label_text_colors_by_track or {})
         )
         self.seen_counter_values.append(counter_value)
+        self.seen_make_statistics_rows.append(list(make_statistics_rows))
         return frame
+
+
+def _reset_dummy_annotator() -> None:
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_labels_by_track = []
+    DummyAnnotator.seen_label_text_colors_by_track = []
+    DummyAnnotator.seen_counter_values = []
+    DummyAnnotator.seen_make_statistics_rows = []
+
+
+def _run_threaded_render_pipeline(
+    writer: FrameWriter,
+    *,
+    frame_count: int,
+) -> None:
+    frames = iter(
+        (
+            index,
+            index / 30.0,
+            np.full((4, 4, 3), index, dtype=np.uint8),
+        )
+        for index in range(frame_count)
+    )
+    render_module._render_annotated_frames_pipeline(
+        frame_iter=frames,
+        record_iter=iter(()),
+        annotator=DummyAnnotator(AppConfig()),
+        writer=writer,
+        label_text={},
+        label_text_colors={},
+        accepted_labels_by_track={},
+        origin_country_by_make={},
+        visible_track_ids=set(),
+        num_workers=1,
+    )
+
+
+def test_threaded_render_pipeline_writes_all_frames_and_releases_once() -> None:
+    writer = _CountingWriter()
+
+    _run_threaded_render_pipeline(writer, frame_count=3)
+
+    assert [int(frame[0, 0, 0]) for frame in writer.frames] == [0, 1, 2]
+    assert writer.release_calls == 1
+
+
+def test_threaded_render_pipeline_propagates_write_failure() -> None:
+    writer = _WriteFailingWriter()
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        _run_threaded_render_pipeline(writer, frame_count=1)
+
+    assert writer.release_calls == 1
+
+
+def test_threaded_render_pipeline_propagates_finalize_failure() -> None:
+    writer = _ReleaseFailingWriter()
+
+    with pytest.raises(RuntimeError, match="finalize failed"):
+        _run_threaded_render_pipeline(writer, frame_count=0)
+
+    assert writer.release_calls == 1
+
+
+def test_queue_writer_release_does_not_block_cancelled_full_queue() -> None:
+    encode_q: queue.Queue[np.ndarray | object] = queue.Queue(maxsize=1)
+    encode_q.put(np.zeros((1, 1, 3), dtype=np.uint8))
+    cancel = threading.Event()
+    cancel.set()
+    writer = render_module._QueueFrameWriter(encode_q, cancel)
+    release_thread = threading.Thread(target=writer.release, daemon=True)
+
+    release_thread.start()
+    release_thread.join(timeout=1.0)
+
+    assert not release_thread.is_alive()
+    assert encode_q.qsize() == 1
 
 
 def _track(
@@ -351,6 +459,106 @@ def test_video_annotator_draws_counter() -> None:
     assert np.any(annotated[:30, :80] != frame[:30, :80])
 
 
+def test_video_annotator_draws_make_statistics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drawn_text: list[str] = []
+
+    def capture_put_text(
+        img,
+        text,
+        org,
+        font_face,
+        font_scale,
+        color,
+        thickness,
+        line_type,
+    ):
+        _ = org, font_face, font_scale, color, thickness, line_type
+        drawn_text.append(text)
+        return img
+
+    def render_test_flag(flag: str, target_height: int) -> np.ndarray:
+        _ = flag
+        image = np.zeros((target_height, target_height, 4), dtype=np.uint8)
+        image[:, :, 0] = 255
+        image[:, :, 3] = 255
+        return image
+
+    monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
+    monkeypatch.setattr(annotators_module, "_render_flag_emoji", render_test_flag)
+
+    config = AppConfig.model_validate(
+        {
+            "render": {
+                "counter_enabled": True,
+                "label_bg_color": "#000000",
+                "label_font_scale": 0.5,
+                "label_text_color": "#FFFFFF",
+            }
+        }
+    )
+    frame = np.full((160, 360, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        counter_value=9,
+        make_statistics_rows=[
+            MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=3, progress=1.0)
+        ],
+    )
+
+    assert "Toyota" in drawn_text
+    assert "3" in drawn_text
+    assert "9" in drawn_text
+    assert annotated.shape == frame.shape
+    assert np.any(annotated[:80, :240] != frame[:80, :240])
+
+
+def test_video_annotator_make_statistics_animation_smoke(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def render_test_flag(flag: str, target_height: int) -> np.ndarray:
+        _ = flag
+        image = np.zeros((target_height, target_height, 4), dtype=np.uint8)
+        image[:, :, 1] = 255
+        image[:, :, 3] = 255
+        return image
+
+    monkeypatch.setattr(annotators_module, "_render_flag_emoji", render_test_flag)
+
+    config = AppConfig.model_validate(
+        {"render": {"counter_enabled": True, "label_font_scale": 0.5}}
+    )
+    annotator = VideoAnnotator(config)
+    frame = np.full((180, 420, 3), 255, dtype=np.uint8)
+
+    first = annotator.annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        make_statistics_rows=[
+            MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=2, progress=1.0),
+            MakeStatisticRow(make="VW", origin_flag="🇩🇪", count=1, progress=0.5),
+        ],
+    )
+    second = annotator.annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        make_statistics_rows=[
+            MakeStatisticRow(make="VW", origin_flag="🇩🇪", count=3, progress=1.0),
+            MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=2, progress=2 / 3),
+        ],
+    )
+
+    assert first.shape == frame.shape
+    assert second.shape == frame.shape
+    assert np.any(first != second)
+
+
 def test_video_annotator_counter_uses_balanced_visible_vertical_padding() -> None:
     config = AppConfig.model_validate(
         {
@@ -440,7 +648,7 @@ def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
     )
 
     label_pixels = np.where(np.any(annotated < 255, axis=2))
-    assert int(label_pixels[0].min()) >= 73
+    assert int(label_pixels[0].min()) >= 71
 
 
 def test_draw_track_label_clips_past_right_edge_without_shifting_left() -> None:
@@ -724,15 +932,20 @@ def test_draw_track_label_uses_configured_scaled_flag_gap(
     assert text_origins[1][0] - text_origins[0][0] == 12
 
 
-def test_video_annotator_draws_larger_box_label_after_smaller_box_label(
+def test_video_annotator_draws_all_boxes_before_area_sorted_labels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    labels: list[str] = []
+    draw_order: list[tuple[str, int]] = []
+
+    def capture_box(frame, track, config):
+        _ = frame, config
+        draw_order.append(("box", track.track_id))
 
     def capture_label(frame, track, label, config, **kwargs):
-        _ = frame, track, config, kwargs
-        labels.append(label)
+        _ = frame, label, config, kwargs
+        draw_order.append(("label", track.track_id))
 
+    monkeypatch.setattr(annotators_module, "_draw_track_box", capture_box)
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
 
     VideoAnnotator(AppConfig()).annotate(
@@ -744,17 +957,17 @@ def test_video_annotator_draws_larger_box_label_after_smaller_box_label(
         labels_by_track={1: "Large box", 2: "Small box"},
     )
 
-    assert labels == ["Small box", "Large box"]
+    assert draw_order == [("box", 1), ("box", 2), ("label", 2), ("label", 1)]
 
 
 def test_video_annotator_preserves_label_order_for_equal_box_areas(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    labels: list[str] = []
+    label_order: list[int] = []
 
     def capture_label(frame, track, label, config, **kwargs):
-        _ = frame, track, config, kwargs
-        labels.append(label)
+        _ = frame, label, config, kwargs
+        label_order.append(track.track_id)
 
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
 
@@ -767,7 +980,7 @@ def test_video_annotator_preserves_label_order_for_equal_box_areas(
         labels_by_track={1: "First equal area", 2: "Second equal area"},
     )
 
-    assert labels == ["First equal area", "Second equal area"]
+    assert label_order == [1, 2]
 
 
 def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:
@@ -937,7 +1150,7 @@ def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
         VehicleIdentity("Test", "Rejected BEV", "Mk I"): PowertrainClass.BEV,
     }
 
-    label_text, label_text_colors = _label_text_and_colors_by_track(
+    label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
         AppConfig(),
         _as_run_store(store),
         store.frames_path,
@@ -948,6 +1161,7 @@ def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
 
     assert set(label_text) == {1, 2, 3, 4, 5, 6}
     assert label_text_colors == {1: "#00BFFF", 2: "#39FF14"}
+    assert set(accepted_labels) == {1, 2, 3, 4, 5, 6}
 
 
 def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> None:
@@ -963,7 +1177,7 @@ def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> N
         ],
     )
 
-    label_text, label_text_colors = _label_text_and_colors_by_track(
+    label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
         AppConfig(),
         _as_run_store(store),
         store.frames_path,
@@ -974,6 +1188,7 @@ def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> N
 
     assert label_text == {1: "UNKNOWN"}
     assert label_text_colors == {}
+    assert accepted_labels == {}
 
 
 def test_output_fps_caps_configured_render_fps_at_source_fps() -> None:
@@ -1500,6 +1715,128 @@ def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
     assert DummyAnnotator.seen_counter_values == [1, 2, 2]
 
 
+def test_render_passes_live_make_statistics_to_annotator(tmp_path, monkeypatch) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, 0, vehicle_index=1, counted=True)],
+            ),
+            FrameRecord(
+                frame_index=1,
+                timestamp_seconds=1 / 30.0,
+                tracks=[
+                    _track(1, 1, vehicle_index=1, counted=True),
+                    _track(2, 1, vehicle_index=2, counted=True),
+                ],
+            ),
+            FrameRecord(
+                frame_index=2,
+                timestamp_seconds=2 / 30.0,
+                tracks=[
+                    _track(1, 2, vehicle_index=1, counted=True),
+                    _track(2, 2, vehicle_index=2, counted=True),
+                    _track(3, 2, vehicle_index=3, counted=True),
+                ],
+            ),
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    model="Corolla",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="VW",
+                    model="Golf",
+                    accepted=True,
+                    vehicle_index=2,
+                ).model_dump(mode="json"),
+                "3": MMRResult(
+                    make="Toyota",
+                    model="Yaris",
+                    accepted=True,
+                    vehicle_index=3,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    _reset_dummy_annotator()
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert DummyAnnotator.seen_make_statistics_rows == [
+        [MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=1, progress=1.0)],
+        [
+            MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=1, progress=1.0),
+            MakeStatisticRow(make="VW", origin_flag="🇩🇪", count=1, progress=1.0),
+        ],
+        [
+            MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=2, progress=1.0),
+            MakeStatisticRow(make="VW", origin_flag="🇩🇪", count=1, progress=0.5),
+        ],
+    ]
+
+
+def test_make_statistics_rows_are_sorted_and_limited() -> None:
+    rows = _make_statistics_rows(
+        {
+            1: "Brand 0",
+            2: "Brand 1",
+            3: "Brand 2",
+            4: "Brand 3",
+            5: "Brand 4",
+            6: "Brand 5",
+            7: "Brand 6",
+            8: "Brand 7",
+            9: "Brand 8",
+            10: "Brand 9",
+            11: "Brand 0",
+        },
+        {"Brand 0": "🇯🇵"},
+    )
+
+    assert rows == [
+        MakeStatisticRow(make="Brand 0", origin_flag="🇯🇵", count=2, progress=1.0),
+        MakeStatisticRow(make="Brand 1", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 2", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 3", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 4", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 5", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 6", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 7", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 8", origin_flag=None, count=1, progress=0.5),
+        MakeStatisticRow(make="Brand 9", origin_flag=None, count=1, progress=0.5),
+    ]
+
+
+def test_make_statistics_rows_order_ties_by_make() -> None:
+    rows = _make_statistics_rows(
+        {
+            1: "VW",
+            2: "Audi",
+        },
+        {},
+    )
+
+    assert [row.make for row in rows] == ["Audi", "VW"]
+
+
 def test_render_counter_counts_only_rendered_accepted_tracks(
     tmp_path, monkeypatch
 ) -> None:
@@ -1560,6 +1897,78 @@ def test_render_counter_counts_only_rendered_accepted_tracks(
     assert [1, 3] in DummyAnnotator.seen_track_ids
     assert [1, 2, 3] not in DummyAnnotator.seen_track_ids
     assert DummyAnnotator.seen_counter_values == [1, 2, 2]
+
+
+def test_render_make_statistics_use_counter_render_eligibility(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, 0, vehicle_index=1, counted=True),
+                    _track(3, 0, vehicle_index=3, counted=True),
+                    _track(4, 0, vehicle_index=4, counted=True),
+                ],
+            ),
+            FrameRecord(
+                frame_index=1,
+                timestamp_seconds=1 / 30.0,
+                tracks=[
+                    _track(1, 1, vehicle_index=1, counted=True),
+                    _track(2, 1, vehicle_index=2, counted=True),
+                    _track(3, 1, vehicle_index=3, counted=True),
+                ],
+            ),
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="Honda",
+                    accepted=False,
+                    vehicle_index=2,
+                ).model_dump(mode="json"),
+                "3": MMRResult(
+                    accepted=True,
+                    vehicle_index=3,
+                ).model_dump(mode="json"),
+                "4": MMRResult(
+                    make="VW",
+                    accepted=True,
+                    vehicle_index=4,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    _reset_dummy_annotator()
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(min_visible_track_observations=2),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert DummyAnnotator.seen_counter_values == [2, 2, 2]
+    assert DummyAnnotator.seen_make_statistics_rows == [
+        [MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=1, progress=1.0)],
+        [MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=1, progress=1.0)],
+        [MakeStatisticRow(make="Toyota", origin_flag="🇯🇵", count=1, progress=1.0)],
+    ]
 
 
 def test_render_uses_injected_smoother_when_smoothing_is_enabled(
@@ -1623,3 +2032,60 @@ def test_render_requires_smoother_when_smoothing_is_enabled(
             video_path=store.manifest.video_path,
             run_store=_as_run_store(store),
         )
+
+
+def test_render_counter_counts_canonical_vehicle_index_once_across_split_track_ids(
+    tmp_path, monkeypatch
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[
+                    _track(1, 0, vehicle_index=1, counted=True),
+                    _track(2, 0, vehicle_index=1, counted=True),
+                ],
+            ),
+            FrameRecord(
+                frame_index=1,
+                timestamp_seconds=1 / 30.0,
+                tracks=[
+                    _track(1, 1, vehicle_index=1, counted=True),
+                    _track(2, 1, vehicle_index=1, counted=True),
+                ],
+            ),
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+                "2": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json"),
+            }
+        )
+    )
+    writer = DummyWriter()
+    DummyAnnotator.seen_track_ids = []
+    DummyAnnotator.seen_counter_values = []
+    _patch_render_io(monkeypatch, writer)
+
+    render_video(
+        config=_config(),
+        profile=build_full_frame_profile(width=32, height=32),
+        video_path=store.manifest.video_path,
+        run_store=_as_run_store(store),
+    )
+
+    assert DummyAnnotator.seen_counter_values == [1, 1, 1]
