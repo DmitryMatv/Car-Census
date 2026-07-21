@@ -8,7 +8,7 @@ video:
 
 analysis:
   fps: 10
-  batch_size: 64
+  batch_size: 16
   min_track_frames: 5
   min_box_width_px: 96
   crop_padding_ratio: 0.05
@@ -18,7 +18,9 @@ analysis:
   crop_jpeg_quality: 95
 
 detector:
-  confidence: 0.30
+  # Keep this below tracker.high_conf_det_threshold so BoT-SORT receives
+  # low-confidence detections for its native second association pass.
+  confidence: 0.15
   input_size: 576
   allowed_class_names:
     - car
@@ -31,11 +33,15 @@ detector:
     - van
     # - bus
     # - motorcycle
+  # RF-DETR can emit the same box under competing COCO labels such as car and truck.
+  # Suppress those duplicates before they can create parallel tracks.
+  nms_enabled: true
+  nms_iou_threshold: 0.80
+  nms_class_agnostic: true
   pretrain_weights: null
   include_source_image: false
   optimize_for_inference: true
   inference_dtype: auto
-  compile_for_inference: false
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
@@ -54,7 +60,7 @@ tracker:
   frame_rate: 0
   ignore_edge_touches: true
   edge_margin_px: 10
-  suppress_duplicate_tracks: true
+  suppress_duplicate_tracks: false
   duplicate_track_iou_threshold: 0.80
   duplicate_track_containment_threshold: 0.95
   duplicate_track_min_area_ratio: 0.30

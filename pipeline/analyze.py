@@ -89,8 +89,9 @@ def _finalize_analysis(
 
     vehicle_index_by_track = finalize_vehicle_identities(run_store, track_states)
     run_store.frames.rewrite_vehicle_indices(vehicle_index_by_track)
-    for state in track_states:
-        run_store.tracks.append(track_summary_from_state(state))
+    run_store.tracks.write_all(
+        track_summary_from_state(state) for state in track_states
+    )
     run_store.detection_stats.write(analysis_diagnostics_payload(diagnostics, detector))
 
 
@@ -134,43 +135,51 @@ def analyze_video(
         diagnostics=diagnostics,
     )
 
-    for sampled_frame, detections in iter_detected_sampled_frames(
-        detector=detector,
-        video_path=video_path,
-        source_fps=config.video.fps,
-        target_fps=analysis_fps,
-        profile=profile,
-        batch_size=config.analysis.detector_batch_size or config.analysis.batch_size,
-        iter_sampled_frames_func=_iter_analysis_sampled_frames,
+    with (
+        run_store.frames.open_writer() as frame_writer,
+        run_store.counts.open_writer() as count_writer,
     ):
-        diagnostics.total_sampled_frames += 1
-        global_detections = map_detections_to_global(detections, sampled_frame.offset)
-        edge_detection_bboxes = edge_suppression.detection_edge_bboxes(
-            global_detections,
-            frame_shape=sampled_frame.frame.shape,
-            roi_shape=sampled_frame.roi_frame.shape,
-            roi_offset=sampled_frame.offset,
-        )
-
-        diagnostics.detections_passed_to_tracker += len(global_detections)
-        tracked = tracker.update(global_detections, sampled_frame.frame)
-        update_result = track_updater.process_tracker_outputs(
-            tracked=tracked,
-            frame_input=FrameTrackingInput(
-                frame_index=sampled_frame.frame_index,
-                timestamp_seconds=sampled_frame.timestamp_seconds,
-                frame=sampled_frame.frame,
-                roi_frame=sampled_frame.roi_frame,
-                roi_offset=sampled_frame.offset,
-                detections=global_detections,
+        for sampled_frame, detections in iter_detected_sampled_frames(
+            detector=detector,
+            video_path=video_path,
+            source_fps=config.video.fps,
+            target_fps=analysis_fps,
+            profile=profile,
+            batch_size=(
+                config.analysis.detector_batch_size or config.analysis.batch_size
             ),
-            edge_detection_bboxes=edge_detection_bboxes,
-        )
-        if update_result.tracker_ids_to_drop:
-            tracker.drop_tracks(update_result.tracker_ids_to_drop)
-        run_store.frames.append(update_result.frame_record)
-        for count_event in update_result.counted_events:
-            run_store.counts.append(count_event)
+            iter_sampled_frames_func=_iter_analysis_sampled_frames,
+        ):
+            diagnostics.total_sampled_frames += 1
+            global_detections = map_detections_to_global(
+                detections, sampled_frame.offset
+            )
+            edge_detection_bboxes = edge_suppression.detection_edge_bboxes(
+                global_detections,
+                frame_shape=sampled_frame.frame.shape,
+                roi_shape=sampled_frame.roi_frame.shape,
+                roi_offset=sampled_frame.offset,
+            )
+
+            diagnostics.detections_passed_to_tracker += len(global_detections)
+            tracked = tracker.update(global_detections, sampled_frame.frame)
+            update_result = track_updater.process_tracker_outputs(
+                tracked=tracked,
+                frame_input=FrameTrackingInput(
+                    frame_index=sampled_frame.frame_index,
+                    timestamp_seconds=sampled_frame.timestamp_seconds,
+                    frame=sampled_frame.frame,
+                    roi_frame=sampled_frame.roi_frame,
+                    roi_offset=sampled_frame.offset,
+                    detections=global_detections,
+                ),
+                edge_detection_bboxes=edge_detection_bboxes,
+            )
+            if update_result.tracker_ids_to_drop:
+                tracker.drop_tracks(update_result.tracker_ids_to_drop)
+            frame_writer.write(update_result.frame_record)
+            for count_event in update_result.counted_events:
+                count_writer.write(count_event)
 
     _finalize_analysis(
         run_store=run_store,

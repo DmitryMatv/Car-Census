@@ -7,6 +7,7 @@ from config import (
     FULL_FRAME_CAMERA_ID,
     AppConfig,
     CameraProfile,
+    CountLineConfig,
     build_full_frame_profile,
     load_app_config,
 )
@@ -50,7 +51,7 @@ def test_tracker_config_uses_recommended_split_swap_mitigation_defaults() -> Non
     assert config.tracker.cmc_method == "sparseOptFlow"
     assert config.tracker.cmc_downscale == 2
     assert config.tracker.instant_first_frame_activation is True
-    assert config.tracker.suppress_duplicate_tracks is True
+    assert config.tracker.suppress_duplicate_tracks is False
     assert config.tracker.duplicate_track_iou_threshold == 0.80
     assert config.tracker.duplicate_track_containment_threshold == 0.95
     assert config.tracker.duplicate_track_min_area_ratio == 0.30
@@ -162,6 +163,10 @@ def test_analysis_config_defaults_to_batched_detection() -> None:
     config = AppConfig()
 
     assert config.analysis.fps == 10.0
+    assert config.analysis.batch_size == 16
+    assert config.detector.nms_enabled is True
+    assert config.detector.nms_iou_threshold == 0.80
+    assert config.detector.nms_class_agnostic is True
     assert config.analysis.detector_batch_size is None
     assert config.analysis.min_box_width_px == 160
     assert not hasattr(config.analysis, "crop_limit_per_track")
@@ -178,16 +183,19 @@ def test_render_config_accepts_visual_defaults() -> None:
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
     assert config.analysis.fps == 10.0
-    assert config.detector.confidence == 0.30
+    assert config.analysis.batch_size == 16
+    assert config.detector.confidence == 0.15
     assert config.detector.input_size == 576
+    assert config.detector.nms_enabled is True
+    assert config.detector.nms_iou_threshold == 0.80
+    assert config.detector.nms_class_agnostic is True
     assert config.detector.pretrain_weights is None
     assert config.detector.include_source_image is False
     assert config.detector.optimize_for_inference is True
     assert config.detector.inference_dtype == "auto"
-    assert config.detector.compile_for_inference is False
     assert config.tracker.track_activation_threshold == 0.30
     assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.suppress_duplicate_tracks is True
+    assert config.tracker.suppress_duplicate_tracks is False
     assert config.tracker.duplicate_track_min_area_ratio == 0.30
     assert config.tracker.duplicate_track_center_distance_ratio == 0.30
     assert config.render.encode_backend == "opencv"
@@ -232,11 +240,13 @@ def test_detector_config_accepts_rfdetr_options() -> None:
                 "device": "cpu",
                 "input_size": 576,
                 "allowed_class_names": ["car", "truck"],
+                "nms_enabled": False,
+                "nms_iou_threshold": 0.90,
+                "nms_class_agnostic": False,
                 "pretrain_weights": "weights/rfdetr-medium.pth",
                 "include_source_image": True,
                 "optimize_for_inference": False,
                 "inference_dtype": "float16",
-                "compile_for_inference": True,
             }
         }
     )
@@ -244,11 +254,67 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     assert config.detector.device == "cpu"
     assert config.detector.input_size == 576
     assert config.detector.allowed_class_names == ["car", "truck"]
+    assert config.detector.nms_enabled is False
+    assert config.detector.nms_iou_threshold == 0.90
+    assert config.detector.nms_class_agnostic is False
     assert config.detector.pretrain_weights == "weights/rfdetr-medium.pth"
     assert config.detector.include_source_image is True
     assert config.detector.optimize_for_inference is False
     assert config.detector.inference_dtype == "float16"
-    assert config.detector.compile_for_inference is True
+
+
+def test_detector_config_rejects_removed_compile_for_inference() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"compile_for_inference": True}})
+
+
+@pytest.mark.parametrize("threshold", [0.0, 1.01])
+def test_detector_config_rejects_invalid_nms_threshold(threshold: float) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"nms_iou_threshold": threshold}})
+
+
+@pytest.mark.parametrize("confidence", [-0.01, 1.01])
+def test_detector_config_rejects_out_of_range_confidence(confidence: float) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"detector": {"confidence": confidence}})
+
+
+@pytest.mark.parametrize("threshold", [-0.01, 1.01])
+def test_tracker_config_rejects_out_of_range_high_confidence_threshold(
+    threshold: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"tracker": {"high_conf_det_threshold": threshold}})
+
+
+@pytest.mark.parametrize("detector_confidence", [0.30, 0.31])
+def test_config_requires_detector_floor_below_tracker_high_confidence_threshold(
+    detector_confidence: float,
+) -> None:
+    with pytest.raises(ValidationError, match="low-confidence association stage"):
+        AppConfig.model_validate(
+            {
+                "detector": {"confidence": detector_confidence},
+                "tracker": {"high_conf_det_threshold": 0.30},
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"start": [0], "end": [10, 10]},
+        {"start": [0, 0, 1], "end": [10, 10]},
+        {"start": [0, 0], "end": [0, 0]},
+        {"start": [0, 0], "end": [10, 10], "direction": "SIDEWAYS"},
+    ],
+)
+def test_count_line_config_rejects_invalid_geometry_and_direction(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        CountLineConfig.model_validate(payload)
 
 
 def test_detector_config_accepts_explicit_float32_inference_dtype() -> None:
@@ -276,7 +342,6 @@ def test_detector_config_rejects_removed_runtime_keys() -> None:
     for key, value in [
         ("weights", "weights/legacy-detector.bin"),
         ("iou", 0.45),
-        ("nms_iou_threshold", 0.90),
         ("execution_providers", ["CPUExecutionProvider"]),
         ("require_gpu", False),
         ("input_dtype", "auto"),

@@ -24,6 +24,7 @@ from pipeline.run import run_pipeline
 from pipeline.smooth import smooth_render_tracks
 from roi.editor import edit_camera_profile
 from storage.run_store import RunStore
+from storage.run_transaction import AnalysisRunTransaction, RunDirectoryError
 from utils.logging import configure_logging
 from utils.video import read_first_frame
 
@@ -128,30 +129,58 @@ def analyze(
         help="Detector device: auto, cpu, or cuda.",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
-    run_dir: Optional[Path] = typer.Option(None, "--run-dir"),
+    run_dir: Optional[Path] = typer.Option(
+        None,
+        "--run-dir",
+        help="Write analysis to this exact run directory.",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Replace an existing matching run after a successful reanalysis.",
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     load_dotenv()
     configure_logging(verbose)
+    if overwrite and run_dir is None:
+        raise typer.BadParameter("--overwrite requires --run-dir")
     project_root, config = _load_config_with_accelerator(
         config_path, accelerator, device
     )
     profile = _resolve_profile(project_root, config, video, camera_id)
-    if run_dir is not None:
-        store = RunStore.from_existing(run_dir)
-    else:
+    if run_dir is None:
         store = RunStore.create(
             output_root=project_root / config.project.output_root,
             camera_id=profile.camera_id,
             video_stem=video.stem,
         )
-    analyze_video(
-        project_root=project_root,
-        config=config,
-        profile=profile,
-        video_path=video,
-        run_store=store,
-    )
+        analyze_video(
+            project_root=project_root,
+            config=config,
+            profile=profile,
+            video_path=video,
+            run_store=store,
+        )
+    else:
+        transaction = AnalysisRunTransaction(
+            run_dir=run_dir,
+            overwrite=overwrite,
+            video_path=video,
+            camera_id=profile.camera_id,
+        )
+        try:
+            with transaction as staging_store:
+                analyze_video(
+                    project_root=project_root,
+                    config=config,
+                    profile=profile,
+                    video_path=video,
+                    run_store=staging_store,
+                )
+        except RunDirectoryError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--run-dir") from exc
+        store = RunStore.from_existing(transaction.target)
     typer.echo(str(store.root))
 
 

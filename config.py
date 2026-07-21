@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictBaseModel(BaseModel):
@@ -23,7 +23,7 @@ class VideoConfig(StrictBaseModel):
 
 class AnalysisConfig(StrictBaseModel):
     fps: float = Field(default=10.0, gt=0.0)
-    batch_size: int = Field(default=32, ge=1)
+    batch_size: int = Field(default=16, ge=1)
     detector_batch_size: int | None = Field(default=None, ge=1)
     min_track_frames: int = 10
     min_box_width_px: int = Field(
@@ -39,14 +39,16 @@ class AnalysisConfig(StrictBaseModel):
 
 class DetectorConfig(StrictBaseModel):
     device: Literal["auto", "cpu", "cuda"] = "auto"
-    confidence: float = 0.30
+    confidence: float = Field(default=0.15, ge=0.0, le=1.0)
     input_size: int = Field(default=576, ge=64)
     allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
+    nms_enabled: bool = True
+    nms_iou_threshold: float = Field(default=0.80, gt=0.0, le=1.0)
+    nms_class_agnostic: bool = True
     pretrain_weights: str | None = None
     include_source_image: bool = False
     optimize_for_inference: bool = True
     inference_dtype: Literal["auto", "float32", "float16"] = "auto"
-    compile_for_inference: bool = False
 
 
 class TrackerConfig(StrictBaseModel):
@@ -57,7 +59,7 @@ class TrackerConfig(StrictBaseModel):
     minimum_iou_threshold_first_assoc: float = 0.25
     minimum_iou_threshold_second_assoc: float = 0.50
     minimum_iou_threshold_unconfirmed_assoc: float = 0.20
-    high_conf_det_threshold: float = 0.30
+    high_conf_det_threshold: float = Field(default=0.30, ge=0.0, le=1.0)
     enable_cmc: bool = False
     cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
     cmc_downscale: int = 2
@@ -65,7 +67,7 @@ class TrackerConfig(StrictBaseModel):
     frame_rate: int = 0
     ignore_edge_touches: bool = True
     edge_margin_px: int = 10
-    suppress_duplicate_tracks: bool = True
+    suppress_duplicate_tracks: bool = False
     duplicate_track_iou_threshold: float = Field(default=0.80, gt=0.0, le=1.0)
     duplicate_track_containment_threshold: float = Field(default=0.95, gt=0.0, le=1.0)
     duplicate_track_min_area_ratio: float = Field(default=0.30, ge=0.0, le=1.0)
@@ -147,9 +149,15 @@ class PolygonZoneConfig(StrictBaseModel):
 
 
 class CountLineConfig(StrictBaseModel):
-    start: list[int]
-    end: list[int]
-    direction: str = "BOTH"
+    start: list[int] = Field(min_length=2, max_length=2)
+    end: list[int] = Field(min_length=2, max_length=2)
+    direction: Literal["A_TO_B", "B_TO_A", "BOTH"] = "BOTH"
+
+    @model_validator(mode="after")
+    def validate_nonzero_length(self) -> "CountLineConfig":
+        if self.start == self.end:
+            raise ValueError("count line start and end must differ")
+        return self
 
 
 class CameraProfile(StrictBaseModel):
@@ -189,6 +197,16 @@ class AppConfig(StrictBaseModel):
     tracker: TrackerConfig = Field(default_factory=TrackerConfig)
     mmr: MMRConfig = Field(default_factory=MMRConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
+
+    @model_validator(mode="after")
+    def validate_tracker_confidence_bands(self) -> "AppConfig":
+        if self.detector.confidence >= self.tracker.high_conf_det_threshold:
+            raise ValueError(
+                "detector.confidence must be lower than "
+                "tracker.high_conf_det_threshold; equal or inverted thresholds "
+                "disable BoT-SORT's low-confidence association stage"
+            )
+        return self
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

@@ -79,7 +79,7 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
         )
     ]
     config = AppConfig.model_validate(
-        {"detector": {"confidence": 0.42, "input_size": 576}}
+        {"detector": {"confidence": 0.20, "input_size": 576}}
     )
     detector = RfDetrMediumDetector(config=config, project_root=Path("."))
     image = np.zeros((24, 32, 3), dtype=np.uint8)
@@ -92,11 +92,20 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
     assert class_names(detections[0]) == ["car"]
     call = FakeRfDetrMedium.calls[0]
     assert call["kwargs"] == {
-        "threshold": 0.42,
+        "threshold": 0.20,
         "shape": (576, 576),
         "include_source_image": False,
     }
     assert call["images"][0][0, 0].tolist() == [30, 20, 10]
+
+
+def test_detect_batch_uses_default_low_confidence_floor() -> None:
+    FakeRfDetrMedium.predictions = [sv.Detections.empty()]
+    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+
+    detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
+
+    assert FakeRfDetrMedium.calls[0]["kwargs"]["threshold"] == 0.15
 
 
 def test_detector_passes_configured_cpu_device_to_rfdetr() -> None:
@@ -166,19 +175,16 @@ def test_detector_uses_explicit_inference_dtype() -> None:
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float16"}]
 
 
-def test_detector_passes_batch_size_only_when_compiling_for_inference() -> None:
+def test_detector_never_passes_batch_size_to_noncompiled_optimization() -> None:
     config = AppConfig.model_validate(
         {
             "analysis": {"batch_size": 8, "detector_batch_size": 3},
-            "detector": {"compile_for_inference": True},
         }
     )
 
     RfDetrMediumDetector(config=config, project_root=Path("."))
 
-    assert FakeRfDetrMedium.optimize_calls == [
-        {"compile": True, "dtype": "float32", "batch_size": 3}
-    ]
+    assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float32"}]
 
 
 def test_detect_delegates_to_single_item_batch() -> None:
@@ -211,6 +217,96 @@ def test_detect_batch_filters_to_allowed_class_names() -> None:
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
     assert class_names(detections[0]) == ["car"]
+
+
+def test_detect_batch_applies_class_agnostic_nms_before_tracking() -> None:
+    FakeRfDetrMedium.predictions = [
+        _detections(
+            xyxy=[[1, 2, 21, 22], [1, 2, 21, 22], [22, 2, 31, 22]],
+            confidence=[0.91, 0.61, 0.85],
+            class_id=[2, 7, 2],
+            class_name=["car", "truck", "car"],
+        )
+    ]
+    detector = RfDetrMediumDetector(
+        config=AppConfig.model_validate(
+            {"detector": {"allowed_class_names": ["car", "truck"]}}
+        ),
+        project_root=Path("."),
+    )
+
+    detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
+
+    assert len(detections[0]) == 2
+    assert class_names(detections[0]) == ["car", "car"]
+    assert detections[0].confidence is not None
+    assert detections[0].confidence.tolist() == pytest.approx([0.91, 0.85])
+    assert detector.detection_diagnostics()["counts"] == {
+        "raw_candidate_rows": 3,
+        "detections_after_confidence_filtering": 3,
+        "detections_after_class_filtering": 3,
+        "detections_after_nms": 2,
+        "detections_suppressed_by_nms": 1,
+    }
+
+
+def test_detect_batch_can_disable_nms() -> None:
+    FakeRfDetrMedium.predictions = [
+        _detections(
+            xyxy=[[1, 2, 21, 22], [1, 2, 21, 22]],
+            confidence=[0.91, 0.61],
+            class_id=[2, 7],
+            class_name=["car", "truck"],
+        )
+    ]
+    detector = RfDetrMediumDetector(
+        config=AppConfig.model_validate(
+            {
+                "detector": {
+                    "allowed_class_names": ["car", "truck"],
+                    "nms_enabled": False,
+                }
+            }
+        ),
+        project_root=Path("."),
+    )
+
+    detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
+
+    assert class_names(detections[0]) == ["car", "truck"]
+    assert detector.detection_diagnostics()["counts"] == {
+        "raw_candidate_rows": 2,
+        "detections_after_confidence_filtering": 2,
+        "detections_after_class_filtering": 2,
+        "detections_after_nms": 2,
+        "detections_suppressed_by_nms": 0,
+    }
+
+
+def test_detect_batch_can_use_class_aware_nms() -> None:
+    FakeRfDetrMedium.predictions = [
+        _detections(
+            xyxy=[[1, 2, 21, 22], [1, 2, 21, 22]],
+            confidence=[0.91, 0.61],
+            class_id=[2, 7],
+            class_name=["car", "truck"],
+        )
+    ]
+    detector = RfDetrMediumDetector(
+        config=AppConfig.model_validate(
+            {
+                "detector": {
+                    "allowed_class_names": ["car", "truck"],
+                    "nms_class_agnostic": False,
+                }
+            }
+        ),
+        project_root=Path("."),
+    )
+
+    detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
+
+    assert class_names(detections[0]) == ["car", "truck"]
 
 
 def test_detect_batch_preserves_multi_image_prediction_order() -> None:
@@ -321,6 +417,8 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
         "raw_candidate_rows": 2,
         "detections_after_confidence_filtering": 2,
         "detections_after_class_filtering": 1,
+        "detections_after_nms": 1,
+        "detections_suppressed_by_nms": 0,
     }
     confidence_histogram = diagnostics["confidence_histogram"]
     assert isinstance(confidence_histogram, list)
@@ -330,6 +428,8 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
             "raw_candidate_rows": 2,
             "detections_after_confidence_filtering": 2,
             "detections_after_class_filtering": 1,
+            "detections_after_nms": 1,
+            "detections_suppressed_by_nms": 0,
         },
         "confidence_histogram": confidence_histogram,
         "model": "rfdetr-medium",
@@ -337,7 +437,9 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
         "runtime": "rfdetr",
         "optimized_for_inference": True,
         "inference_dtype": "float32",
-        "compiled_for_inference": False,
+        "nms_enabled": True,
+        "nms_iou_threshold": 0.80,
+        "nms_class_agnostic": True,
     }
 
 

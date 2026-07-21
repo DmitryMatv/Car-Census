@@ -565,7 +565,10 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
         config=AppConfig.model_validate(
             {
                 "analysis": {"min_track_frames": 1},
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=_full_profile(),
@@ -579,6 +582,46 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
     assert tracker.drop_calls == [{8}]
     assert stats["duplicate_track_observations_suppressed"] == 1
     assert stats["duplicate_track_ids_dropped"] == 1
+
+
+def test_analyze_keeps_identical_tracker_outputs_when_suppression_is_disabled(
+    tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    tracker = FakeTracker(
+        _tracks(
+            [
+                (7, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
+                (8, BBox(x1=20, y1=20, x2=70, y2=70), 0.8),
+            ]
+        )
+    )
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=AppConfig.model_validate(
+            {
+                "analysis": {"min_track_frames": 1},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": False,
+                },
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    records = _read_frame_records(store.frames_path)
+    stats = _read_detection_stats(store)
+    assert [[track.track_id for track in record.tracks] for record in records] == [
+        [7, 8]
+    ]
+    assert tracker.drop_calls == []
+    assert stats["duplicate_track_observations_suppressed"] == 0
+    assert stats["duplicate_track_ids_dropped"] == 0
 
 
 def test_analyze_rejects_stale_id_without_replacing_original_crop(
@@ -686,6 +729,7 @@ def test_analyze_combines_stale_and_duplicate_tracker_drops(
                 "tracker": {
                     "ignore_edge_touches": False,
                     "max_reassociation_gap_seconds": 0.5,
+                    "suppress_duplicate_tracks": True,
                 },
             }
         ),
@@ -735,7 +779,10 @@ def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
         config=AppConfig.model_validate(
             {
                 "analysis": {"min_track_frames": 1},
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=_full_profile(),
@@ -770,7 +817,10 @@ def test_analyze_suppresses_strongly_contained_duplicate_track(
         config=AppConfig.model_validate(
             {
                 "analysis": {"min_track_frames": 1},
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=_full_profile(),
@@ -856,7 +906,10 @@ def test_analyze_does_not_suppress_count_event_duplicate_loser(
         config=AppConfig.model_validate(
             {
                 "analysis": {"min_track_frames": 1},
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=CameraProfile(
@@ -917,7 +970,10 @@ def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
         config=AppConfig.model_validate(
             {
                 "analysis": {"min_track_frames": 1},
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=_full_profile(width=2560, height=1440),
@@ -976,7 +1032,10 @@ def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
                     "min_track_frames": 1,
                     "min_box_width_px": 1,
                 },
-                "tracker": {"ignore_edge_touches": False},
+                "tracker": {
+                    "ignore_edge_touches": False,
+                    "suppress_duplicate_tracks": True,
+                },
             }
         ),
         profile=_full_profile_with_count_line(width=300, height=300),
@@ -1102,6 +1161,7 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     assert len(records) == 1
     assert records[0].tracks == []
     assert tracker.frame_rate == 10.0
+    assert manifest.run_id == store.root.name
     assert manifest.source_fps == 30.0
     assert manifest.analysis_fps == 10.0
 
@@ -1713,6 +1773,8 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
     assert stats["raw_detections_before_class_filtering"] == 5
     assert stats["detections_after_confidence_filtering"] == 3
     assert stats["detections_after_class_filtering"] == 1
+    assert stats["detections_after_nms"] == 1
+    assert stats["detections_suppressed_by_nms"] == 0
     assert stats["detections_passed_to_tracker"] == 1
     assert stats["tracker_outputs"] == 1
     assert stats["tracks_discarded_edge_contact"] == 0

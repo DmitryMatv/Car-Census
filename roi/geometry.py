@@ -198,33 +198,6 @@ def point_in_polygon(point: tuple[float, float], polygon: list[list[int]]) -> bo
     return cv2.pointPolygonTest(contour, point, False) >= 0
 
 
-def signed_line_side(
-    point: tuple[float, float],
-    line_start: tuple[float, float],
-    line_end: tuple[float, float],
-) -> float:
-    return ((line_end[0] - line_start[0]) * (point[1] - line_start[1])) - (
-        (line_end[1] - line_start[1]) * (point[0] - line_start[0])
-    )
-
-
-def line_crossing_direction(
-    previous_point: tuple[float, float],
-    current_point: tuple[float, float],
-    line_start: tuple[float, float],
-    line_end: tuple[float, float],
-) -> str | None:
-    previous_side = signed_line_side(previous_point, line_start, line_end)
-    current_side = signed_line_side(current_point, line_start, line_end)
-    if previous_side == 0 or current_side == 0:
-        return None
-    if previous_side < 0 < current_side:
-        return "A_TO_B"
-    if previous_side > 0 > current_side:
-        return "B_TO_A"
-    return None
-
-
 def clip_bbox_to_frame(bbox: BBox, frame_shape: tuple[int, int, int]) -> BBox | None:
     height, width = frame_shape[:2]
     x1 = min(max(int(bbox.x1), 0), width - 1)

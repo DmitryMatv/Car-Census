@@ -100,15 +100,10 @@ class RfDetrMediumDetector(Detector):
             getattr(getattr(self.model, "model", None), "device", None),
         )
         if config.detector.optimize_for_inference:
-            optimize_kwargs: dict[str, object] = {
-                "compile": config.detector.compile_for_inference,
-                "dtype": self._inference_dtype,
-            }
-            if config.detector.compile_for_inference:
-                optimize_kwargs["batch_size"] = (
-                    config.analysis.detector_batch_size or config.analysis.batch_size
-                )
-            self.model.optimize_for_inference(**optimize_kwargs)
+            self.model.optimize_for_inference(
+                compile=False,
+                dtype=self._inference_dtype,
+            )
 
     def detect(self, image: np.ndarray) -> sv.Detections:
         return self.detect_batch([image])[0]
@@ -143,7 +138,9 @@ class RfDetrMediumDetector(Detector):
             "runtime": "rfdetr",
             "optimized_for_inference": self.config.detector.optimize_for_inference,
             "inference_dtype": self._inference_dtype,
-            "compiled_for_inference": self.config.detector.compile_for_inference,
+            "nms_enabled": self.config.detector.nms_enabled,
+            "nms_iou_threshold": self.config.detector.nms_iou_threshold,
+            "nms_class_agnostic": self.config.detector.nms_class_agnostic,
         }
 
     @staticmethod
@@ -177,6 +174,17 @@ class RfDetrMediumDetector(Detector):
 
         detections = clip_detections_to_shape(detections, image_shape)
         self._counts["detections_after_class_filtering"] += len(detections)
+
+        detections_before_nms = len(detections)
+        if self.config.detector.nms_enabled:
+            detections = detections.with_nms(
+                threshold=self.config.detector.nms_iou_threshold,
+                class_agnostic=self.config.detector.nms_class_agnostic,
+            )
+        self._counts["detections_after_nms"] += len(detections)
+        self._counts["detections_suppressed_by_nms"] += detections_before_nms - len(
+            detections
+        )
         if detections.confidence is not None:
             self._confidence_histogram.extend(
                 float(confidence) for confidence in detections.confidence.tolist()

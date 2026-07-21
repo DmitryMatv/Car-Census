@@ -148,7 +148,36 @@ Run without annotated video rendering:
 Car-Census run input_data/test_vid.MP4 --skip-render
 ```
 
-Artifacts are written to `output/<run-id>/`.
+Write analysis to an explicit run directory:
+
+```bash
+Car-Census analyze input_data/test_vid.MP4 --camera-id home-road --run-dir output/home-road-test
+```
+
+If that directory already contains a valid run for the same video and camera
+profile, rerun analysis with `--overwrite`. The replacement is staged first, so
+an analysis failure leaves the previous run intact. A successful overwrite
+replaces the whole run and intentionally removes its old classification,
+render, smoothing, and report artifacts.
+
+```bash
+Car-Census analyze input_data/test_vid.MP4 --camera-id home-road --run-dir output/home-road-test --overwrite
+```
+
+Artifacts are written to `output/<run-id>/`. Automatically generated run IDs
+use the video name and a compact UTC timestamp:
+
+```text
+IMG_5581_1440--20260611-070923Z
+IMG_5386_1440_20s--20260605-124655Z
+IMG_5383_1440_20s--camera-IMG_5458_1440--20260609-155031Z
+```
+
+The camera component is omitted for full-frame analysis and when it already
+matches the video name. If multiple runs start during the same second, later
+runs receive readable suffixes such as `--02` and `--03`. Existing output
+directories are not migrated or renamed. Explicit `--run-dir` names continue
+to be used exactly as provided.
 
 ## Output Layout
 
@@ -172,12 +201,13 @@ output/<run-id>/
 
 - Input videos are expected to be 30 fps by default. `video.fps` controls source-frame timestamps and render output FPS; `video.fps_tolerance` controls how much OpenCV-reported input FPS drift is accepted before the run fails.
 - Analysis can run at a lower cadence for faster tracking. Set `analysis.fps` to the desired tracking rate, such as `10`; rendering still processes every decoded input frame and writes at `video.fps`.
-- Counting uses tracked vehicles inside the configured polygon zone. Older camera profiles with `count_line` are still supported.
+- Counting uses tracked vehicles inside the configured polygon zone. Camera profiles with `count_line` use Supervision's finite `LineZone` with the bounding-box bottom center as the crossing anchor.
 - By default, `tracker.ignore_edge_touches: true` ignores detections and tracker outputs whose boxes touch the source-frame edge or selected camera crop edge. Increase `tracker.edge_margin_px` to ignore boxes that are near, but not exactly on, the edge.
 - `analysis/frames.jsonl` contains raw tracker output. `analysis/render_frames.jsonl` is generated for annotation only and does not affect counts, crops, or make/model classification.
 - Render smoothing generates `analysis/render_frames.jsonl` for annotation only. By default, `render.smoothing.observed_box_smoothing: local_linear` fits short centered linear motion per track over box center and size, using `render.smoothing.observed_smoothing_window: 5` and clamping each adjustment to `render.smoothing.observed_smoothing_max_shift_ratio: 0.10` of the raw box. Set `observed_box_smoothing: none` to preserve raw observed boxes exactly, or `observed_box_smoothing: causal_average` to opt into legacy moving-average smoothing with `supervision.DetectionsSmoother`; `render.smoothing.history_length` only applies in causal-average mode and can visibly lag behind moving objects. Bridge and interpolation records are render-only and do not affect counts, crops, make/model classification, raw tracks, or reports. Generated interpolation frames may carry display state such as `counted`, but count events remain anchored to raw analysis records. `render.smoothing.max_interpolation_gap_seconds` controls source-frame gap bridging; `null` uses a cadence-based default. No tail extrapolation is generated.
 - Tracking uses Roboflow `trackers` BoT-SORT. Camera motion compensation is disabled by default because the expected camera setup is static. For moving cameras, set `tracker.enable_cmc: true` and choose a `tracker.cmc_method`; supported CMC methods are `sparseOptFlow`, `orb`, `sift`, and `ecc`.
 - The installed BoT-SORT implementation associates tracks using Kalman motion, IoU, and detection confidence; it does not use appearance/ReID features. `tracker.max_reassociation_gap_seconds` retires IDs that return after a longer absence instead of allowing a stale ID to attach to another vehicle. Set it to `null` to disable this guard.
+- RF-DETR's default `0.15` confidence floor is deliberately lower than BoT-SORT's `0.30` high-confidence threshold, enabling the tracker's native low-confidence second association pass. Before tracking, Supervision class-agnostic NMS (`detector.nms_enabled: true`, `detector.nms_iou_threshold: 0.80`) removes highly overlapping detections even when RF-DETR assigns competing labels such as `car` and `truck`. Set `detector.nms_enabled: false` for comparison runs. Custom online track suppression is disabled by default and can be restored separately with `tracker.suppress_duplicate_tracks: true`.
 - `tracker.lost_track_buffer` is a 30-FPS-equivalent value that the `trackers` package scales by the analysis FPS; it is not a direct count of analysis frames.
 - Rendering shows make, model, generation, and variation when available.
 - The live render overlay shows the top counted makes with origin flags and

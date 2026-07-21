@@ -163,6 +163,16 @@ def analysis_diagnostics_payload(
             "detections_after_class_filtering",
             diagnostics.detections_passed_to_tracker,
         ),
+        "detections_after_nms": diagnostic_count(
+            detector_counts,
+            "detections_after_nms",
+            diagnostics.detections_passed_to_tracker,
+        ),
+        "detections_suppressed_by_nms": diagnostic_count(
+            detector_counts,
+            "detections_suppressed_by_nms",
+            0,
+        ),
         "detections_passed_to_tracker": diagnostics.detections_passed_to_tracker,
         "tracker_outputs": diagnostics.tracker_outputs,
         "tracks_discarded_edge_contact": diagnostics.tracks_discarded_edge_contact,

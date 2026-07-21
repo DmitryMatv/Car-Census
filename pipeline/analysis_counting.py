@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+import supervision as sv
+
 from config import CameraProfile
 from models import CountEvent
-from roi.geometry import line_crossing_direction
 
 if TYPE_CHECKING:
     from pipeline.analysis_track_state import MutableTrackState
@@ -21,17 +24,53 @@ class CountUpdate:
 class TrackCounter:
     def __init__(self, profile: CameraProfile) -> None:
         self._count_line = profile.count_line
-        self._line_start: tuple[float, float] | None = None
-        self._line_end: tuple[float, float] | None = None
+        self._line_zone: sv.LineZone | None = None
         if self._count_line is not None:
-            self._line_start = (
-                float(self._count_line.start[0]),
-                float(self._count_line.start[1]),
+            self._line_zone = sv.LineZone(
+                start=sv.Point(
+                    x=self._count_line.start[0],
+                    y=self._count_line.start[1],
+                ),
+                end=sv.Point(
+                    x=self._count_line.end[0],
+                    y=self._count_line.end[1],
+                ),
+                triggering_anchors=[sv.Position.BOTTOM_CENTER],
+                minimum_crossing_threshold=1,
             )
-            self._line_end = (
-                float(self._count_line.end[0]),
-                float(self._count_line.end[1]),
-            )
+
+    def crossing_directions(
+        self, observations: Sequence[TrackObservation]
+    ) -> dict[int, str]:
+        if self._line_zone is None or not observations:
+            return {}
+
+        detections = sv.Detections(
+            xyxy=np.asarray(
+                [
+                    [
+                        observation.bbox.x1,
+                        observation.bbox.y1,
+                        observation.bbox.x2,
+                        observation.bbox.y2,
+                    ]
+                    for observation in observations
+                ],
+                dtype=np.float32,
+            ),
+            tracker_id=np.asarray(
+                [observation.track_id for observation in observations],
+                dtype=np.int32,
+            ),
+        )
+        crossed_in, crossed_out = self._line_zone.trigger(detections)
+        directions: dict[int, str] = {}
+        for index, observation in enumerate(observations):
+            if bool(crossed_out[index]):
+                directions[observation.track_id] = "A_TO_B"
+            elif bool(crossed_in[index]):
+                directions[observation.track_id] = "B_TO_A"
+        return directions
 
     def update(
         self,
@@ -39,24 +78,15 @@ class TrackCounter:
         observation: TrackObservation,
         frame_input: FrameTrackingInput,
         inside_roi: bool,
+        crossed_direction: str | None,
     ) -> CountUpdate:
-        crossed_direction = None
         if self._count_line is None:
             if inside_roi and not state.counted:
                 state.counted = True
-        elif state.previous_bottom_center is not None:
-            assert self._line_start is not None
-            assert self._line_end is not None
-            crossed_direction = line_crossing_direction(
-                previous_point=state.previous_bottom_center,
-                current_point=observation.bottom_center,
-                line_start=self._line_start,
-                line_end=self._line_end,
-            )
+            return CountUpdate(counted_event=None, crossed_line=False)
 
         if (
-            self._count_line is not None
-            and crossed_direction is not None
+            crossed_direction is not None
             and (
                 self._count_line.direction == "BOTH"
                 or crossed_direction == self._count_line.direction

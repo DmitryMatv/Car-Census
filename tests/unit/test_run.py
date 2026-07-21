@@ -1,10 +1,19 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from config import AppConfig, build_full_frame_profile
 from pipeline import run as run_module
 from pipeline.run import run_pipeline
 from pipeline.stages import PipelineStages
-from storage.run_store import RunStore
+from storage import run_store as run_store_module
+from storage.run_store import (
+    RunStore,
+    _allocate_run_root,
+    _compact_utc_timestamp,
+    _run_descriptor,
+)
 
 
 class DummyRunStore:
@@ -25,6 +34,94 @@ def test_run_store_creates_expected_artifact_directories(tmp_path) -> None:
     assert store.mmr_cache_dir.is_dir()
     assert store.mmr_batch_grids_dir.is_dir()
     assert not (store.root / "render").exists()
+
+
+@pytest.mark.parametrize(
+    ("camera_id", "video_stem", "expected"),
+    [
+        ("__full_frame__", "IMG_5386_1440_20s", "IMG_5386_1440_20s"),
+        ("IMG_5581_1440", "IMG_5581_1440", "IMG_5581_1440"),
+        (
+            "IMG_5458_1440",
+            "IMG_5383_1440_20s",
+            "IMG_5383_1440_20s--camera-IMG_5458_1440",
+        ),
+    ],
+)
+def test_run_descriptor_omits_redundant_camera_names(
+    camera_id: str, video_stem: str, expected: str
+) -> None:
+    assert _run_descriptor(camera_id, video_stem) == expected
+
+
+def test_compact_timestamp_converts_to_utc() -> None:
+    riga_summer_time = timezone(timedelta(hours=3))
+
+    assert (
+        _compact_utc_timestamp(
+            datetime(2026, 6, 11, 10, 9, 23, tzinfo=riga_summer_time)
+        )
+        == "20260611-070923Z"
+    )
+
+
+def test_run_store_uses_readable_suffixes_for_same_second_collisions(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        run_store_module,
+        "_compact_utc_timestamp",
+        lambda: "20260611-070923Z",
+    )
+    first = RunStore.create(
+        output_root=tmp_path,
+        camera_id="test-camera",
+        video_stem="video",
+    )
+    second = RunStore.create(
+        output_root=tmp_path,
+        camera_id="test-camera",
+        video_stem="video",
+    )
+
+    assert first.root.name == "video--camera-test-camera--20260611-070923Z"
+    assert second.root.name == "video--camera-test-camera--20260611-070923Z--02"
+
+
+def test_run_root_collision_suffix_continues_beyond_99(tmp_path: Path) -> None:
+    base_run_id = "video--20260611-070923Z"
+    for collision_number in range(1, 100):
+        run_id = (
+            base_run_id
+            if collision_number == 1
+            else f"{base_run_id}--{collision_number:02d}"
+        )
+        (tmp_path / run_id).mkdir()
+
+    allocated = _allocate_run_root(tmp_path, base_run_id)
+
+    assert allocated.name == "video--20260611-070923Z--100"
+
+
+def test_creating_readable_run_does_not_rename_existing_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    existing = tmp_path / "full-frame-video-20260101T010101Z"
+    existing.mkdir()
+    monkeypatch.setattr(
+        run_store_module,
+        "_compact_utc_timestamp",
+        lambda: "20260611-070923Z",
+    )
+
+    created = RunStore.create(
+        output_root=tmp_path,
+        camera_id="__full_frame__",
+        video_stem="video",
+    )
+
+    assert existing.is_dir()
+    assert created.root.name == "video--20260611-070923Z"
 
 
 def test_run_pipeline_orders_analyze_classify_render_report(

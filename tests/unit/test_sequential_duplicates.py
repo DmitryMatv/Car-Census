@@ -70,7 +70,8 @@ def _write_run(
     first_b_bbox: BBox | None = None,
     b_start_time: float = 0.30,
 ) -> RunStore:
-    store = RunStore.from_existing(tmp_path)
+    store = RunStore(tmp_path)
+    store.ensure_directories()
     a0 = BBox(x1=100, y1=100, x2=140, y2=130)
     a1 = BBox(x1=110, y1=100, x2=150, y2=130)
     b0 = first_b_bbox or BBox(x1=130, y1=100, x2=170, y2=130)

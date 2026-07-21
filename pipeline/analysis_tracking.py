@@ -254,13 +254,20 @@ class TrackStateUpdater:
             edge_detection_bboxes,
         )
         duplicate_result = self._components.duplicate_suppressor.suppress(observations)
+        crossing_directions = self._components.track_counter.crossing_directions(
+            duplicate_result.observations
+        )
 
         for observation in duplicate_result.observations:
             self._components.observation_reader.record_box_width(observation)
             inside_roi = self._components.tracked_object_builder.inside_roi(observation)
             state = self._components.track_store.get_or_create(observation, frame_input)
             count_update = self._components.track_counter.update(
-                state, observation, frame_input, inside_roi
+                state,
+                observation,
+                frame_input,
+                inside_roi,
+                crossing_directions.get(observation.track_id),
             )
             if count_update.counted_event is not None:
                 counted_events.append(count_update.counted_event)
