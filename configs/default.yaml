@@ -9,6 +9,7 @@ video:
 analysis:
   fps: 10
   batch_size: 16
+  detector_batch_size: null 
   min_track_frames: 5
   min_box_width_px: 96
   crop_padding_ratio: 0.05
@@ -18,6 +19,7 @@ analysis:
   crop_jpeg_quality: 95
 
 detector:
+  device: auto
   # Keep this below tracker.high_conf_det_threshold so BoT-SORT receives
   # low-confidence detections for its native second association pass.
   confidence: 0.15
@@ -65,7 +67,7 @@ tracker:
   duplicate_track_containment_threshold: 0.95
   duplicate_track_min_area_ratio: 0.30
   duplicate_track_center_distance_ratio: 0.30
-  suppress_sequential_duplicate_tracks: true
+  suppress_sequential_duplicate_tracks: false
   sequential_duplicate_max_gap_seconds: 0.70
   sequential_duplicate_prediction_error_ratio: 0.70
   sequential_duplicate_min_width_ratio: 0.50
@@ -87,12 +89,18 @@ mmr:
 
 render:
   codec: mp4v
-  # workers: 8
+  output_fps: null
+  encode_backend: opencv
+  workers: 1
+  ffmpeg_path: ffmpeg
+  nvenc_codec: h264_nvenc
+  nvenc_preset: p4
+  nvenc_cq: 23
   min_visible_track_observations: 5
   require_crop_eligible_track: true
   show_unclassified_tracks: false
   box_color: "#FFFFFF"
-  box_enabled: false
+  box_enabled: true
   box_alpha: 0.5
   box_thickness: 2
   label_font_scale: 1

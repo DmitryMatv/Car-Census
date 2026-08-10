@@ -64,8 +64,10 @@ def test_decode_image_raises_for_invalid_image_bytes(tmp_path) -> None:
         decode_image(b"not-an-image", image_path)
 
 
-def test_traffic_eye_acceptance_requires_make_confidence_and_model(tmp_path) -> None:
-    config = AppConfig.model_validate({"mmr": {"accept_model_confidence": 0.30}})
+def test_traffic_eye_acceptance_requires_make_confidence_and_model(
+    config_factory, tmp_path
+) -> None:
+    config = config_factory({"mmr": {"accept_model_confidence": 0.30}})
     client = TrafficEyeClient(
         config=config,
         cache_dir=tmp_path / "cache",
@@ -532,8 +534,8 @@ def test_parse_mmr_results_by_combination_uses_largest_box_per_slot() -> None:
     assert result.detection_box == BBox(x1=10, y1=10, x2=110, y2=70)
 
 
-def test_traffic_eye_client_requests_box_detection_and_mmr_only(
-    tmp_path, monkeypatch
+def test_traffic_eye_client_requests_manual_box_and_mmr_only(
+    default_config, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
     image_path = tmp_path / "crop.jpg"
@@ -559,7 +561,7 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
 
         def post(
             self, url, headers, files
-        ) -> test_traffic_eye_client_requests_box_detection_and_mmr_only.FakeResponse:
+        ) -> test_traffic_eye_client_requests_manual_box_and_mmr_only.FakeResponse:
             captured["url"] = url
             captured["headers"] = headers
             captured["request"] = orjson.loads(files["request"][1])
@@ -567,7 +569,7 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
 
-    client = TrafficEyeClient(config=AppConfig(), cache_dir=tmp_path / "cache")
+    client = TrafficEyeClient(config=default_config, cache_dir=tmp_path / "cache")
     client.recognize_vehicle_crop(image_path)
 
     request = captured["request"]
@@ -593,7 +595,7 @@ def test_traffic_eye_client_requests_box_detection_and_mmr_only(
 
 
 def test_traffic_eye_client_batches_crops_with_manual_boxes(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
     first_crop = tmp_path / "first.jpg"
@@ -668,8 +670,14 @@ def test_traffic_eye_client_batches_crops_with_manual_boxes(
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
-    config = AppConfig.model_validate(
-        {"mmr": {"batch_grid_columns": 2, "batch_cell_size_px": 100}}
+    config = config_factory(
+        {
+            "mmr": {
+                "batch_size": 2,
+                "batch_grid_columns": 2,
+                "batch_cell_size_px": 100,
+            }
+        }
     )
 
     client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
@@ -703,7 +711,7 @@ def test_traffic_eye_client_batches_crops_with_manual_boxes(
 
 
 def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
     crop = tmp_path / "crop.jpg"
@@ -769,8 +777,14 @@ def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
-    config = AppConfig.model_validate(
-        {"mmr": {"batch_grid_columns": 1, "batch_cell_size_px": 100}}
+    config = config_factory(
+        {
+            "mmr": {
+                "batch_size": 2,
+                "batch_grid_columns": 1,
+                "batch_cell_size_px": 100,
+            }
+        }
     )
 
     client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
@@ -786,7 +800,7 @@ def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
 
 
 def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
     crops = []
@@ -842,8 +856,14 @@ def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
-    config = AppConfig.model_validate(
-        {"mmr": {"batch_grid_columns": 3, "batch_cell_size_px": 100}}
+    config = config_factory(
+        {
+            "mmr": {
+                "batch_size": 3,
+                "batch_grid_columns": 3,
+                "batch_cell_size_px": 100,
+            }
+        }
     )
 
     client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
@@ -854,7 +874,7 @@ def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(
 
 
 def test_traffic_eye_client_does_not_reuse_ordered_batch_result_for_empty_slot(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
     crops = []
@@ -908,8 +928,14 @@ def test_traffic_eye_client_does_not_reuse_ordered_batch_result_for_empty_slot(
             return FakeResponse()
 
     monkeypatch.setattr("mmr.trafficeye.httpx.Client", FakeHttpClient)
-    config = AppConfig.model_validate(
-        {"mmr": {"batch_grid_columns": 2, "batch_cell_size_px": 100}}
+    config = config_factory(
+        {
+            "mmr": {
+                "batch_size": 2,
+                "batch_grid_columns": 2,
+                "batch_cell_size_px": 100,
+            }
+        }
     )
 
     client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")

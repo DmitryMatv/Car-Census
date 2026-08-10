@@ -40,6 +40,28 @@ the pretrained COCO checkpoint through the package.
 For offline reproducibility, set `detector.pretrain_weights` to a local
 RF-DETR-M checkpoint path.
 
+## Configuration
+
+[`configs/default.yaml`](configs/default.yaml) is the authoritative source for
+all application defaults. Pydantic validates the resulting configuration but
+does not provide a second set of operational defaults.
+
+Pass `--config PATH` to any supported command to overlay only the settings you
+want to change. Values are resolved in this order, with later sources taking
+precedence:
+
+```text
+configs/default.yaml < custom --config file < accelerator/device CLI options
+```
+
+This means a custom file can be small, for example:
+
+```yaml
+mmr:
+  batch_size: 16
+  batch_grid_columns: 4
+```
+
 ## Google Colab T4
 
 For Colab GPU runs, install the project and use the Colab accelerator preset:
@@ -68,16 +90,19 @@ Set your API key in the environment:
 export TRAFFICEYE_API_KEY=your_key_here
 ```
 
-Classification sends one selected crop per vehicle to TrafficEye. By default,
-crops are packed into 4x4 composite images (`mmr.batch_size: 16`) and sent with
-manual BOX detections for each grid cell, so batch requests use `MMR` without
-`DETECTION`. Set `mmr.batch_size: 1` to restore one API request per crop with
-`DETECTION` and `MMR`. OCR and plate detection are intentionally not requested.
-Each composite image is saved under `mmr/batch_grids/` with a JSON sidecar that
-maps source crop paths to grid cells. The full TrafficEye response is preserved
-under `mmr/labels.json[*].raw`; common MMR fields such as make, model,
-generation, color, tags, and the selected detection box are also promoted to
-typed label fields.
+Classification sends one selected crop per vehicle to TrafficEye. The default
+is one crop per request (`mmr.batch_size: 1`, `mmr.batch_grid_columns: 1`). Each
+request supplies a manual BOX covering the crop and requests only `MMR`;
+`DETECTION`, OCR, and plate detection are not requested.
+
+Composite batching is opt-in. For example, set `mmr.batch_size: 16` and
+`mmr.batch_grid_columns: 4` for a 4x4 grid. Composite requests likewise supply
+one manual BOX per occupied grid cell and request only `MMR`. Composite images
+are saved under `mmr/batch_grids/` with JSON sidecars mapping source crop paths
+to grid cells. The full TrafficEye response is preserved under
+`mmr/labels.json[*].raw`; common MMR fields such as make, model, generation,
+color, tags, and the selected detection box are also promoted to typed label
+fields.
 
 ## Brand-Origin Flags
 

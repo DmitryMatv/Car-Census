@@ -19,10 +19,11 @@ def _observation(track_id: int) -> TrackObservation:
 
 
 def _rejector(
+    config_factory,
     max_reassociation_gap_seconds: float | None = 0.5,
 ) -> tuple[StaleReassociationRejector, AnalysisDiagnostics]:
     diagnostics = AnalysisDiagnostics()
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"tracker": {"max_reassociation_gap_seconds": max_reassociation_gap_seconds}}
     )
     return (
@@ -34,8 +35,10 @@ def _rejector(
     )
 
 
-def test_stale_reassociation_rejector_accepts_continuous_and_exact_limit() -> None:
-    rejector, diagnostics = _rejector()
+def test_stale_reassociation_rejector_accepts_continuous_and_exact_limit(
+    config_factory,
+) -> None:
+    rejector, diagnostics = _rejector(config_factory)
     observation = _observation(7)
 
     first = rejector.reject([observation], 0.0)
@@ -50,8 +53,8 @@ def test_stale_reassociation_rejector_accepts_continuous_and_exact_limit() -> No
     assert diagnostics.stale_reassociation_track_ids_dropped == 0
 
 
-def test_stale_reassociation_rejector_retires_id_after_long_gap() -> None:
-    rejector, diagnostics = _rejector()
+def test_stale_reassociation_rejector_retires_id_after_long_gap(config_factory) -> None:
+    rejector, diagnostics = _rejector(config_factory)
     observation = _observation(7)
 
     rejector.reject([observation], 0.0)
@@ -66,8 +69,8 @@ def test_stale_reassociation_rejector_retires_id_after_long_gap() -> None:
     assert diagnostics.stale_reassociation_track_ids_dropped == 1
 
 
-def test_stale_reassociation_rejector_can_be_disabled() -> None:
-    rejector, diagnostics = _rejector(None)
+def test_stale_reassociation_rejector_can_be_disabled(config_factory) -> None:
+    rejector, diagnostics = _rejector(config_factory, None)
     observation = _observation(7)
 
     rejector.reject([observation], 0.0)

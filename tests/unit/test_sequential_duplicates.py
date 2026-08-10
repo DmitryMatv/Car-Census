@@ -105,14 +105,23 @@ def _write_run(
     return store
 
 
-def _config(**tracker_overrides: object) -> AppConfig:
-    return AppConfig.model_validate({"tracker": tracker_overrides})
+def _config(config_factory, **tracker_overrides: object) -> AppConfig:
+    tracker_config: dict[str, object] = {
+        "suppress_sequential_duplicate_tracks": True,
+        "sequential_duplicate_require_same_color": True,
+        "sequential_duplicate_require_same_generation": True,
+        "sequential_duplicate_require_same_variation": True,
+    }
+    tracker_config.update(tracker_overrides)
+    return config_factory({"tracker": tracker_config})
 
 
-def test_sequential_duplicate_merge_rewrites_labels_frames_and_tracks(tmp_path) -> None:
+def test_sequential_duplicate_merge_rewrites_labels_frames_and_tracks(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path)
 
-    payload = deduplicate_classified_tracks(_config(), store)
+    payload = deduplicate_classified_tracks(_config(config_factory), store)
 
     labels = store.labels.read()
     frames = store.frames.read_all()
@@ -126,87 +135,101 @@ def test_sequential_duplicate_merge_rewrites_labels_frames_and_tracks(tmp_path) 
     assert (store.analysis_dir / "sequential_duplicates.json").exists()
 
 
-def test_sequential_duplicate_no_merge_when_identity_differs(tmp_path) -> None:
+def test_sequential_duplicate_no_merge_when_identity_differs(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, make="Audi")})
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_no_merge_when_color_differs_and_required(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, color="black")})
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
-def test_sequential_duplicate_allows_color_differs_when_not_required(tmp_path) -> None:
+def test_sequential_duplicate_allows_color_differs_when_not_required(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, color="black")})
 
     deduplicate_classified_tracks(
-        _config(sequential_duplicate_require_same_color=False), store
+        _config(config_factory, sequential_duplicate_require_same_color=False), store
     )
 
     assert store.labels.read()[2].vehicle_index == 1
 
 
 def test_sequential_duplicate_no_merge_when_generation_differs_and_required(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, generation="E211")})
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_allows_generation_differs_when_not_required(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, generation="E211")})
 
     deduplicate_classified_tracks(
-        _config(sequential_duplicate_require_same_generation=False), store
+        _config(config_factory, sequential_duplicate_require_same_generation=False),
+        store,
     )
 
     assert store.labels.read()[2].vehicle_index == 1
 
 
 def test_sequential_duplicate_no_merge_when_variation_differs_and_required(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, variation="wagon")})
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_allows_variation_differs_when_not_required(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, variation="wagon")})
 
     deduplicate_classified_tracks(
-        _config(sequential_duplicate_require_same_variation=False), store
+        _config(config_factory, sequential_duplicate_require_same_variation=False),
+        store,
     )
 
     assert store.labels.read()[2].vehicle_index == 1
 
 
-def test_sequential_duplicate_no_merge_when_gap_exceeds_limit(tmp_path) -> None:
+def test_sequential_duplicate_no_merge_when_gap_exceeds_limit(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path, b_start_time=0.60)
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_no_merge_when_prediction_or_size_fails(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(
@@ -214,12 +237,13 @@ def test_sequential_duplicate_no_merge_when_prediction_or_size_fails(
         first_b_bbox=BBox(x1=240, y1=100, x2=300, y2=160),
     )
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert store.labels.read()[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_transitive_chain_uses_earliest_vehicle_index(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _write_run(tmp_path)
@@ -256,14 +280,16 @@ def test_sequential_duplicate_transitive_chain_uses_earliest_vehicle_index(
     store.tracks.write_all([_summary(1, 1), _summary(2, 2), _summary(3, 3)])
     store.labels.write({1: _label(1), 2: _label(2), 3: _label(3)})
 
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     assert {label.vehicle_index for label in store.labels.read().values()} == {1}
 
 
-def test_report_generation_emits_one_row_after_merged_labels(tmp_path) -> None:
+def test_report_generation_emits_one_row_after_merged_labels(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path)
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     payload = generate_reports(store)
 
@@ -271,9 +297,11 @@ def test_report_generation_emits_one_row_after_merged_labels(tmp_path) -> None:
     assert rows[0]["rows"] == 1
 
 
-def test_bridge_observations_injected_in_gap_between_merged_tracks(tmp_path) -> None:
+def test_bridge_observations_injected_in_gap_between_merged_tracks(
+    config_factory, tmp_path
+) -> None:
     store = _write_run(tmp_path, b_start_time=0.30)
-    deduplicate_classified_tracks(_config(), store)
+    deduplicate_classified_tracks(_config(config_factory), store)
 
     records = store.frames.read_all()
     track_1_frames = [

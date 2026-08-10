@@ -165,6 +165,7 @@ def _reset_dummy_annotator() -> None:
 
 
 def _run_threaded_render_pipeline(
+    default_config,
     writer: FrameWriter,
     *,
     frame_count: int,
@@ -180,7 +181,7 @@ def _run_threaded_render_pipeline(
     render_module._render_annotated_frames_pipeline(
         frame_iter=frames,
         record_iter=iter(()),
-        annotator=DummyAnnotator(AppConfig()),
+        annotator=DummyAnnotator(default_config),
         writer=writer,
         label_text={},
         label_text_colors={},
@@ -191,29 +192,31 @@ def _run_threaded_render_pipeline(
     )
 
 
-def test_threaded_render_pipeline_writes_all_frames_and_releases_once() -> None:
+def test_threaded_render_pipeline_writes_all_frames_and_releases_once(
+    default_config,
+) -> None:
     writer = _CountingWriter()
 
-    _run_threaded_render_pipeline(writer, frame_count=3)
+    _run_threaded_render_pipeline(default_config, writer, frame_count=3)
 
     assert [int(frame[0, 0, 0]) for frame in writer.frames] == [0, 1, 2]
     assert writer.release_calls == 1
 
 
-def test_threaded_render_pipeline_propagates_write_failure() -> None:
+def test_threaded_render_pipeline_propagates_write_failure(default_config) -> None:
     writer = _WriteFailingWriter()
 
     with pytest.raises(RuntimeError, match="write failed"):
-        _run_threaded_render_pipeline(writer, frame_count=1)
+        _run_threaded_render_pipeline(default_config, writer, frame_count=1)
 
     assert writer.release_calls == 1
 
 
-def test_threaded_render_pipeline_propagates_finalize_failure() -> None:
+def test_threaded_render_pipeline_propagates_finalize_failure(default_config) -> None:
     writer = _ReleaseFailingWriter()
 
     with pytest.raises(RuntimeError, match="finalize failed"):
-        _run_threaded_render_pipeline(writer, frame_count=0)
+        _run_threaded_render_pipeline(default_config, writer, frame_count=0)
 
     assert writer.release_calls == 1
 
@@ -283,12 +286,13 @@ def _write_records(path: Path, records: list[FrameRecord]) -> None:
 
 
 def _config(
+    config_factory,
     min_visible_track_observations: int = 1,
     require_crop_eligible_track: bool = False,
     show_unclassified_tracks: bool = False,
     smoothing_enabled: bool = False,
 ) -> AppConfig:
-    return AppConfig.model_validate(
+    return config_factory(
         {
             "render": {
                 "min_visible_track_observations": min_visible_track_observations,
@@ -333,9 +337,9 @@ def _patch_render_io(monkeypatch: pytest.MonkeyPatch, writer: DummyWriter) -> No
     )
 
 
-def test_video_annotator_returns_same_shape_frame() -> None:
+def test_video_annotator_returns_same_shape_frame(default_config) -> None:
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
-    annotated = VideoAnnotator(AppConfig()).annotate(
+    annotated = VideoAnnotator(default_config).annotate(
         frame,
         tracks=[_track(1)],
         labels_by_track={1: "1 | Toyota Corolla"},
@@ -344,17 +348,17 @@ def test_video_annotator_returns_same_shape_frame() -> None:
     assert annotated.shape == frame.shape
 
 
-def test_video_annotator_no_tracks_returns_unchanged_copy() -> None:
+def test_video_annotator_no_tracks_returns_unchanged_copy(default_config) -> None:
     frame = np.full((32, 32, 3), 7, dtype=np.uint8)
-    annotated = VideoAnnotator(AppConfig()).annotate(frame, [], {})
+    annotated = VideoAnnotator(default_config).annotate(frame, [], {})
 
     assert np.array_equal(annotated, frame)
     assert annotated is not frame
 
 
-def test_video_annotator_visible_track_produces_nonzero_pixels() -> None:
+def test_video_annotator_visible_track_produces_nonzero_pixels(default_config) -> None:
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
-    annotated = VideoAnnotator(AppConfig()).annotate(
+    annotated = VideoAnnotator(default_config).annotate(
         frame,
         tracks=[_track(1)],
         labels_by_track={1: "1 | Toyota Corolla"},
@@ -363,8 +367,10 @@ def test_video_annotator_visible_track_produces_nonzero_pixels() -> None:
     assert int(annotated.max()) > 0
 
 
-def test_video_annotator_handles_missing_labels_with_unknown_fallback() -> None:
-    annotated = VideoAnnotator(AppConfig()).annotate(
+def test_video_annotator_handles_missing_labels_with_unknown_fallback(
+    default_config,
+) -> None:
+    annotated = VideoAnnotator(default_config).annotate(
         np.zeros((64, 64, 3), dtype=np.uint8),
         tracks=[_track(1)],
         labels_by_track={},
@@ -372,10 +378,11 @@ def test_video_annotator_handles_missing_labels_with_unknown_fallback() -> None:
     assert isinstance(annotated, np.ndarray)
 
 
-def test_video_annotator_accepts_fixed_configured_colors() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_accepts_fixed_configured_colors(config_factory) -> None:
+    config = config_factory(
         {
             "render": {
+                "box_enabled": True,
                 "box_color": "#00FF00",
                 "label_bg_color": "#101820",
                 "label_text_color": "#FFFFFF",
@@ -393,10 +400,11 @@ def test_video_annotator_accepts_fixed_configured_colors() -> None:
     assert int(annotated.max()) > 0
 
 
-def test_video_annotator_draws_transparent_rectangle_box() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_draws_transparent_rectangle_box(config_factory) -> None:
+    config = config_factory(
         {
             "render": {
+                "box_enabled": True,
                 "box_color": "#00FF00",
                 "box_alpha": 0.5,
                 "box_thickness": 2,
@@ -415,8 +423,8 @@ def test_video_annotator_draws_transparent_rectangle_box() -> None:
     assert np.any(annotated[20:23, 20:81] != frame[20:23, 20:81])
 
 
-def test_video_annotator_can_disable_rectangle_box() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_can_disable_rectangle_box(config_factory) -> None:
+    config = config_factory(
         {
             "render": {
                 "box_enabled": False,
@@ -436,8 +444,8 @@ def test_video_annotator_can_disable_rectangle_box() -> None:
     assert np.array_equal(annotated[20:61, 20:81], frame[20:61, 20:81])
 
 
-def test_video_annotator_draws_counter() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_draws_counter(config_factory) -> None:
+    config = config_factory(
         {
             "render": {
                 "label_bg_color": "#000000",
@@ -460,6 +468,7 @@ def test_video_annotator_draws_counter() -> None:
 
 
 def test_video_annotator_draws_make_statistics(
+    config_factory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drawn_text: list[str] = []
@@ -488,7 +497,7 @@ def test_video_annotator_draws_make_statistics(
     monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
     monkeypatch.setattr(annotators_module, "_render_flag_emoji", render_test_flag)
 
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "counter_enabled": True,
@@ -518,6 +527,7 @@ def test_video_annotator_draws_make_statistics(
 
 
 def test_video_annotator_make_statistics_animation_smoke(
+    config_factory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def render_test_flag(flag: str, target_height: int) -> np.ndarray:
@@ -529,7 +539,7 @@ def test_video_annotator_make_statistics_animation_smoke(
 
     monkeypatch.setattr(annotators_module, "_render_flag_emoji", render_test_flag)
 
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"render": {"counter_enabled": True, "label_font_scale": 0.5}}
     )
     annotator = VideoAnnotator(config)
@@ -559,8 +569,10 @@ def test_video_annotator_make_statistics_animation_smoke(
     assert np.any(first != second)
 
 
-def test_video_annotator_counter_uses_balanced_visible_vertical_padding() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_counter_uses_balanced_visible_vertical_padding(
+    config_factory,
+) -> None:
+    config = config_factory(
         {
             "render": {
                 "label_bg_alpha": 1.0,
@@ -593,6 +605,7 @@ def test_video_annotator_counter_uses_balanced_visible_vertical_padding() -> Non
 
 
 def test_video_annotator_applies_track_color_to_all_label_lines_not_counter(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drawn_text_and_colors: list[tuple[str, tuple[int, int, int]]] = []
@@ -613,7 +626,7 @@ def test_video_annotator_applies_track_color_to_all_label_lines_not_counter(
 
     monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
 
-    VideoAnnotator(AppConfig()).annotate(
+    VideoAnnotator(default_config).annotate(
         np.zeros((240, 360, 3), dtype=np.uint8),
         tracks=[_track(1, bbox=BBox(x1=20, y1=20, x2=160, y2=80))],
         labels_by_track={1: "🇩🇪 VW Golf\nMk VIII\nElectric"},
@@ -629,8 +642,10 @@ def test_video_annotator_applies_track_color_to_all_label_lines_not_counter(
     ]
 
 
-def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
-    config = AppConfig.model_validate(
+def test_video_annotator_clamps_label_below_track_at_bottom_edge(
+    config_factory,
+) -> None:
+    config = config_factory(
         {
             "render": {
                 "label_bg_color": "#000000",
@@ -651,8 +666,10 @@ def test_video_annotator_clamps_label_below_track_at_bottom_edge() -> None:
     assert int(label_pixels[0].min()) >= 71
 
 
-def test_draw_track_label_clips_past_right_edge_without_shifting_left() -> None:
-    config = AppConfig.model_validate(
+def test_draw_track_label_clips_past_right_edge_without_shifting_left(
+    config_factory,
+) -> None:
+    config = config_factory(
         {
             "render": {
                 "box_enabled": False,
@@ -676,6 +693,7 @@ def test_draw_track_label_clips_past_right_edge_without_shifting_left() -> None:
 
 
 def test_video_annotator_always_passes_full_label_for_tiny_box(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     labels: list[str] = []
@@ -686,7 +704,7 @@ def test_video_annotator_always_passes_full_label_for_tiny_box(
 
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
 
-    VideoAnnotator(AppConfig()).annotate(
+    VideoAnnotator(default_config).annotate(
         np.zeros((120, 160, 3), dtype=np.uint8),
         tracks=[_track(1, bbox=BBox(x1=10, y1=10, x2=30, y2=50))],
         labels_by_track={1: "Toyota Corolla\nE210\nHybrid"},
@@ -695,10 +713,8 @@ def test_video_annotator_always_passes_full_label_for_tiny_box(
     assert labels == ["Toyota Corolla\nE210\nHybrid"]
 
 
-def test_label_scale_factor_uses_box_width_proportion() -> None:
-    config = AppConfig.model_validate(
-        {"render": {"label_scale_reference_box_width_px": 90}}
-    )
+def test_label_scale_factor_uses_box_width_proportion(config_factory) -> None:
+    config = config_factory({"render": {"label_scale_reference_box_width_px": 90}})
 
     assert annotators_module._label_scale_factor(
         _track(1, bbox=BBox(x1=10, y1=10, x2=55, y2=50)),
@@ -722,6 +738,7 @@ def test_label_scale_factor_uses_box_width_proportion() -> None:
     ],
 )
 def test_draw_track_label_scales_simplex_font_by_box_width(
+    config_factory,
     monkeypatch: pytest.MonkeyPatch,
     box_width: int,
     expected_scale: float,
@@ -747,7 +764,7 @@ def test_draw_track_label_scales_simplex_font_by_box_width(
         return img
 
     monkeypatch.setattr(annotators_module.cv2, "putText", capture_put_text)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "label_font_scale": 0.5,
@@ -781,6 +798,7 @@ def test_flag_emoji_raster_scales_with_label_height() -> None:
 
 
 def test_draw_track_label_renders_color_flag_and_plain_opencv_text(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drawn_text: list[str] = []
@@ -806,7 +824,7 @@ def test_draw_track_label_renders_color_flag_and_plain_opencv_text(
         frame,
         _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
         "🇩🇪 VW Golf",
-        AppConfig(),
+        default_config,
     )
 
     blue, green, red = (frame[:, :, index] for index in range(3))
@@ -816,6 +834,7 @@ def test_draw_track_label_renders_color_flag_and_plain_opencv_text(
 
 
 def test_draw_track_label_renders_multiple_leading_flags(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drawn_text: list[str] = []
@@ -846,7 +865,7 @@ def test_draw_track_label_renders_multiple_leading_flags(
         np.zeros((120, 180, 3), dtype=np.uint8),
         _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
         "🇩🇪🇨🇭 Smart",
-        AppConfig(),
+        default_config,
     )
 
     assert drawn_text == ["Smart"]
@@ -854,6 +873,7 @@ def test_draw_track_label_renders_multiple_leading_flags(
 
 
 def test_draw_track_label_renders_trailing_tag_emojis_outside_opencv_text(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drawn_text: list[str] = []
@@ -884,7 +904,7 @@ def test_draw_track_label_renders_trailing_tag_emojis_outside_opencv_text(
         np.zeros((120, 180, 3), dtype=np.uint8),
         _track(1, bbox=BBox(x1=10, y1=10, x2=100, y2=50)),
         "VW Golf 🚓 🚑",
-        AppConfig(),
+        default_config,
     )
 
     assert drawn_text == ["VW Golf"]
@@ -892,6 +912,7 @@ def test_draw_track_label_renders_trailing_tag_emojis_outside_opencv_text(
 
 
 def test_draw_track_label_uses_configured_scaled_flag_gap(
+    config_factory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     text_origins: list[tuple[int, int]] = []
@@ -919,7 +940,7 @@ def test_draw_track_label_uses_configured_scaled_flag_gap(
             frame.copy(),
             track,
             "🇩🇪 VW Golf",
-            AppConfig.model_validate(
+            config_factory(
                 {
                     "render": {
                         "label_flag_gap_px": flag_gap,
@@ -933,6 +954,7 @@ def test_draw_track_label_uses_configured_scaled_flag_gap(
 
 
 def test_video_annotator_draws_all_boxes_before_area_sorted_labels(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     draw_order: list[tuple[str, int]] = []
@@ -948,7 +970,7 @@ def test_video_annotator_draws_all_boxes_before_area_sorted_labels(
     monkeypatch.setattr(annotators_module, "_draw_track_box", capture_box)
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
 
-    VideoAnnotator(AppConfig()).annotate(
+    VideoAnnotator(default_config).annotate(
         np.zeros((160, 180, 3), dtype=np.uint8),
         tracks=[
             _track(1, bbox=BBox(x1=10, y1=10, x2=110, y2=70)),
@@ -961,6 +983,7 @@ def test_video_annotator_draws_all_boxes_before_area_sorted_labels(
 
 
 def test_video_annotator_preserves_label_order_for_equal_box_areas(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     label_order: list[int] = []
@@ -971,7 +994,7 @@ def test_video_annotator_preserves_label_order_for_equal_box_areas(
 
     monkeypatch.setattr(annotators_module, "_draw_track_label", capture_label)
 
-    VideoAnnotator(AppConfig()).annotate(
+    VideoAnnotator(default_config).annotate(
         np.zeros((160, 180, 3), dtype=np.uint8),
         tracks=[
             _track(1, bbox=BBox(x1=10, y1=10, x2=70, y2=50)),
@@ -983,8 +1006,10 @@ def test_video_annotator_preserves_label_order_for_equal_box_areas(
     assert label_order == [1, 2]
 
 
-def test_video_annotator_does_not_retain_trace_history_between_calls() -> None:
-    annotator = VideoAnnotator(AppConfig())
+def test_video_annotator_does_not_retain_trace_history_between_calls(
+    default_config,
+) -> None:
+    annotator = VideoAnnotator(default_config)
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
     first = annotator.annotate(frame, [_track(1)], {1: "1 | Toyota"})
     second = annotator.annotate(frame, [], {})
@@ -1091,6 +1116,7 @@ def test_visible_track_label_text_only_uses_vehicle_indexed_tracks(tmp_path) -> 
 
 
 def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
+    default_config,
     tmp_path,
 ) -> None:
     store = DummyRunStore(tmp_path)
@@ -1151,7 +1177,7 @@ def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
     }
 
     label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
-        AppConfig(),
+        default_config,
         _as_run_store(store),
         store.frames_path,
         allow_unclassified_annotations=False,
@@ -1160,11 +1186,13 @@ def test_label_text_colors_only_override_accepted_bev_and_mixed_results(
     )
 
     assert set(label_text) == {1, 2, 3, 4, 5, 6}
-    assert label_text_colors == {1: "#00BFFF", 2: "#39FF14"}
+    assert label_text_colors == {1: "#47C8FF", 2: "#39FF31"}
     assert set(accepted_labels) == {1, 2, 3, 4, 5, 6}
 
 
-def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> None:
+def test_unclassified_label_text_has_no_powertrain_color_override(
+    default_config, tmp_path
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1178,7 +1206,7 @@ def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> N
     )
 
     label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
-        AppConfig(),
+        default_config,
         _as_run_store(store),
         store.frames_path,
         allow_unclassified_annotations=True,
@@ -1191,15 +1219,15 @@ def test_unclassified_label_text_has_no_powertrain_color_override(tmp_path) -> N
     assert accepted_labels == {}
 
 
-def test_output_fps_caps_configured_render_fps_at_source_fps() -> None:
-    config = AppConfig.model_validate(
-        {"video": {"fps": 30.0}, "render": {"output_fps": 60.0}}
-    )
+def test_output_fps_caps_configured_render_fps_at_source_fps(config_factory) -> None:
+    config = config_factory({"video": {"fps": 30.0}, "render": {"output_fps": 60.0}})
 
     assert _output_fps(config) == 30.0
 
 
-def test_visible_track_ids_applies_crop_eligibility_when_required() -> None:
+def test_visible_track_ids_applies_crop_eligibility_when_required(
+    config_factory,
+) -> None:
     records = [
         FrameRecord(
             frame_index=0,
@@ -1212,14 +1240,14 @@ def test_visible_track_ids_applies_crop_eligibility_when_required() -> None:
     ]
 
     assert visible_track_ids_for_render(
-        _config(require_crop_eligible_track=True),
+        _config(config_factory, require_crop_eligible_track=True),
         records,
     ) == {1}
 
 
-def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show() -> (
-    None
-):
+def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
+    config_factory,
+) -> None:
     records = [
         FrameRecord(
             frame_index=0,
@@ -1233,6 +1261,7 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
 
     assert visible_track_ids_for_render(
         _config(
+            config_factory,
             require_crop_eligible_track=True,
             show_unclassified_tracks=True,
         ),
@@ -1240,7 +1269,9 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
     ) == {1, 2}
 
 
-def test_visible_track_ids_applies_min_box_width_when_summaries_exist() -> None:
+def test_visible_track_ids_applies_min_box_width_when_summaries_exist(
+    config_factory,
+) -> None:
     records = [
         FrameRecord(
             frame_index=0,
@@ -1257,7 +1288,7 @@ def test_visible_track_ids_applies_min_box_width_when_summaries_exist() -> None:
     ]
 
     assert visible_track_ids_for_render(
-        AppConfig.model_validate(
+        config_factory(
             {
                 "analysis": {"min_box_width_px": 160},
                 "render": {"min_visible_track_observations": 1},
@@ -1268,7 +1299,9 @@ def test_visible_track_ids_applies_min_box_width_when_summaries_exist() -> None:
     ) == {1}
 
 
-def test_visible_track_ids_keeps_old_behavior_when_summaries_missing() -> None:
+def test_visible_track_ids_keeps_old_behavior_when_summaries_missing(
+    config_factory,
+) -> None:
     records = [
         FrameRecord(
             frame_index=0,
@@ -1280,17 +1313,18 @@ def test_visible_track_ids_keeps_old_behavior_when_summaries_missing() -> None:
         )
     ]
 
-    assert visible_track_ids_for_render(_config(), records) == {1, 2}
+    assert visible_track_ids_for_render(_config(config_factory), records) == {1, 2}
 
 
 def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
+    config_factory,
     tmp_path,
 ) -> None:
     store = DummyRunStore(tmp_path)
 
     assert (
         _resolve_render_frames_path(
-            _config(smoothing_enabled=False),
+            _config(config_factory, smoothing_enabled=False),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=None,
@@ -1300,6 +1334,7 @@ def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
 
 
 def test_resolve_render_frames_path_calls_smoother_when_smoothing_enabled(
+    config_factory,
     tmp_path,
 ) -> None:
     store = DummyRunStore(tmp_path)
@@ -1314,7 +1349,7 @@ def test_resolve_render_frames_path_calls_smoother_when_smoothing_enabled(
 
     assert (
         _resolve_render_frames_path(
-            _config(smoothing_enabled=True),
+            _config(config_factory, smoothing_enabled=True),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=fake_smoother,
@@ -1325,20 +1360,23 @@ def test_resolve_render_frames_path_calls_smoother_when_smoothing_enabled(
 
 
 def test_resolve_render_frames_path_requires_smoother_when_smoothing_enabled(
+    config_factory,
     tmp_path,
 ) -> None:
     store = DummyRunStore(tmp_path)
 
     with pytest.raises(ValueError, match="no smoothing stage was provided"):
         _resolve_render_frames_path(
-            _config(smoothing_enabled=True),
+            _config(config_factory, smoothing_enabled=True),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=None,
         )
 
 
-def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
+def test_render_filters_by_visibility_count(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1371,7 +1409,7 @@ def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(min_visible_track_observations=2),
+        config=_config(config_factory, min_visible_track_observations=2),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1382,7 +1420,9 @@ def test_render_filters_by_visibility_count(tmp_path, monkeypatch) -> None:
     assert writer.released is True
 
 
-def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> None:
+def test_render_respects_require_crop_eligible_track(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1411,7 +1451,7 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(require_crop_eligible_track=True),
+        config=_config(config_factory, require_crop_eligible_track=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1421,7 +1461,9 @@ def test_render_respects_require_crop_eligible_track(tmp_path, monkeypatch) -> N
     assert [2] not in DummyAnnotator.seen_track_ids
 
 
-def test_render_hides_labeled_track_below_min_box_width(tmp_path, monkeypatch) -> None:
+def test_render_hides_labeled_track_below_min_box_width(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     store.track_summaries = [
         _summary(1, max_box_width_px=120, vehicle_index=1),
@@ -1454,7 +1496,7 @@ def test_render_hides_labeled_track_below_min_box_width(tmp_path, monkeypatch) -
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_box_width_px": 160},
                 "render": {
@@ -1473,7 +1515,7 @@ def test_render_hides_labeled_track_below_min_box_width(tmp_path, monkeypatch) -
 
 
 def test_render_min_box_width_applies_when_showing_unclassified_tracks(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     store.track_summaries = [
@@ -1498,7 +1540,7 @@ def test_render_min_box_width_applies_when_showing_unclassified_tracks(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_box_width_px": 160},
                 "render": {
@@ -1518,7 +1560,7 @@ def test_render_min_box_width_applies_when_showing_unclassified_tracks(
 
 
 def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -1541,7 +1583,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1554,7 +1596,9 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     assert DummyAnnotator.seen_label_text_colors_by_track[-1] == {}
 
 
-def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> None:
+def test_render_skips_rejected_classification_labels(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1592,7 +1636,7 @@ def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> N
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1604,7 +1648,7 @@ def test_render_skips_rejected_classification_labels(tmp_path, monkeypatch) -> N
 
 
 def test_render_passes_exact_powertrain_text_colors_to_annotator(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -1654,19 +1698,21 @@ def test_render_passes_exact_powertrain_text_colors_to_annotator(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
     )
 
     assert DummyAnnotator.seen_label_text_colors_by_track[-1] == {
-        1: "#00BFFF",
-        2: "#39FF14",
+        1: "#47C8FF",
+        2: "#39FF31",
     }
 
 
-def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
+def test_render_passes_live_count_to_annotator(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1706,7 +1752,7 @@ def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1715,7 +1761,9 @@ def test_render_passes_live_count_to_annotator(tmp_path, monkeypatch) -> None:
     assert DummyAnnotator.seen_counter_values == [1, 2, 2]
 
 
-def test_render_passes_live_make_statistics_to_annotator(tmp_path, monkeypatch) -> None:
+def test_render_passes_live_make_statistics_to_annotator(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
         store.frames_path,
@@ -1774,7 +1822,7 @@ def test_render_passes_live_make_statistics_to_annotator(tmp_path, monkeypatch) 
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1838,7 +1886,7 @@ def test_make_statistics_rows_order_ties_by_make() -> None:
 
 
 def test_render_counter_counts_only_rendered_accepted_tracks(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -1888,7 +1936,7 @@ def test_render_counter_counts_only_rendered_accepted_tracks(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1900,7 +1948,7 @@ def test_render_counter_counts_only_rendered_accepted_tracks(
 
 
 def test_render_make_statistics_use_counter_render_eligibility(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -1957,7 +2005,7 @@ def test_render_make_statistics_use_counter_render_eligibility(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(min_visible_track_observations=2),
+        config=_config(config_factory, min_visible_track_observations=2),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1972,7 +2020,7 @@ def test_render_make_statistics_use_counter_render_eligibility(
 
 
 def test_render_uses_injected_smoother_when_smoothing_is_enabled(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -2007,7 +2055,7 @@ def test_render_uses_injected_smoother_when_smoothing_is_enabled(
         return store.render_frames_path
 
     render_video(
-        config=_config(smoothing_enabled=True),
+        config=_config(config_factory, smoothing_enabled=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -2019,7 +2067,7 @@ def test_render_uses_injected_smoother_when_smoothing_is_enabled(
 
 
 def test_render_requires_smoother_when_smoothing_is_enabled(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     writer = DummyWriter()
@@ -2027,7 +2075,7 @@ def test_render_requires_smoother_when_smoothing_is_enabled(
 
     with pytest.raises(ValueError, match="no smoothing stage was provided"):
         render_video(
-            config=_config(smoothing_enabled=True),
+            config=_config(config_factory, smoothing_enabled=True),
             profile=build_full_frame_profile(width=32, height=32),
             video_path=store.manifest.video_path,
             run_store=_as_run_store(store),
@@ -2035,7 +2083,7 @@ def test_render_requires_smoother_when_smoothing_is_enabled(
 
 
 def test_render_counter_counts_canonical_vehicle_index_once_across_split_track_ids(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     store = DummyRunStore(tmp_path)
     _write_records(
@@ -2082,7 +2130,7 @@ def test_render_counter_counts_canonical_vehicle_index_once_across_split_track_i
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(),
+        config=_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),

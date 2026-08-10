@@ -12,136 +12,131 @@ class StrictBaseModel(BaseModel):
 
 
 class ProjectConfig(StrictBaseModel):
-    output_root: Path = Path("output")
-    camera_profiles_dir: Path = Path("configs/cameras")
+    output_root: Path
+    camera_profiles_dir: Path
 
 
 class VideoConfig(StrictBaseModel):
-    fps: float = Field(default=30.0, gt=0.0)
-    fps_tolerance: float = Field(default=0.05, ge=0.0)
+    fps: float = Field(gt=0.0)
+    fps_tolerance: float = Field(ge=0.0)
 
 
 class AnalysisConfig(StrictBaseModel):
-    fps: float = Field(default=10.0, gt=0.0)
-    batch_size: int = Field(default=16, ge=1)
-    detector_batch_size: int | None = Field(default=None, ge=1)
-    min_track_frames: int = 10
+    fps: float = Field(gt=0.0)
+    batch_size: int = Field(ge=1)
+    detector_batch_size: int | None = Field(ge=1)
+    min_track_frames: int
     min_box_width_px: int = Field(
-        default=160,
         validation_alias=AliasChoices("min_box_width_px", "min_box_height_px"),
     )
-    crop_padding_ratio: float = Field(default=0.08, ge=0.0)
-    crop_padding_px: int = Field(default=0, ge=0)
-    crop_target_box_range_ratio: float = Field(default=0.70, ge=0.0, le=1.0)
-    crop_min_spacing_seconds: float = 0.5
-    crop_jpeg_quality: int = 95
+    crop_padding_ratio: float = Field(ge=0.0)
+    crop_padding_px: int = Field(ge=0)
+    crop_target_box_range_ratio: float = Field(ge=0.0, le=1.0)
+    crop_min_spacing_seconds: float
+    crop_jpeg_quality: int
 
 
 class DetectorConfig(StrictBaseModel):
-    device: Literal["auto", "cpu", "cuda"] = "auto"
-    confidence: float = Field(default=0.15, ge=0.0, le=1.0)
-    input_size: int = Field(default=576, ge=64)
-    allowed_class_names: list[str] = Field(default_factory=lambda: ["car"])
-    nms_enabled: bool = True
-    nms_iou_threshold: float = Field(default=0.80, gt=0.0, le=1.0)
-    nms_class_agnostic: bool = True
-    pretrain_weights: str | None = None
-    include_source_image: bool = False
-    optimize_for_inference: bool = True
-    inference_dtype: Literal["auto", "float32", "float16"] = "auto"
+    device: Literal["auto", "cpu", "cuda"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    input_size: int = Field(ge=64)
+    allowed_class_names: list[str]
+    nms_enabled: bool
+    nms_iou_threshold: float = Field(gt=0.0, le=1.0)
+    nms_class_agnostic: bool
+    pretrain_weights: str | None
+    include_source_image: bool
+    optimize_for_inference: bool
+    inference_dtype: Literal["auto", "float32", "float16"]
 
 
 class TrackerConfig(StrictBaseModel):
-    lost_track_buffer: int = 12
-    max_reassociation_gap_seconds: float | None = Field(default=0.35, ge=0.0)
-    track_activation_threshold: float = 0.30
-    minimum_consecutive_frames: int = 2
-    minimum_iou_threshold_first_assoc: float = 0.25
-    minimum_iou_threshold_second_assoc: float = 0.50
-    minimum_iou_threshold_unconfirmed_assoc: float = 0.20
-    high_conf_det_threshold: float = Field(default=0.30, ge=0.0, le=1.0)
-    enable_cmc: bool = False
-    cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"] = "sparseOptFlow"
-    cmc_downscale: int = 2
-    instant_first_frame_activation: bool = True
-    frame_rate: int = 0
-    ignore_edge_touches: bool = True
-    edge_margin_px: int = 10
-    suppress_duplicate_tracks: bool = False
-    duplicate_track_iou_threshold: float = Field(default=0.80, gt=0.0, le=1.0)
-    duplicate_track_containment_threshold: float = Field(default=0.95, gt=0.0, le=1.0)
-    duplicate_track_min_area_ratio: float = Field(default=0.30, ge=0.0, le=1.0)
-    duplicate_track_center_distance_ratio: float = Field(default=0.30, ge=0.0)
-    suppress_sequential_duplicate_tracks: bool = True
-    sequential_duplicate_max_gap_seconds: float = Field(default=0.70, gt=0.0)
-    sequential_duplicate_prediction_error_ratio: float = Field(default=0.70, ge=0.0)
-    sequential_duplicate_min_width_ratio: float = Field(default=0.50, gt=0.0, le=1.0)
-    sequential_duplicate_min_height_ratio: float = Field(default=0.45, gt=0.0, le=1.0)
-    sequential_duplicate_min_handoff_iou: float = Field(default=0.03, ge=0.0, le=1.0)
-    sequential_duplicate_require_same_color: bool = True
-    sequential_duplicate_require_same_generation: bool = True
-    sequential_duplicate_require_same_variation: bool = True
+    lost_track_buffer: int
+    max_reassociation_gap_seconds: float | None = Field(ge=0.0)
+    track_activation_threshold: float
+    minimum_consecutive_frames: int
+    minimum_iou_threshold_first_assoc: float
+    minimum_iou_threshold_second_assoc: float
+    minimum_iou_threshold_unconfirmed_assoc: float
+    high_conf_det_threshold: float = Field(ge=0.0, le=1.0)
+    enable_cmc: bool
+    cmc_method: Literal["orb", "sift", "sparseOptFlow", "ecc"]
+    cmc_downscale: int
+    instant_first_frame_activation: bool
+    frame_rate: int
+    ignore_edge_touches: bool
+    edge_margin_px: int
+    suppress_duplicate_tracks: bool
+    duplicate_track_iou_threshold: float = Field(gt=0.0, le=1.0)
+    duplicate_track_containment_threshold: float = Field(gt=0.0, le=1.0)
+    duplicate_track_min_area_ratio: float = Field(ge=0.0, le=1.0)
+    duplicate_track_center_distance_ratio: float = Field(ge=0.0)
+    suppress_sequential_duplicate_tracks: bool
+    sequential_duplicate_max_gap_seconds: float = Field(gt=0.0)
+    sequential_duplicate_prediction_error_ratio: float = Field(ge=0.0)
+    sequential_duplicate_min_width_ratio: float = Field(gt=0.0, le=1.0)
+    sequential_duplicate_min_height_ratio: float = Field(gt=0.0, le=1.0)
+    sequential_duplicate_min_handoff_iou: float = Field(ge=0.0, le=1.0)
+    sequential_duplicate_require_same_color: bool
+    sequential_duplicate_require_same_generation: bool
+    sequential_duplicate_require_same_variation: bool
 
 
 class RenderSmoothingConfig(StrictBaseModel):
-    enabled: bool = True
-    observed_box_smoothing: Literal["none", "causal_average", "local_linear"] = (
-        "local_linear"
-    )
-    history_length: int = Field(default=1, ge=1)
-    observed_smoothing_window: int = Field(default=5, ge=1)
-    observed_smoothing_max_shift_ratio: float = Field(default=0.10, ge=0.0)
-    bridge_missing_analysis_frames: bool = True
-    max_missing_analysis_gap_frames: int = Field(default=3, ge=0)
-    interpolate_source_frames: bool = True
-    interpolation_method: Literal["linear"] = "linear"
-    max_interpolation_gap_seconds: float | None = Field(default=None, gt=0.0)
+    enabled: bool
+    observed_box_smoothing: Literal["none", "causal_average", "local_linear"]
+    history_length: int = Field(ge=1)
+    observed_smoothing_window: int = Field(ge=1)
+    observed_smoothing_max_shift_ratio: float = Field(ge=0.0)
+    bridge_missing_analysis_frames: bool
+    max_missing_analysis_gap_frames: int = Field(ge=0)
+    interpolate_source_frames: bool
+    interpolation_method: Literal["linear"]
+    max_interpolation_gap_seconds: float | None = Field(gt=0.0)
 
 
 class MMRConfig(StrictBaseModel):
-    api_url: str = "https://trafficeye.ai/recognition"
-    api_key_env: str = "TRAFFICEYE_API_KEY"
-    timeout_seconds: float = 45.0
-    accept_model_confidence: float = 0.60
-    mmr_preference: str = "BOX"
-    batch_size: int = Field(default=16, ge=1)
-    batch_grid_columns: int = Field(default=4, ge=1)
-    batch_cell_size_px: int = Field(default=512, ge=64)
+    api_url: str
+    api_key_env: str
+    timeout_seconds: float
+    accept_model_confidence: float
+    mmr_preference: str
+    batch_size: int = Field(ge=1)
+    batch_grid_columns: int = Field(ge=1)
+    batch_cell_size_px: int = Field(ge=64)
 
 
 class RenderConfig(StrictBaseModel):
-    codec: str = "mp4v"
-    output_fps: float | None = Field(default=None, gt=0.0)
-    encode_backend: Literal["opencv", "ffmpeg", "auto-nvenc", "ffmpeg-nvenc"] = "opencv"
-    workers: int = Field(default=1, ge=1)
-    ffmpeg_path: str = "ffmpeg"
-    nvenc_codec: str = "h264_nvenc"
-    nvenc_preset: str = "p4"
-    nvenc_cq: int = Field(default=23, ge=0, le=51)
-    min_visible_track_observations: int = Field(default=10, ge=1)
-    require_crop_eligible_track: bool = False
-    show_unclassified_tracks: bool = False
-    box_color: str = "#FFFFFF"
-    box_enabled: bool = True
-    box_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
-    box_thickness: int = Field(default=2, ge=1)
-    label_font_scale: float = 1.0
-    label_thickness: int = 1
-    label_padding_px: int = 4
-    label_gap_px: int = 5
-    label_flag_gap_px: int = Field(default=4, ge=0)
-    label_text_color: str = "#FFFFFF"
-    label_bev_text_color: str = "#00BFFF"
-    label_mixed_text_color: str = "#39FF14"
-    label_bg_color: str = "#000000"
-    label_bg_alpha: float = Field(default=0.25, ge=0.0, le=1.0)
-    label_scale_reference_box_width_px: int = Field(default=200, gt=0)
-    counter_enabled: bool = True
-    counter_position: Literal[
-        "top_left", "top_right", "bottom_left", "bottom_right"
-    ] = "top_left"
-    unknown_label: str = "UNKNOWN"
-    smoothing: RenderSmoothingConfig = Field(default_factory=RenderSmoothingConfig)
+    codec: str
+    output_fps: float | None = Field(gt=0.0)
+    encode_backend: Literal["opencv", "ffmpeg", "auto-nvenc", "ffmpeg-nvenc"]
+    workers: int = Field(ge=1)
+    ffmpeg_path: str
+    nvenc_codec: str
+    nvenc_preset: str
+    nvenc_cq: int = Field(ge=0, le=51)
+    min_visible_track_observations: int = Field(ge=1)
+    require_crop_eligible_track: bool
+    show_unclassified_tracks: bool
+    box_color: str
+    box_enabled: bool
+    box_alpha: float = Field(ge=0.0, le=1.0)
+    box_thickness: int = Field(ge=1)
+    label_font_scale: float
+    label_thickness: int
+    label_padding_px: int
+    label_gap_px: int
+    label_flag_gap_px: int = Field(ge=0)
+    label_text_color: str
+    label_bev_text_color: str
+    label_mixed_text_color: str
+    label_bg_color: str
+    label_bg_alpha: float = Field(ge=0.0, le=1.0)
+    label_scale_reference_box_width_px: int = Field(gt=0)
+    counter_enabled: bool
+    counter_position: Literal["top_left", "top_right", "bottom_left", "bottom_right"]
+    unknown_label: str
+    smoothing: RenderSmoothingConfig
 
 
 class PolygonZoneConfig(StrictBaseModel):
@@ -190,13 +185,13 @@ def build_full_frame_profile(
 
 
 class AppConfig(StrictBaseModel):
-    project: ProjectConfig = Field(default_factory=ProjectConfig)
-    video: VideoConfig = Field(default_factory=VideoConfig)
-    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
-    detector: DetectorConfig = Field(default_factory=DetectorConfig)
-    tracker: TrackerConfig = Field(default_factory=TrackerConfig)
-    mmr: MMRConfig = Field(default_factory=MMRConfig)
-    render: RenderConfig = Field(default_factory=RenderConfig)
+    project: ProjectConfig
+    video: VideoConfig
+    analysis: AnalysisConfig
+    detector: DetectorConfig
+    tracker: TrackerConfig
+    mmr: MMRConfig
+    render: RenderConfig
 
     @model_validator(mode="after")
     def validate_tracker_confidence_bands(self) -> "AppConfig":
@@ -250,8 +245,10 @@ def build_effective_config(
     config_path: Path | None = None,
     overrides: dict[str, Any] | None = None,
 ) -> AppConfig:
-    resolved_config_path = config_path or (root / "configs/default.yaml")
-    merged = load_yaml(resolved_config_path)
+    default_config_path = root / "configs/default.yaml"
+    merged = load_yaml(default_config_path)
+    if config_path is not None:
+        merged = _deep_merge(merged, load_yaml(config_path))
     if overrides:
         merged = _deep_merge(merged, overrides)
     return AppConfig.model_validate(merged)

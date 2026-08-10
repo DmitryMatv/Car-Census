@@ -115,7 +115,7 @@ def test_legacy_candidate_and_summary_payloads_still_parse(tmp_path) -> None:
 
 
 def test_classify_tracks_omits_tracks_below_min_track_frames(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -160,7 +160,7 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 10
     config.analysis.crop_target_box_range_ratio = 0.5
 
@@ -178,7 +178,7 @@ def test_classify_tracks_omits_tracks_below_min_track_frames(
 
 
 def test_classify_tracks_assigns_api_classification_index(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -240,7 +240,7 @@ def test_classify_tracks_assigns_api_classification_index(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 10
     config.analysis.crop_target_box_range_ratio = 0.5
 
@@ -260,7 +260,7 @@ def test_classify_tracks_assigns_api_classification_index(
 
 
 def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -338,7 +338,7 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 10
     config.analysis.crop_target_box_range_ratio = 0.5
 
@@ -360,7 +360,7 @@ def test_classify_tracks_groups_by_vehicle_index_and_sends_one_best_crop(
 
 
 def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -500,7 +500,7 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 1
     config.analysis.crop_target_box_range_ratio = 0.5
 
@@ -515,7 +515,9 @@ def test_classify_tracks_ranks_candidates_with_canonical_tie_breaks(
     ]
 
 
-def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> None:
+def test_classify_tracks_sends_best_crops_in_batches(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     calls: list[list[Path]] = []
 
     class FakeTrafficEyeClient:
@@ -583,7 +585,7 @@ def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> N
             ),
         ],
     )
-    config = AppConfig.model_validate({"mmr": {"batch_size": 2}})
+    config = config_factory({"mmr": {"batch_size": 2}})
     config.analysis.min_track_frames = 1
 
     labels = classify_tracks(config=config, run_store=store)
@@ -598,7 +600,7 @@ def test_classify_tracks_sends_best_crops_in_batches(tmp_path, monkeypatch) -> N
 
 
 def test_classify_tracks_uses_relocated_crop_when_track_path_is_stale(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -630,7 +632,7 @@ def test_classify_tracks_uses_relocated_crop_when_track_path_is_stale(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 1
 
     labels = classify_tracks(config=config, run_store=store)
@@ -640,7 +642,7 @@ def test_classify_tracks_uses_relocated_crop_when_track_path_is_stale(
 
 
 def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[Path] = []
 
@@ -684,7 +686,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
             ),
         ],
     )
-    config = AppConfig()
+    config = default_config
     config.analysis.min_track_frames = 1
 
     labels = classify_tracks(config=config, run_store=store)
@@ -696,7 +698,7 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
 
 
 def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     monkeypatch.delenv("TRAFFICEYE_API_KEY", raising=False)
     store = DummyRunStore(tmp_path)
@@ -738,7 +740,7 @@ def test_write_skipped_classification_batch_grids_writes_best_crop_grids(
             ),
         ],
     )
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"mmr": {"batch_size": 2, "batch_grid_columns": 2, "batch_cell_size_px": 100}}
     )
     config.analysis.min_track_frames = 1

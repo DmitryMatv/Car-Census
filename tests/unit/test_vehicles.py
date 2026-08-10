@@ -50,7 +50,7 @@ def test_vehicle_crop_path_helpers(tmp_path) -> None:
     )
 
 
-def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> None:
+def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(default_config, tmp_path) -> None:
     store = DummyRunStore(tmp_path)
     no_crop_state = MutableTrackState(
         track_id=10,
@@ -76,7 +76,7 @@ def test_finalize_vehicle_identities_compacts_crop_eligible_tracks(tmp_path) -> 
             bbox=BBox(x1=2, y1=3, x2=12, y2=13),
             frame_index=frame_index,
             timestamp_seconds=frame_index / 10.0,
-            config=AppConfig(),
+            config=default_config,
         )
 
     vehicle_index_by_track = finalize_vehicle_identities(
@@ -139,7 +139,7 @@ def test_rewrite_frame_vehicle_indices_preserves_existing_unmapped_indices(
     assert [track.vehicle_index for track in rewritten.tracks] == [7, 1]
 
 
-def test_discard_track_artifacts_removes_empty_temp_crop_dir(tmp_path) -> None:
+def test_discard_track_artifacts_removes_empty_temp_crop_dir(default_config, tmp_path) -> None:
     store = DummyRunStore(tmp_path)
     state = MutableTrackState(
         track_id=42,
@@ -155,7 +155,7 @@ def test_discard_track_artifacts_removes_empty_temp_crop_dir(tmp_path) -> None:
         bbox=BBox(x1=2, y1=3, x2=12, y2=13),
         frame_index=5,
         timestamp_seconds=0.5,
-        config=AppConfig(),
+        config=default_config,
     )
 
     discard_track_artifacts(state, store.crops_dir)

@@ -137,6 +137,36 @@ def test_iter_sampled_frames_uses_configured_analysis_fps(tmp_path: Path) -> Non
     )
 
 
+def test_iter_sampled_frames_samples_30_fps_source_at_15_fps(tmp_path: Path) -> None:
+    video_path = tmp_path / "sample-15-fps.mp4"
+    writer = build_video_writer(
+        output_path=video_path,
+        fps=30.0,
+        width=16,
+        height=16,
+        codec="mp4v",
+    )
+    try:
+        for index in range(10):
+            frame = np.full((16, 16, 3), index * 10, dtype=np.uint8)
+            writer.write(frame)
+    finally:
+        writer.release()
+
+    frames = list(iter_sampled_frames(video_path, source_fps=30.0, target_fps=15.0))
+
+    assert [frame_index for frame_index, _timestamp, _frame in frames] == [
+        0,
+        2,
+        4,
+        6,
+        8,
+    ]
+    assert [timestamp for _frame_index, timestamp, _frame in frames] == pytest.approx(
+        [0.0, 1 / 15, 2 / 15, 3 / 15, 4 / 15]
+    )
+
+
 def test_iter_sampled_frames_can_include_unsampled_terminal_frame(
     tmp_path: Path,
 ) -> None:

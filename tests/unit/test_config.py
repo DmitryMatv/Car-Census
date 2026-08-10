@@ -8,9 +8,12 @@ from config import (
     AppConfig,
     CameraProfile,
     CountLineConfig,
+    build_effective_config,
     build_full_frame_profile,
     load_app_config,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_build_full_frame_profile_covers_entire_frame() -> None:
@@ -30,42 +33,23 @@ def test_camera_profile_accepts_polygon_without_count_line() -> None:
     assert profile.count_line is None
 
 
-def test_edge_touch_filtering_is_enabled_by_default() -> None:
-    config = AppConfig()
-    assert config.tracker.ignore_edge_touches is True
-    assert config.tracker.edge_margin_px == 10
+def test_canonical_tracker_confidence_contract(default_config) -> None:
+    config = default_config
 
-
-def test_tracker_config_uses_recommended_split_swap_mitigation_defaults() -> None:
-    config = AppConfig()
-
-    assert config.tracker.lost_track_buffer == 12
-    assert config.tracker.max_reassociation_gap_seconds == 0.35
-    assert config.tracker.track_activation_threshold == 0.30
-    assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.minimum_iou_threshold_first_assoc == 0.25
-    assert config.tracker.minimum_iou_threshold_second_assoc == 0.50
-    assert config.tracker.minimum_iou_threshold_unconfirmed_assoc == 0.20
+    assert config.detector.confidence == 0.15
     assert config.tracker.high_conf_det_threshold == 0.30
-    assert config.tracker.enable_cmc is False
-    assert config.tracker.cmc_method == "sparseOptFlow"
-    assert config.tracker.cmc_downscale == 2
-    assert config.tracker.instant_first_frame_activation is True
+    assert config.detector.confidence < config.tracker.high_conf_det_threshold
     assert config.tracker.suppress_duplicate_tracks is False
-    assert config.tracker.duplicate_track_iou_threshold == 0.80
-    assert config.tracker.duplicate_track_containment_threshold == 0.95
-    assert config.tracker.duplicate_track_min_area_ratio == 0.30
-    assert config.tracker.duplicate_track_center_distance_ratio == 0.30
 
 
-def test_tracker_config_accepts_supported_cmc_methods() -> None:
+def test_tracker_config_accepts_supported_cmc_methods(config_factory) -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
-        config = AppConfig.model_validate({"tracker": {"cmc_method": cmc_method}})
+        config = config_factory({"tracker": {"cmc_method": cmc_method}})
         assert config.tracker.cmc_method == cmc_method
 
 
-def test_tracker_config_accepts_duplicate_suppression_options() -> None:
-    config = AppConfig.model_validate(
+def test_tracker_config_accepts_duplicate_suppression_options(config_factory) -> None:
+    config = config_factory(
         {
             "tracker": {
                 "suppress_duplicate_tracks": False,
@@ -84,8 +68,8 @@ def test_tracker_config_accepts_duplicate_suppression_options() -> None:
     assert config.tracker.duplicate_track_center_distance_ratio == 0.20
 
 
-def test_tracker_config_accepts_sequential_duplicate_options() -> None:
-    config = AppConfig.model_validate(
+def test_tracker_config_accepts_sequential_duplicate_options(config_factory) -> None:
+    config = config_factory(
         {
             "tracker": {
                 "suppress_sequential_duplicate_tracks": False,
@@ -126,115 +110,124 @@ def test_tracker_config_accepts_sequential_duplicate_options() -> None:
     ],
 )
 def test_tracker_config_rejects_invalid_sequential_duplicate_bounds(
-    field: str, value: float
+    config_factory, field: str, value: float
 ) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"tracker": {field: value}})
+        config_factory({"tracker": {field: value}})
 
 
-def test_tracker_config_rejects_null_cmc_method() -> None:
+def test_tracker_config_rejects_null_cmc_method(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"tracker": {"cmc_method": None}})
+        config_factory({"tracker": {"cmc_method": None}})
 
 
-def test_tracker_config_rejects_legacy_tracker_fields() -> None:
+def test_tracker_config_rejects_legacy_tracker_fields(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"tracker": {"reid_half": True}})
+        config_factory({"tracker": {"reid_half": True}})
 
 
-def test_tracker_config_rejects_removed_provider_key() -> None:
+def test_tracker_config_rejects_removed_provider_key(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"tracker": {"provider": "botsort"}})
+        config_factory({"tracker": {"provider": "botsort"}})
 
 
-def test_project_config_rejects_removed_device_key() -> None:
+def test_project_config_rejects_removed_device_key(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"project": {"device": "cpu"}})
+        config_factory({"project": {"device": "cpu"}})
 
 
-def test_video_config_accepts_fixed_fps() -> None:
-    config = AppConfig.model_validate({"video": {"fps": 30.0}})
+def test_video_config_accepts_fixed_fps(config_factory) -> None:
+    config = config_factory({"video": {"fps": 30.0}})
 
     assert config.video.fps == 30.0
     assert config.video.fps_tolerance == 0.05
 
 
-def test_analysis_config_defaults_to_batched_detection() -> None:
-    config = AppConfig()
+def test_canonical_analysis_and_mmr_contract(default_config) -> None:
+    config = default_config
 
-    assert config.analysis.fps == 10.0
+    assert config.analysis.fps == 10
     assert config.analysis.batch_size == 16
-    assert config.detector.nms_enabled is True
-    assert config.detector.nms_iou_threshold == 0.80
-    assert config.detector.nms_class_agnostic is True
     assert config.analysis.detector_batch_size is None
-    assert config.analysis.min_box_width_px == 160
-    assert not hasattr(config.analysis, "crop_limit_per_track")
-
-
-def test_analysis_config_rejects_removed_crop_limit_per_track() -> None:
-    with pytest.raises(ValidationError):
-        AppConfig.model_validate({"analysis": {"crop_limit_per_track": 1}})
-
-
-def test_render_config_accepts_visual_defaults() -> None:
-    config = load_app_config(Path("configs/default.yaml"))
-
-    assert config.video.fps == 30.0
-    assert config.video.fps_tolerance == 0.05
-    assert config.analysis.fps == 10.0
-    assert config.analysis.batch_size == 16
-    assert config.detector.confidence == 0.15
-    assert config.detector.input_size == 576
-    assert config.detector.nms_enabled is True
-    assert config.detector.nms_iou_threshold == 0.80
-    assert config.detector.nms_class_agnostic is True
-    assert config.detector.pretrain_weights is None
-    assert config.detector.include_source_image is False
-    assert config.detector.optimize_for_inference is True
-    assert config.detector.inference_dtype == "auto"
-    assert config.tracker.track_activation_threshold == 0.30
-    assert config.tracker.minimum_consecutive_frames == 2
-    assert config.tracker.suppress_duplicate_tracks is False
-    assert config.tracker.duplicate_track_min_area_ratio == 0.30
-    assert config.tracker.duplicate_track_center_distance_ratio == 0.30
-    assert config.render.encode_backend == "opencv"
-    assert config.render.output_fps is None
-    assert config.render.ffmpeg_path == "ffmpeg"
-    assert config.render.nvenc_codec == "h264_nvenc"
-    assert config.render.nvenc_preset == "p4"
-    assert config.render.nvenc_cq == 23
-    assert config.render.require_crop_eligible_track is True
-    assert config.render.show_unclassified_tracks is False
-    assert config.render.box_color == "#FFFFFF"
-    assert config.render.box_alpha == 0.5
-    assert config.render.box_thickness == 2
-    assert config.render.counter_enabled is True
-    assert config.render.counter_position == "top_left"
-    assert config.render.label_thickness == 1
-    assert config.render.label_padding_px == 6
-    assert config.render.label_text_color == "#FFFFFF"
-    assert config.render.label_bg_color == "#000000"
-    assert config.render.smoothing.enabled is True
-    assert config.render.smoothing.observed_box_smoothing == "local_linear"
-    assert config.render.smoothing.history_length == 1
+    assert config.analysis.min_track_frames == 5
+    assert config.analysis.crop_min_spacing_seconds == 0.099
+    assert config.render.min_visible_track_observations == 5
     assert config.render.smoothing.observed_smoothing_window == 5
-    assert config.render.smoothing.observed_smoothing_max_shift_ratio == 0.10
-    assert config.render.smoothing.bridge_missing_analysis_frames is True
-    assert config.render.smoothing.interpolate_source_frames is True
-    assert config.render.smoothing.interpolation_method == "linear"
-    assert config.render.smoothing.max_interpolation_gap_seconds == 0.25
+    assert config.render.smoothing.max_missing_analysis_gap_frames == 15
+    assert config.mmr.batch_size == 1
+    assert config.mmr.batch_grid_columns == 1
     assert config.mmr.batch_cell_size_px == 512
+    assert not hasattr(config.analysis, "crop_limit_per_track")
     assert not hasattr(config.mmr, "max_attempts_per_track")
 
 
-def test_config_rejects_unknown_nested_keys() -> None:
+def test_analysis_config_rejects_removed_crop_limit_per_track(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"line_thickness": 1}})
+        config_factory({"analysis": {"crop_limit_per_track": 1}})
 
 
-def test_detector_config_accepts_rfdetr_options() -> None:
-    config = AppConfig.model_validate(
+def test_canonical_default_yaml_is_complete() -> None:
+    config = load_app_config(PROJECT_ROOT / "configs/default.yaml")
+
+    assert config.detector.device == "auto"
+    assert config.analysis.detector_batch_size is None
+    assert config.render.output_fps is None
+    assert config.render.encode_backend == "opencv"
+
+
+def test_app_config_requires_complete_input() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({})
+
+
+def test_custom_config_is_a_partial_overlay(tmp_path: Path) -> None:
+    custom_config = tmp_path / "custom.yaml"
+    custom_config.write_text("mmr:\n  batch_size: 4\n", encoding="utf-8")
+
+    config = build_effective_config(PROJECT_ROOT, config_path=custom_config)
+
+    assert config.mmr.batch_size == 4
+    assert config.mmr.batch_grid_columns == 1
+    assert config.detector.confidence == 0.15
+
+
+def test_runtime_overrides_win_over_custom_config(tmp_path: Path) -> None:
+    custom_config = tmp_path / "custom.yaml"
+    custom_config.write_text("detector:\n  device: cpu\n", encoding="utf-8")
+
+    config = build_effective_config(
+        PROJECT_ROOT,
+        config_path=custom_config,
+        overrides={"detector": {"device": "cuda"}},
+    )
+
+    assert config.detector.device == "cuda"
+
+
+def test_custom_config_overlay_rejects_unknown_fields(tmp_path: Path) -> None:
+    custom_config = tmp_path / "custom.yaml"
+    custom_config.write_text("render:\n  line_thickness: 1\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError):
+        build_effective_config(PROJECT_ROOT, config_path=custom_config)
+
+
+def test_config_factory_returns_fresh_instances(config_factory) -> None:
+    first = config_factory(None)
+    second = config_factory(None)
+
+    assert first is not second
+    first.render.workers = 7
+    assert second.render.workers == 1
+
+
+def test_config_rejects_unknown_nested_keys(config_factory) -> None:
+    with pytest.raises(ValidationError):
+        config_factory({"render": {"line_thickness": 1}})
+
+
+def test_detector_config_accepts_rfdetr_options(config_factory) -> None:
+    config = config_factory(
         {
             "detector": {
                 "device": "cpu",
@@ -263,37 +256,43 @@ def test_detector_config_accepts_rfdetr_options() -> None:
     assert config.detector.inference_dtype == "float16"
 
 
-def test_detector_config_rejects_removed_compile_for_inference() -> None:
+def test_detector_config_rejects_removed_compile_for_inference(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"compile_for_inference": True}})
+        config_factory({"detector": {"compile_for_inference": True}})
 
 
 @pytest.mark.parametrize("threshold", [0.0, 1.01])
-def test_detector_config_rejects_invalid_nms_threshold(threshold: float) -> None:
+def test_detector_config_rejects_invalid_nms_threshold(
+    config_factory, threshold: float
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"nms_iou_threshold": threshold}})
+        config_factory({"detector": {"nms_iou_threshold": threshold}})
 
 
 @pytest.mark.parametrize("confidence", [-0.01, 1.01])
-def test_detector_config_rejects_out_of_range_confidence(confidence: float) -> None:
+def test_detector_config_rejects_out_of_range_confidence(
+    config_factory, confidence: float
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"confidence": confidence}})
+        config_factory({"detector": {"confidence": confidence}})
 
 
 @pytest.mark.parametrize("threshold", [-0.01, 1.01])
 def test_tracker_config_rejects_out_of_range_high_confidence_threshold(
+    config_factory,
     threshold: float,
 ) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"tracker": {"high_conf_det_threshold": threshold}})
+        config_factory({"tracker": {"high_conf_det_threshold": threshold}})
 
 
 @pytest.mark.parametrize("detector_confidence", [0.30, 0.31])
 def test_config_requires_detector_floor_below_tracker_high_confidence_threshold(
+    config_factory,
     detector_confidence: float,
 ) -> None:
     with pytest.raises(ValidationError, match="low-confidence association stage"):
-        AppConfig.model_validate(
+        config_factory(
             {
                 "detector": {"confidence": detector_confidence},
                 "tracker": {"high_conf_det_threshold": 0.30},
@@ -317,28 +316,30 @@ def test_count_line_config_rejects_invalid_geometry_and_direction(
         CountLineConfig.model_validate(payload)
 
 
-def test_detector_config_accepts_explicit_float32_inference_dtype() -> None:
-    config = AppConfig.model_validate({"detector": {"inference_dtype": "float32"}})
+def test_detector_config_accepts_explicit_float32_inference_dtype(
+    config_factory,
+) -> None:
+    config = config_factory({"detector": {"inference_dtype": "float32"}})
 
     assert config.detector.inference_dtype == "float32"
 
 
-def test_detector_config_rejects_invalid_inference_dtype() -> None:
+def test_detector_config_rejects_invalid_inference_dtype(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"inference_dtype": "bfloat16"}})
+        config_factory({"detector": {"inference_dtype": "bfloat16"}})
 
 
-def test_detector_config_rejects_removed_provider_key() -> None:
+def test_detector_config_rejects_removed_provider_key(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"provider": "legacy_local"}})
+        config_factory({"detector": {"provider": "legacy_local"}})
 
 
-def test_detector_config_rejects_removed_model_key() -> None:
+def test_detector_config_rejects_removed_model_key(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"detector": {"model": "rfdetr-medium"}})
+        config_factory({"detector": {"model": "rfdetr-medium"}})
 
 
-def test_detector_config_rejects_removed_runtime_keys() -> None:
+def test_detector_config_rejects_removed_runtime_keys(config_factory) -> None:
     for key, value in [
         ("weights", "weights/legacy-detector.bin"),
         ("iou", 0.45),
@@ -347,11 +348,11 @@ def test_detector_config_rejects_removed_runtime_keys() -> None:
         ("input_dtype", "auto"),
     ]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"detector": {key: value}})
+            config_factory({"detector": {key: value}})
 
 
-def test_render_config_accepts_nvenc_backend() -> None:
-    config = AppConfig.model_validate(
+def test_render_config_accepts_nvenc_backend(config_factory) -> None:
+    config = config_factory(
         {
             "render": {
                 "encode_backend": "auto-nvenc",
@@ -370,94 +371,102 @@ def test_render_config_accepts_nvenc_backend() -> None:
     assert config.render.nvenc_cq == 19
 
 
-def test_render_config_rejects_unknown_encode_backend() -> None:
+def test_render_config_rejects_unknown_encode_backend(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"encode_backend": "cuda-draw"}})
+        config_factory({"render": {"encode_backend": "cuda-draw"}})
 
 
-def test_render_config_rejects_invalid_box_alpha() -> None:
+def test_render_config_rejects_invalid_box_alpha(config_factory) -> None:
     for value in [-0.1, 1.1]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"render": {"box_alpha": value}})
+            config_factory({"render": {"box_alpha": value}})
 
 
-def test_render_config_rejects_invalid_label_bg_alpha() -> None:
+def test_render_config_rejects_invalid_label_bg_alpha(config_factory) -> None:
     for value in [-0.1, 1.1]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"render": {"label_bg_alpha": value}})
+            config_factory({"render": {"label_bg_alpha": value}})
 
 
-def test_render_config_rejects_invalid_box_thickness() -> None:
+def test_render_config_rejects_invalid_box_thickness(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"box_thickness": 0}})
+        config_factory({"render": {"box_thickness": 0}})
 
 
-def test_render_config_rejects_invalid_counter_position() -> None:
+def test_render_config_rejects_invalid_counter_position(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"counter_position": "center"}})
+        config_factory({"render": {"counter_position": "center"}})
 
 
-def test_render_config_rejects_invalid_label_scale_reference_width() -> None:
+def test_render_config_rejects_invalid_label_scale_reference_width(
+    config_factory,
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"label_scale_reference_box_width_px": 0}})
+        config_factory({"render": {"label_scale_reference_box_width_px": 0}})
 
 
-def test_render_config_rejects_negative_label_flag_gap() -> None:
+def test_render_config_rejects_negative_label_flag_gap(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate({"render": {"label_flag_gap_px": -1}})
+        config_factory({"render": {"label_flag_gap_px": -1}})
 
 
-def test_render_config_rejects_removed_visual_keys() -> None:
+def test_render_config_rejects_removed_visual_keys(config_factory) -> None:
     for key, value in [
         ("label" + "_shadow_enabled", True),
         ("corner_thickness", 2),
         ("corner_length", 14),
     ]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"render": {key: value}})
+            config_factory({"render": {key: value}})
 
 
-def test_render_smoothing_rejects_removed_custom_smoothing_keys() -> None:
+def test_render_smoothing_rejects_removed_custom_smoothing_keys(config_factory) -> None:
     for key, value in [
         ("interpolate", True),
         ("max_gap_seconds", 0.5),
         ("reject_short_excursions", True),
     ]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"render": {"smoothing": {key: value}}})
+            config_factory({"render": {"smoothing": {key: value}}})
 
 
-def test_render_smoothing_rejects_unknown_observed_box_smoothing() -> None:
+def test_render_smoothing_rejects_unknown_observed_box_smoothing(
+    config_factory,
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate(
+        config_factory(
             {"render": {"smoothing": {"observed_box_smoothing": "centered"}}}
         )
 
 
-def test_render_smoothing_rejects_unknown_interpolation_method() -> None:
+def test_render_smoothing_rejects_unknown_interpolation_method(config_factory) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate(
+        config_factory(
             {"render": {"smoothing": {"interpolation_method": "smoothstep"}}}
         )
 
 
-def test_render_smoothing_rejects_invalid_observed_smoothing_window() -> None:
+def test_render_smoothing_rejects_invalid_observed_smoothing_window(
+    config_factory,
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate(
-            {"render": {"smoothing": {"observed_smoothing_window": 0}}}
-        )
+        config_factory({"render": {"smoothing": {"observed_smoothing_window": 0}}})
 
 
-def test_render_smoothing_rejects_negative_observed_smoothing_shift_ratio() -> None:
+def test_render_smoothing_rejects_negative_observed_smoothing_shift_ratio(
+    config_factory,
+) -> None:
     with pytest.raises(ValidationError):
-        AppConfig.model_validate(
+        config_factory(
             {"render": {"smoothing": {"observed_smoothing_max_shift_ratio": -0.1}}}
         )
 
 
-def test_render_smoothing_rejects_non_positive_max_interpolation_gap() -> None:
+def test_render_smoothing_rejects_non_positive_max_interpolation_gap(
+    config_factory,
+) -> None:
     for value in [0, -0.1]:
         with pytest.raises(ValidationError):
-            AppConfig.model_validate(
+            config_factory(
                 {"render": {"smoothing": {"max_interpolation_gap_seconds": value}}}
             )

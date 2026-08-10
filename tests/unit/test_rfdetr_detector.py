@@ -69,7 +69,9 @@ def _detections(
     )
 
 
-def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> None:
+def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options(
+    config_factory,
+) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22]],
@@ -78,9 +80,7 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
             class_name=["car"],
         )
     ]
-    config = AppConfig.model_validate(
-        {"detector": {"confidence": 0.20, "input_size": 576}}
-    )
+    config = config_factory({"detector": {"confidence": 0.20, "input_size": 576}})
     detector = RfDetrMediumDetector(config=config, project_root=Path("."))
     image = np.zeros((24, 32, 3), dtype=np.uint8)
     image[0, 0] = [10, 20, 30]
@@ -99,32 +99,32 @@ def test_detect_batch_calls_rfdetr_with_rgb_images_and_configured_options() -> N
     assert call["images"][0][0, 0].tolist() == [30, 20, 10]
 
 
-def test_detect_batch_uses_default_low_confidence_floor() -> None:
+def test_detect_batch_uses_default_low_confidence_floor(default_config) -> None:
     FakeRfDetrMedium.predictions = [sv.Detections.empty()]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
     assert FakeRfDetrMedium.calls[0]["kwargs"]["threshold"] == 0.15
 
 
-def test_detector_passes_configured_cpu_device_to_rfdetr() -> None:
-    config = AppConfig.model_validate({"detector": {"device": "cpu"}})
+def test_detector_passes_configured_cpu_device_to_rfdetr(config_factory) -> None:
+    config = config_factory({"detector": {"device": "cpu"}})
     detector = RfDetrMediumDetector(config=config, project_root=Path("."))
 
     assert getattr(detector, "model").device == "cpu"
 
 
-def test_detector_optimizes_cuda_auto_dtype_as_float16() -> None:
-    config = AppConfig.model_validate({"detector": {"device": "cuda"}})
+def test_detector_optimizes_cuda_auto_dtype_as_float16(config_factory) -> None:
+    config = config_factory({"detector": {"device": "cuda"}})
 
     RfDetrMediumDetector(config=config, project_root=Path("."))
 
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float16"}]
 
 
-def test_detector_optimizes_cpu_auto_dtype_as_float32() -> None:
-    config = AppConfig.model_validate({"detector": {"device": "cpu"}})
+def test_detector_optimizes_cpu_auto_dtype_as_float32(config_factory) -> None:
+    config = config_factory({"detector": {"device": "cpu"}})
 
     RfDetrMediumDetector(config=config, project_root=Path("."))
 
@@ -132,41 +132,43 @@ def test_detector_optimizes_cpu_auto_dtype_as_float32() -> None:
 
 
 def test_detector_uses_cuda_fallback_when_model_device_is_unavailable(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     FakeRfDetrMedium.default_model_device = None
     monkeypatch.setattr(rfdetr_local, "_cuda_is_available", lambda: True)
 
-    RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float16"}]
     assert "using float16 because CUDA is available" in caplog.text
 
 
 def test_detector_uses_float32_fallback_when_model_device_and_cuda_are_unavailable(
+    default_config,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     FakeRfDetrMedium.default_model_device = None
     monkeypatch.setattr(rfdetr_local, "_cuda_is_available", lambda: False)
 
-    RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float32"}]
     assert "using float32 because CUDA is not available" in caplog.text
 
 
-def test_detector_skips_optimization_when_disabled() -> None:
-    config = AppConfig.model_validate({"detector": {"optimize_for_inference": False}})
+def test_detector_skips_optimization_when_disabled(config_factory) -> None:
+    config = config_factory({"detector": {"optimize_for_inference": False}})
 
     RfDetrMediumDetector(config=config, project_root=Path("."))
 
     assert FakeRfDetrMedium.optimize_calls == []
 
 
-def test_detector_uses_explicit_inference_dtype() -> None:
-    config = AppConfig.model_validate(
+def test_detector_uses_explicit_inference_dtype(config_factory) -> None:
+    config = config_factory(
         {"detector": {"device": "cpu", "inference_dtype": "float16"}}
     )
 
@@ -175,8 +177,10 @@ def test_detector_uses_explicit_inference_dtype() -> None:
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float16"}]
 
 
-def test_detector_never_passes_batch_size_to_noncompiled_optimization() -> None:
-    config = AppConfig.model_validate(
+def test_detector_never_passes_batch_size_to_noncompiled_optimization(
+    config_factory,
+) -> None:
+    config = config_factory(
         {
             "analysis": {"batch_size": 8, "detector_batch_size": 3},
         }
@@ -187,14 +191,14 @@ def test_detector_never_passes_batch_size_to_noncompiled_optimization() -> None:
     assert FakeRfDetrMedium.optimize_calls == [{"compile": False, "dtype": "float32"}]
 
 
-def test_detect_delegates_to_single_item_batch() -> None:
+def test_detect_delegates_to_single_item_batch(default_config) -> None:
     FakeRfDetrMedium.predictions = _detections(
         xyxy=[[1, 2, 11, 22]],
         confidence=[0.91],
         class_id=[2],
         class_name=["car"],
     )
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     detections = detector.detect(np.zeros((24, 32, 3), dtype=np.uint8))
 
@@ -203,7 +207,7 @@ def test_detect_delegates_to_single_item_batch() -> None:
     assert detection_bboxes(detections)[0].x1 == 1
 
 
-def test_detect_batch_filters_to_allowed_class_names() -> None:
+def test_detect_batch_filters_to_allowed_class_names(config_factory) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22], [3, 4, 13, 24]],
@@ -212,14 +216,19 @@ def test_detect_batch_filters_to_allowed_class_names() -> None:
             class_name=["car", "truck"],
         )
     ]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(
+        config=config_factory({"detector": {"allowed_class_names": ["car"]}}),
+        project_root=Path("."),
+    )
 
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
     assert class_names(detections[0]) == ["car"]
 
 
-def test_detect_batch_applies_class_agnostic_nms_before_tracking() -> None:
+def test_detect_batch_applies_class_agnostic_nms_before_tracking(
+    config_factory,
+) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 21, 22], [1, 2, 21, 22], [22, 2, 31, 22]],
@@ -229,9 +238,7 @@ def test_detect_batch_applies_class_agnostic_nms_before_tracking() -> None:
         )
     ]
     detector = RfDetrMediumDetector(
-        config=AppConfig.model_validate(
-            {"detector": {"allowed_class_names": ["car", "truck"]}}
-        ),
+        config=config_factory({"detector": {"allowed_class_names": ["car", "truck"]}}),
         project_root=Path("."),
     )
 
@@ -250,7 +257,7 @@ def test_detect_batch_applies_class_agnostic_nms_before_tracking() -> None:
     }
 
 
-def test_detect_batch_can_disable_nms() -> None:
+def test_detect_batch_can_disable_nms(config_factory) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 21, 22], [1, 2, 21, 22]],
@@ -260,7 +267,7 @@ def test_detect_batch_can_disable_nms() -> None:
         )
     ]
     detector = RfDetrMediumDetector(
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "detector": {
                     "allowed_class_names": ["car", "truck"],
@@ -283,7 +290,7 @@ def test_detect_batch_can_disable_nms() -> None:
     }
 
 
-def test_detect_batch_can_use_class_aware_nms() -> None:
+def test_detect_batch_can_use_class_aware_nms(config_factory) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 21, 22], [1, 2, 21, 22]],
@@ -293,7 +300,7 @@ def test_detect_batch_can_use_class_aware_nms() -> None:
         )
     ]
     detector = RfDetrMediumDetector(
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "detector": {
                     "allowed_class_names": ["car", "truck"],
@@ -309,7 +316,7 @@ def test_detect_batch_can_use_class_aware_nms() -> None:
     assert class_names(detections[0]) == ["car", "truck"]
 
 
-def test_detect_batch_preserves_multi_image_prediction_order() -> None:
+def test_detect_batch_preserves_multi_image_prediction_order(default_config) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22]],
@@ -324,7 +331,7 @@ def test_detect_batch_preserves_multi_image_prediction_order() -> None:
             class_name=["car"],
         ),
     ]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(config=default_config, project_root=Path("."))
     images = [
         np.zeros((24, 32, 3), dtype=np.uint8),
         np.zeros((48, 64, 3), dtype=np.uint8),
@@ -341,7 +348,7 @@ def test_detect_batch_preserves_multi_image_prediction_order() -> None:
     assert detection_bboxes(detections[1])[0].x1 == 3
 
 
-def test_detect_batch_falls_back_to_model_class_names() -> None:
+def test_detect_batch_falls_back_to_model_class_names(default_config) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22], [3, 4, 13, 24]],
@@ -349,14 +356,16 @@ def test_detect_batch_falls_back_to_model_class_names() -> None:
             class_id=[2, 3],
         )
     ]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
     assert class_names(detections[0]) == ["car"]
 
 
-def test_detect_batch_preserves_existing_class_names_when_filling_missing() -> None:
+def test_detect_batch_preserves_existing_class_names_when_filling_missing(
+    config_factory,
+) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22], [3, 4, 13, 24]],
@@ -366,7 +375,7 @@ def test_detect_batch_preserves_existing_class_names_when_filling_missing() -> N
         )
     ]
     detector = RfDetrMediumDetector(
-        config=AppConfig.model_validate(
+        config=config_factory(
             {"detector": {"allowed_class_names": ["automobile", "truck"]}}
         ),
         project_root=Path("."),
@@ -377,7 +386,7 @@ def test_detect_batch_preserves_existing_class_names_when_filling_missing() -> N
     assert class_names(detections[0]) == ["automobile", "truck"]
 
 
-def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
+def test_detect_batch_clips_boxes_and_drops_invalid_boxes(default_config) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[-5, -6, 50, 40], [20, 20, 20, 25]],
@@ -386,7 +395,7 @@ def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
             class_name=["car", "car"],
         )
     ]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(config=default_config, project_root=Path("."))
 
     detections = detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
@@ -399,7 +408,7 @@ def test_detect_batch_clips_boxes_and_drops_invalid_boxes() -> None:
     }
 
 
-def test_detection_diagnostics_uses_existing_count_keys() -> None:
+def test_detection_diagnostics_uses_existing_count_keys(config_factory) -> None:
     FakeRfDetrMedium.predictions = [
         _detections(
             xyxy=[[1, 2, 11, 22], [3, 4, 13, 24]],
@@ -408,7 +417,10 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
             class_name=["car", "truck"],
         )
     ]
-    detector = RfDetrMediumDetector(config=AppConfig(), project_root=Path("."))
+    detector = RfDetrMediumDetector(
+        config=config_factory({"detector": {"allowed_class_names": ["car"]}}),
+        project_root=Path("."),
+    )
 
     detector.detect_batch([np.zeros((24, 32, 3), dtype=np.uint8)])
 
@@ -443,11 +455,13 @@ def test_detection_diagnostics_uses_existing_count_keys() -> None:
     }
 
 
-def test_local_pretrain_weights_are_resolved_from_project_root(tmp_path: Path) -> None:
+def test_local_pretrain_weights_are_resolved_from_project_root(
+    config_factory, tmp_path: Path
+) -> None:
     weights = tmp_path / "weights" / "rfdetr-medium.pth"
     weights.parent.mkdir()
     weights.write_bytes(b"placeholder")
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"detector": {"pretrain_weights": "weights/rfdetr-medium.pth"}}
     )
 

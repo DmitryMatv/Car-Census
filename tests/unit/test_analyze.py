@@ -81,7 +81,9 @@ def _detections_to_sv(detections: object) -> sv.Detections:
     )
 
 
-def test_save_candidate_stages_crop_under_track_identity(tmp_path) -> None:
+def test_save_candidate_stages_crop_under_track_identity(
+    default_config, tmp_path
+) -> None:
     store = DummyRunStore(tmp_path)
     state = MutableTrackState(
         track_id=42,
@@ -97,7 +99,7 @@ def test_save_candidate_stages_crop_under_track_identity(tmp_path) -> None:
         bbox=BBox(x1=2, y1=3, x2=12, y2=13),
         frame_index=5,
         timestamp_seconds=0.5,
-        config=AppConfig(),
+        config=default_config,
     )
 
     assert len(state.candidates) == 1
@@ -110,7 +112,7 @@ def test_save_candidate_stages_crop_under_track_identity(tmp_path) -> None:
     assert not (store.crops_dir / "track_000042").exists()
 
 
-def test_save_candidate_pads_crop_for_classification(tmp_path) -> None:
+def test_save_candidate_pads_crop_for_classification(config_factory, tmp_path) -> None:
     store = DummyRunStore(tmp_path)
     state = MutableTrackState(
         track_id=42,
@@ -118,7 +120,7 @@ def test_save_candidate_pads_crop_for_classification(tmp_path) -> None:
         last_frame_index=1,
     )
     frame = np.full((30, 30, 3), 255, dtype=np.uint8)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"analysis": {"crop_padding_ratio": 0.1, "crop_padding_px": 2}}
     )
 
@@ -138,7 +140,9 @@ def test_save_candidate_pads_crop_for_classification(tmp_path) -> None:
     assert saved_crop.shape[:2] == (16, 16)
 
 
-def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> None:
+def test_save_candidate_retains_only_crop_closest_to_target_scale(
+    config_factory, tmp_path
+) -> None:
     store = DummyRunStore(tmp_path)
     state = MutableTrackState(
         track_id=42,
@@ -148,7 +152,7 @@ def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> N
         max_box_width_px=140,
     )
     frame = np.full((200, 200, 3), 255, dtype=np.uint8)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "analysis": {
                 "crop_padding_ratio": 0,
@@ -187,8 +191,8 @@ def test_save_candidate_retains_only_crop_closest_to_target_scale(tmp_path) -> N
     assert not first_path.exists()
 
 
-def test_render_bbox_uses_same_padding_as_crop_candidates() -> None:
-    config = AppConfig.model_validate(
+def test_render_bbox_uses_same_padding_as_crop_candidates(config_factory) -> None:
+    config = config_factory(
         {"analysis": {"crop_padding_ratio": 0.1, "crop_padding_px": 2}}
     )
 
@@ -518,7 +522,9 @@ def _read_detection_stats(store: RunStore) -> dict[str, Any]:
     return orjson.loads(store.detection_stats_path.read_bytes())
 
 
-def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
+def test_analyze_ignores_unconfirmed_tracker_ids(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     detector = FakeDetector([])
     tracked = sv.Detections(
         xyxy=np.array([[10, 10, 20, 20], [30, 30, 50, 50]], dtype=np.float32),
@@ -529,7 +535,7 @@ def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
     )
     tracker = FakeTracker(tracked)
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
-    config = AppConfig.model_validate({"tracker": {"ignore_edge_touches": False}})
+    config = config_factory({"tracker": {"ignore_edge_touches": False}})
 
     analyze_video(
         project_root=tmp_path,
@@ -547,7 +553,7 @@ def test_analyze_ignores_unconfirmed_tracker_ids(tmp_path, monkeypatch) -> None:
 
 
 def test_analyze_suppresses_identical_duplicate_tracker_outputs(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(
@@ -562,7 +568,7 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -585,7 +591,7 @@ def test_analyze_suppresses_identical_duplicate_tracker_outputs(
 
 
 def test_analyze_keeps_identical_tracker_outputs_when_suppression_is_disabled(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(
@@ -600,7 +606,7 @@ def test_analyze_keeps_identical_tracker_outputs_when_suppression_is_disabled(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -625,7 +631,7 @@ def test_analyze_keeps_identical_tracker_outputs_when_suppression_is_disabled(
 
 
 def test_analyze_rejects_stale_id_without_replacing_original_crop(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = SequenceFakeTracker(
@@ -650,7 +656,7 @@ def test_analyze_rejects_stale_id_without_replacing_original_crop(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {
                     "crop_min_spacing_seconds": 0,
@@ -695,7 +701,7 @@ def test_analyze_rejects_stale_id_without_replacing_original_crop(
 
 
 def test_analyze_combines_stale_and_duplicate_tracker_drops(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     duplicate_bbox = BBox(x1=20, y1=20, x2=70, y2=70)
@@ -723,7 +729,7 @@ def test_analyze_combines_stale_and_duplicate_tracker_drops(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -752,7 +758,7 @@ def test_analyze_combines_stale_and_duplicate_tracker_drops(
 
 
 def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = SequenceFakeTracker(
@@ -776,7 +782,7 @@ def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -799,7 +805,7 @@ def test_analyze_prefers_established_track_over_new_higher_confidence_duplicate(
 
 
 def test_analyze_suppresses_strongly_contained_duplicate_track(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(
@@ -814,7 +820,7 @@ def test_analyze_suppresses_strongly_contained_duplicate_track(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -833,7 +839,9 @@ def test_analyze_suppresses_strongly_contained_duplicate_track(
     assert tracker.drop_calls == [{8}]
 
 
-def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> None:
+def test_analyze_keeps_adjacent_overlapping_tracks(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(
         _tracks(
@@ -847,7 +855,7 @@ def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> Non
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {"ignore_edge_touches": False},
@@ -868,7 +876,7 @@ def test_analyze_keeps_adjacent_overlapping_tracks(tmp_path, monkeypatch) -> Non
 
 
 def test_analyze_does_not_suppress_count_event_duplicate_loser(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = SequenceFakeTracker(
@@ -903,7 +911,7 @@ def test_analyze_does_not_suppress_count_event_duplicate_loser(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -937,7 +945,7 @@ def test_analyze_does_not_suppress_count_event_duplicate_loser(
 
 
 def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = SequenceFakeTracker(
@@ -967,7 +975,7 @@ def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1},
                 "tracker": {
@@ -995,7 +1003,7 @@ def test_analyze_suppresses_full_frame_duplicate_after_counted_only_state(
 
 
 def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = SequenceFakeTracker(
@@ -1025,7 +1033,7 @@ def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {
                     "crop_min_spacing_seconds": 0,
@@ -1053,7 +1061,7 @@ def test_suppressed_duplicate_discards_staged_crop_and_track_summary(
 
 
 def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     frames = [np.full((100, 100, 3), value, dtype=np.uint8) for value in [40, 80, 120]]
     detector = FakeDetector(
@@ -1116,7 +1124,7 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {
                     "batch_size": 2,
@@ -1142,7 +1150,7 @@ def test_analyze_batches_detection_but_updates_tracker_in_frame_order(
 
 
 def test_analyze_suppresses_tracker_output_touching_polygon_edge(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(_single_track(BBox(x1=48, y1=18, x2=56, y2=28)))
@@ -1150,7 +1158,7 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=_profile_with_slanted_polygon(),
         video_path=tmp_path / "input.mp4",
         run_store=store,
@@ -1166,7 +1174,9 @@ def test_analyze_suppresses_tracker_output_touching_polygon_edge(
     assert manifest.analysis_fps == 10.0
 
 
-def test_analyze_requests_terminal_frame_sampling(tmp_path, monkeypatch) -> None:
+def test_analyze_requests_terminal_frame_sampling(
+    default_config, tmp_path, monkeypatch
+) -> None:
     store = RunStore(tmp_path / "run")
     store.ensure_directories()
     detector = FakeDetector([])
@@ -1211,7 +1221,7 @@ def test_analyze_requests_terminal_frame_sampling(tmp_path, monkeypatch) -> None
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=CameraProfile(
             camera_id="full",
             polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
@@ -1224,7 +1234,7 @@ def test_analyze_requests_terminal_frame_sampling(tmp_path, monkeypatch) -> None
 
 
 def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observation(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1265,7 +1275,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observa
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=CameraProfile(
             camera_id="full",
             polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
@@ -1288,7 +1298,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_source_edge_observa
 
 
 def test_analyze_skips_track_when_edge_detection_matches_inset_tracker_output(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1335,7 +1345,7 @@ def test_analyze_skips_track_when_edge_detection_matches_inset_tracker_output(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=CameraProfile(
             camera_id="full",
             polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
@@ -1354,7 +1364,7 @@ def test_analyze_skips_track_when_edge_detection_matches_inset_tracker_output(
 
 
 def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1387,7 +1397,7 @@ def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=CameraProfile(
             camera_id="full",
             polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
@@ -1408,7 +1418,7 @@ def test_analyze_allows_edge_touching_unconfirmed_track_to_later_get_id(
 
 
 def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_observation(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1449,7 +1459,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_obser
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=CameraProfile(
             camera_id="inner-square",
             polygon=PolygonZoneConfig(points=[[10, 10], [90, 10], [90, 90], [10, 90]]),
@@ -1471,7 +1481,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_roi_crop_edge_obser
 
 
 def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observation(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1512,7 +1522,7 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observ
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=_profile_with_slanted_polygon(),
         video_path=tmp_path / "input.mp4",
         run_store=store,
@@ -1530,7 +1540,9 @@ def test_analyze_passes_edge_detection_to_tracker_then_skips_polygon_edge_observ
     ]
 
 
-def test_analyze_allows_new_track_id_after_edge_skip(tmp_path, monkeypatch) -> None:
+def test_analyze_allows_new_track_id_after_edge_skip(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     detector = SequenceFakeDetector(
         [
             [
@@ -1570,7 +1582,7 @@ def test_analyze_allows_new_track_id_after_edge_skip(tmp_path, monkeypatch) -> N
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate({"analysis": {"min_track_frames": 1}}),
+        config=config_factory({"analysis": {"min_track_frames": 1}}),
         profile=CameraProfile(
             camera_id="full",
             polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
@@ -1589,7 +1601,7 @@ def test_analyze_allows_new_track_id_after_edge_skip(tmp_path, monkeypatch) -> N
 
 
 def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1619,7 +1631,7 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
         tracker=tracker,
         frames=[np.full((100, 100, 3), 255, dtype=np.uint8) for _ in range(2)],
     )
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "analysis": {
                 "min_track_frames": 1,
@@ -1653,7 +1665,7 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
 
 
 def test_track_between_160_and_199_px_wide_gets_crop_candidate(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(_single_track(BBox(x1=10, y1=20, x2=180, y2=80)))
@@ -1664,7 +1676,7 @@ def test_track_between_160_and_199_px_wide_gets_crop_candidate(
         tracker=tracker,
         frames=[np.full((100, 200, 3), 255, dtype=np.uint8)],
     )
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "analysis": {
                 "min_track_frames": 1,
@@ -1696,7 +1708,7 @@ def test_track_between_160_and_199_px_wide_gets_crop_candidate(
 
 
 def test_analyze_no_longer_filters_edge_detections_before_tracker(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1715,7 +1727,7 @@ def test_analyze_no_longer_filters_edge_detections_before_tracker(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=_profile_with_slanted_polygon(),
         video_path=tmp_path / "input.mp4",
         run_store=store,
@@ -1729,7 +1741,9 @@ def test_analyze_no_longer_filters_edge_detections_before_tracker(
     assert tracker.drop_calls == []
 
 
-def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) -> None:
+def test_analyze_writes_detector_and_tracker_diagnostics(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     detector = FakeDetector(
         [
             Detection(
@@ -1753,7 +1767,7 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 1, "min_box_width_px": 1},
                 "tracker": {"ignore_edge_touches": False},
@@ -1789,7 +1803,7 @@ def test_analyze_writes_detector_and_tracker_diagnostics(tmp_path, monkeypatch) 
 
 
 def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = SequenceFakeDetector(
         [
@@ -1830,7 +1844,7 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
 
     analyze_video(
         project_root=tmp_path,
-        config=AppConfig.model_validate(
+        config=config_factory(
             {
                 "analysis": {"min_track_frames": 2, "min_box_width_px": 100},
                 "render": {
@@ -1857,11 +1871,13 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 2
 
 
-def test_analyze_uses_bottom_center_for_roi_membership(tmp_path, monkeypatch) -> None:
+def test_analyze_uses_bottom_center_for_roi_membership(
+    config_factory, tmp_path, monkeypatch
+) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(_single_track(BBox(x1=40, y1=20, x2=60, y2=80)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "analysis": {"crop_padding_ratio": 0, "crop_padding_px": 0},
             "tracker": {"ignore_edge_touches": False},
@@ -1886,12 +1902,12 @@ def test_analyze_uses_bottom_center_for_roi_membership(tmp_path, monkeypatch) ->
 
 
 def test_analyze_discards_crops_and_vehicle_index_for_short_tracks(
-    tmp_path, monkeypatch
+    config_factory, tmp_path, monkeypatch
 ) -> None:
     detector = FakeDetector([])
     tracker = FakeTracker(_single_track(BBox(x1=20, y1=20, x2=80, y2=80)))
     store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"analysis": {"min_track_frames": 2, "min_box_width_px": 1}}
     )
 

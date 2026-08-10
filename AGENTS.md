@@ -51,3 +51,10 @@ Maintain a strict type-safety direction for the project.
   `size_eligible_track_ids`, which requires `max_box_width_px >=
 analysis.min_box_width_px`. Check the analysis artifacts before assuming a
   visible missing annotation means detector/tracker failure.
+- The current test baseline emits an upstream NumPy 2D-cross deprecation
+  warning from Supervision `LineZone`. Do not broadly suppress it or treat it as
+  a Car-Census counting failure.
+- `configs/default.yaml` is the sole source of application defaults. Production
+  code and tests must load defaults through `build_effective_config`; do not
+  reintroduce zero-argument `AppConfig()` construction or Pydantic field
+  defaults for application settings.

@@ -125,7 +125,7 @@ def test_creating_readable_run_does_not_rename_existing_directories(
 
 
 def test_run_pipeline_orders_analyze_classify_render_report(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[str] = []
     render_kwargs = {}
@@ -169,7 +169,7 @@ def test_run_pipeline_orders_analyze_classify_render_report(
 
     result = run_pipeline(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
         video_path=tmp_path / "input.mp4",
         stages=PipelineStages(
@@ -191,7 +191,7 @@ def test_run_pipeline_orders_analyze_classify_render_report(
 
 
 def test_run_pipeline_allows_unclassified_annotations_when_classification_is_skipped(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[str] = []
     render_kwargs = {}
@@ -236,7 +236,7 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
 
     result = run_pipeline(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
         video_path=tmp_path / "input.mp4",
         stages=PipelineStages(
@@ -258,7 +258,7 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
 
 
 def test_run_pipeline_can_skip_render_while_still_generating_report(
-    tmp_path, monkeypatch
+    default_config, tmp_path, monkeypatch
 ) -> None:
     calls: list[str] = []
     store = DummyRunStore()
@@ -298,7 +298,7 @@ def test_run_pipeline_can_skip_render_while_still_generating_report(
 
     result = run_pipeline(
         project_root=tmp_path,
-        config=AppConfig(),
+        config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
         video_path=tmp_path / "input.mp4",
         stages=PipelineStages(

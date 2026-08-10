@@ -92,6 +92,7 @@ def _records_by_frame(records: list[FrameRecord]) -> dict[int, FrameRecord]:
 
 
 def test_smooth_render_tracks_creates_render_artifact_and_preserves_raw(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -103,30 +104,33 @@ def test_smooth_render_tracks_creates_render_artifact_and_preserves_raw(
     ]
     raw_payload = _write_jsonl(store.frames_path, records)
 
-    output_path = smooth_render_tracks(AppConfig(), profile, store)
+    output_path = smooth_render_tracks(default_config, profile, store)
 
     assert output_path == store.render_frames_path
     assert store.render_frames_path.exists()
     assert store.frames_path.read_bytes() == raw_payload
 
 
-def test_smooth_render_tracks_writes_empty_artifact_for_empty_input(tmp_path) -> None:
+def test_smooth_render_tracks_writes_empty_artifact_for_empty_input(
+    default_config, tmp_path
+) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     _write_jsonl(store.frames_path, [])
 
-    output_path = smooth_render_tracks(AppConfig(), profile, store)
+    output_path = smooth_render_tracks(default_config, profile, store)
 
     assert output_path == store.render_frames_path
     assert _read_records(store.render_frames_path) == []
 
 
 def test_smooth_render_tracks_averages_real_observations_before_interpolation(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -156,11 +160,12 @@ def test_smooth_render_tracks_averages_real_observations_before_interpolation(
 
 
 def test_smooth_render_tracks_interpolates_between_causal_average_observations(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -189,7 +194,9 @@ def test_smooth_render_tracks_interpolates_between_causal_average_observations(
     assert smoothed[6].tracks[0].bbox.x1 == pytest.approx(60)
 
 
-def test_smooth_render_tracks_does_not_smooth_interpolated_frames(tmp_path) -> None:
+def test_smooth_render_tracks_does_not_smooth_interpolated_frames(
+    config_factory, tmp_path
+) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
     records = [
@@ -199,7 +206,7 @@ def test_smooth_render_tracks_does_not_smooth_interpolated_frames(tmp_path) -> N
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate(
+        config_factory(
             {
                 "render": {
                     "smoothing": {
@@ -218,11 +225,12 @@ def test_smooth_render_tracks_does_not_smooth_interpolated_frames(tmp_path) -> N
 
 
 def test_smooth_render_tracks_can_disable_source_frame_interpolation(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"render": {"smoothing": {"interpolate_source_frames": False}}}
     )
     records = [
@@ -243,7 +251,9 @@ def test_smooth_render_tracks_can_disable_source_frame_interpolation(
     ]
 
 
-def test_smooth_render_tracks_preserves_semantic_fields(tmp_path) -> None:
+def test_smooth_render_tracks_preserves_semantic_fields(
+    default_config, tmp_path
+) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     records = [
@@ -267,7 +277,7 @@ def test_smooth_render_tracks_preserves_semantic_fields(tmp_path) -> None:
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     track = _read_records(store.render_frames_path)[0].tracks[0]
     assert track.track_id == 1
@@ -281,11 +291,12 @@ def test_smooth_render_tracks_preserves_semantic_fields(tmp_path) -> None:
 
 
 def test_smooth_render_tracks_local_linear_smooths_jittery_observed_boxes(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -321,11 +332,12 @@ def test_smooth_render_tracks_local_linear_smooths_jittery_observed_boxes(
 
 
 def test_smooth_render_tracks_local_linear_default_clamps_large_adjustment(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -364,6 +376,7 @@ def test_smooth_render_tracks_local_linear_default_clamps_large_adjustment(
 
 
 def test_smooth_render_tracks_local_linear_preserves_semantic_fields(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -371,7 +384,7 @@ def test_smooth_render_tracks_local_linear_preserves_semantic_fields(
         camera_id="test",
         polygon=PolygonZoneConfig(points=[[0, 0], [60, 0], [60, 30], [0, 30]]),
     )
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -430,17 +443,19 @@ def test_smooth_render_tracks_local_linear_preserves_semantic_fields(
 
 
 def test_smooth_render_tracks_local_linear_does_not_cross_large_absence_gap(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
                     "observed_box_smoothing": "local_linear",
                     "bridge_missing_analysis_frames": False,
                     "interpolate_source_frames": False,
+                    "max_missing_analysis_gap_frames": 3,
                 }
             }
         }
@@ -467,11 +482,12 @@ def test_smooth_render_tracks_local_linear_does_not_cross_large_absence_gap(
 
 
 def test_smooth_render_tracks_local_linear_with_too_few_points_keeps_raw_box(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -494,11 +510,12 @@ def test_smooth_render_tracks_local_linear_with_too_few_points_keeps_raw_box(
 
 
 def test_smooth_render_tracks_local_linear_keeps_raw_boxes_for_duplicate_frame_indices(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=300, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -529,6 +546,7 @@ def test_smooth_render_tracks_local_linear_keeps_raw_boxes_for_duplicate_frame_i
 
 
 def test_smooth_render_tracks_recomputes_geometry_on_interpolated_tracks(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -559,7 +577,7 @@ def test_smooth_render_tracks_recomputes_geometry_on_interpolated_tracks(
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate({"render": {"smoothing": {"history_length": 1}}}),
+        config_factory({"render": {"smoothing": {"history_length": 1}}}),
         profile,
         store,
     )
@@ -572,6 +590,7 @@ def test_smooth_render_tracks_recomputes_geometry_on_interpolated_tracks(
 
 
 def test_smooth_render_tracks_does_not_move_crossing_event_to_interpolated_frames(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -595,7 +614,7 @@ def test_smooth_render_tracks_does_not_move_crossing_event_to_interpolated_frame
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate({"render": {"smoothing": {"history_length": 1}}}),
+        config_factory({"render": {"smoothing": {"history_length": 1}}}),
         profile,
         store,
     )
@@ -607,6 +626,7 @@ def test_smooth_render_tracks_does_not_move_crossing_event_to_interpolated_frame
 
 
 def test_smooth_render_tracks_marks_interpolated_counted_without_crossing_event(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -631,7 +651,7 @@ def test_smooth_render_tracks_marks_interpolated_counted_without_crossing_event(
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate({"render": {"smoothing": {"history_length": 1}}}),
+        config_factory({"render": {"smoothing": {"history_length": 1}}}),
         profile,
         store,
     )
@@ -645,7 +665,9 @@ def test_smooth_render_tracks_marks_interpolated_counted_without_crossing_event(
     assert smoothed[3].tracks[0].crossed_line is True
 
 
-def test_smooth_render_tracks_does_not_interpolate_absent_tracks(tmp_path) -> None:
+def test_smooth_render_tracks_does_not_interpolate_absent_tracks(
+    default_config, tmp_path
+) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     records = [
@@ -654,7 +676,7 @@ def test_smooth_render_tracks_does_not_interpolate_absent_tracks(tmp_path) -> No
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert [track.track_id for track in smoothed[0].tracks] == [1]
@@ -663,7 +685,9 @@ def test_smooth_render_tracks_does_not_interpolate_absent_tracks(tmp_path) -> No
     assert smoothed[3].tracks == []
 
 
-def test_smooth_render_tracks_bridges_missing_analysis_frame(tmp_path) -> None:
+def test_smooth_render_tracks_bridges_missing_analysis_frame(
+    default_config, tmp_path
+) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
     records = [
@@ -673,7 +697,7 @@ def test_smooth_render_tracks_bridges_missing_analysis_frame(tmp_path) -> None:
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[3].tracks[0].track_id == 1
@@ -684,6 +708,7 @@ def test_smooth_render_tracks_bridges_missing_analysis_frame(tmp_path) -> None:
 
 
 def test_smooth_render_tracks_bridges_three_missing_analysis_frames(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -697,7 +722,7 @@ def test_smooth_render_tracks_bridges_three_missing_analysis_frames(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[3].tracks[0].bbox.x1 == pytest.approx(30)
@@ -705,11 +730,15 @@ def test_smooth_render_tracks_bridges_three_missing_analysis_frames(
     assert smoothed[9].tracks[0].bbox.x1 == pytest.approx(90)
 
 
-def test_smooth_render_tracks_does_not_bridge_four_missing_analysis_frames(
+def test_smooth_render_tracks_respects_three_frame_bridge_limit(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
+    config = config_factory(
+        {"render": {"smoothing": {"max_missing_analysis_gap_frames": 3}}}
+    )
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, []),
@@ -720,7 +749,7 @@ def test_smooth_render_tracks_does_not_bridge_four_missing_analysis_frames(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[3].tracks == []
@@ -730,11 +759,12 @@ def test_smooth_render_tracks_does_not_bridge_four_missing_analysis_frames(
 
 
 def test_smooth_render_tracks_with_four_frame_limit_does_not_bridge_five(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"render": {"smoothing": {"max_missing_analysis_gap_frames": 4}}}
     )
     records = [
@@ -759,11 +789,12 @@ def test_smooth_render_tracks_with_four_frame_limit_does_not_bridge_five(
 
 
 def test_smooth_render_tracks_can_disable_missing_analysis_frame_bridge(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {"render": {"smoothing": {"bridge_missing_analysis_frames": False}}}
     )
     records = [
@@ -780,6 +811,7 @@ def test_smooth_render_tracks_can_disable_missing_analysis_frame_bridge(
 
 
 def test_smooth_render_tracks_bridges_multiple_tracks_independently_and_sorts(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -805,7 +837,7 @@ def test_smooth_render_tracks_bridges_multiple_tracks_independently_and_sorts(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     tracks = _records_by_frame(_read_records(store.render_frames_path))[3].tracks
     assert [track.track_id for track in tracks] == [1, 2]
@@ -814,6 +846,7 @@ def test_smooth_render_tracks_bridges_multiple_tracks_independently_and_sorts(
 
 
 def test_smooth_render_tracks_drops_smoother_history_when_track_absent(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -826,7 +859,7 @@ def test_smooth_render_tracks_drops_smoother_history_when_track_absent(
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate(
+        config_factory(
             {
                 "render": {
                     "smoothing": {
@@ -853,6 +886,7 @@ def test_smooth_render_tracks_drops_smoother_history_when_track_absent(
 
 
 def test_smooth_render_tracks_does_not_tail_extrapolate_after_last_observation(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10, frame_count=10)
@@ -864,7 +898,7 @@ def test_smooth_render_tracks_does_not_tail_extrapolate_after_last_observation(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     assert [
         record.frame_index for record in _read_records(store.render_frames_path)
@@ -872,6 +906,7 @@ def test_smooth_render_tracks_does_not_tail_extrapolate_after_last_observation(
 
 
 def test_smooth_render_tracks_uses_terminal_observation_without_tail_extrapolation(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10, frame_count=8)
@@ -888,7 +923,7 @@ def test_smooth_render_tracks_uses_terminal_observation_without_tail_extrapolati
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     assert [
         record.frame_index for record in _read_records(store.render_frames_path)
@@ -896,6 +931,7 @@ def test_smooth_render_tracks_uses_terminal_observation_without_tail_extrapolati
 
 
 def test_smooth_render_tracks_does_not_bridge_large_gaps_by_default(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -906,7 +942,7 @@ def test_smooth_render_tracks_does_not_bridge_large_gaps_by_default(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert list(smoothed) == [0, 1, 12]
@@ -914,11 +950,12 @@ def test_smooth_render_tracks_does_not_bridge_large_gaps_by_default(
 
 
 def test_smooth_render_tracks_uses_cadence_fallback_when_gap_config_is_null(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -944,10 +981,12 @@ def test_smooth_render_tracks_uses_cadence_fallback_when_gap_config_is_null(
     assert smoothed[4].tracks == []
 
 
-def test_smooth_render_tracks_uses_explicit_max_gap_override(tmp_path) -> None:
+def test_smooth_render_tracks_uses_explicit_max_gap_override(
+    config_factory, tmp_path
+) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -971,6 +1010,7 @@ def test_smooth_render_tracks_uses_explicit_max_gap_override(tmp_path) -> None:
 
 
 def test_smooth_render_tracks_interpolates_multiple_tracks_independently_and_sorts(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
@@ -996,7 +1036,7 @@ def test_smooth_render_tracks_interpolates_multiple_tracks_independently_and_sor
     _write_jsonl(store.frames_path, records)
 
     smooth_render_tracks(
-        AppConfig.model_validate({"render": {"smoothing": {"history_length": 1}}}),
+        config_factory({"render": {"smoothing": {"history_length": 1}}}),
         profile,
         store,
     )
@@ -1008,11 +1048,12 @@ def test_smooth_render_tracks_interpolates_multiple_tracks_independently_and_sor
 
 
 def test_smooth_render_tracks_history_length_one_preserves_observed_boxes(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate(
+    config = config_factory(
         {
             "render": {
                 "smoothing": {
@@ -1036,6 +1077,7 @@ def test_smooth_render_tracks_history_length_one_preserves_observed_boxes(
 
 
 def test_smooth_render_tracks_default_preserves_observed_boxes_and_interpolates(
+    default_config,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
@@ -1047,7 +1089,7 @@ def test_smooth_render_tracks_default_preserves_observed_boxes_and_interpolates(
     ]
     _write_jsonl(store.frames_path, records)
 
-    smooth_render_tracks(AppConfig(), profile, store)
+    smooth_render_tracks(default_config, profile, store)
 
     smoothed = _records_by_frame(_read_records(store.render_frames_path))
     assert smoothed[0].tracks[0].bbox.x1 == pytest.approx(records[0].tracks[0].bbox.x1)
@@ -1060,11 +1102,12 @@ def test_smooth_render_tracks_default_preserves_observed_boxes_and_interpolates(
 
 
 def test_smooth_render_tracks_history_length_without_causal_average_preserves_observed_boxes(
+    config_factory,
     tmp_path,
 ) -> None:
     store = _store(tmp_path, source_fps=30, analysis_fps=10)
     profile = build_full_frame_profile(width=200, height=100)
-    config = AppConfig.model_validate({"render": {"smoothing": {"history_length": 5}}})
+    config = config_factory({"render": {"smoothing": {"history_length": 5}}})
     records = [
         _record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))]),
         _record(3, 0.1, [_track(1, 3, 0.1, BBox(x1=30, y1=10, x2=50, y2=30))]),
@@ -1082,14 +1125,16 @@ def test_smooth_render_tracks_history_length_without_causal_average_preserves_ob
     assert smoothed[2].tracks[0].bbox.x1 == pytest.approx(20)
 
 
-def test_smooth_render_tracks_returns_raw_path_when_disabled(tmp_path) -> None:
+def test_smooth_render_tracks_returns_raw_path_when_disabled(
+    config_factory, tmp_path
+) -> None:
     store = _store(tmp_path)
     profile = build_full_frame_profile(width=200, height=100)
     _write_jsonl(
         store.frames_path,
         [_record(0, 0.0, [_track(1, 0, 0.0, BBox(x1=0, y1=10, x2=20, y2=30))])],
     )
-    config = AppConfig.model_validate({"render": {"smoothing": {"enabled": False}}})
+    config = config_factory({"render": {"smoothing": {"enabled": False}}})
 
     output_path = smooth_render_tracks(config, profile, store)
 
