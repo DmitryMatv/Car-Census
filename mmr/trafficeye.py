@@ -7,12 +7,18 @@ from typing import Any
 import httpx
 
 from config import AppConfig
+from mmr.retrieval_cache import (
+    MMRRetrievalStore,
+    RetrievalLookup,
+    image_sha256,
+)
 from mmr.trafficeye_batch_grid import (
     BatchCell,
     batch_request_payload,
     build_batch_image,
     decode_image,
     match_batch_results,
+    normalize_batch_detection_box,
     write_batch_debug_artifacts,
 )
 from mmr.trafficeye_cache import TrafficEyeCacheClient, hash_request
@@ -20,11 +26,6 @@ from mmr.trafficeye_parser import (
     parse_mmr_response,
     parse_mmr_results,
     parse_mmr_results_by_combination,
-)
-from mmr.retrieval_cache import (
-    MMRRetrievalStore,
-    RetrievalLookup,
-    image_sha256,
 )
 from models import BBox, MMRResult
 
@@ -138,9 +139,7 @@ class TrafficEyeClient:
             }
         )
 
-    def _crop_request(
-        self, image_path: Path
-    ) -> tuple[bytes, dict[str, Any], str]:
+    def _crop_request(self, image_path: Path) -> tuple[bytes, dict[str, Any], str]:
         image_bytes = image_path.read_bytes()
         image = decode_image(image_bytes, image_path)
         height, width = image.shape[:2]
@@ -159,16 +158,14 @@ class TrafficEyeClient:
 
         image = decode_image(image_path.read_bytes(), image_path)
         source_height, source_width = image.shape[:2]
-        scale_x = source_width / cell.content_box.width
-        scale_y = source_height / cell.content_box.height
         return result.model_copy(
             update={
                 "source_image": image_path,
-                "detection_box": BBox(
-                    x1=(box.x1 - cell.content_box.x1) * scale_x,
-                    y1=(box.y1 - cell.content_box.y1) * scale_y,
-                    x2=(box.x2 - cell.content_box.x1) * scale_x,
-                    y2=(box.y2 - cell.content_box.y1) * scale_y,
+                "detection_box": normalize_batch_detection_box(
+                    box,
+                    cell.content_box,
+                    image_width=source_width,
+                    image_height=source_height,
                 ),
             }
         )

@@ -22,6 +22,23 @@ class BatchCell:
     content_box: BBox
 
 
+def normalize_batch_detection_box(
+    box: BBox,
+    content_box: BBox,
+    *,
+    image_width: int,
+    image_height: int,
+) -> BBox:
+    scale_x = image_width / content_box.width
+    scale_y = image_height / content_box.height
+    return BBox(
+        x1=(box.x1 - content_box.x1) * scale_x,
+        y1=(box.y1 - content_box.y1) * scale_y,
+        x2=(box.x2 - content_box.x1) * scale_x,
+        y2=(box.y2 - content_box.y1) * scale_y,
+    )
+
+
 def decode_image(image_bytes: bytes, image_path: Path) -> cv2.typing.MatLike:
     """Decode image bytes for TrafficEye requests.
 

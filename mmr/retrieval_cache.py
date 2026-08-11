@@ -12,6 +12,7 @@ import numpy as np
 import orjson
 from pydantic import BaseModel, Field
 
+from mmr.trafficeye_batch_grid import normalize_batch_detection_box
 from models import BBox, MMRResult
 
 EMBEDDING_MODEL = "normalized_pixels_v1"
@@ -180,15 +181,13 @@ def normalize_legacy_batch_result(
         return result
     image = _decode_image(image_bytes)
     image_height, image_width = image.shape[:2]
-    scale_x = image_width / content_box.width
-    scale_y = image_height / content_box.height
     return result.model_copy(
         update={
-            "detection_box": BBox(
-                x1=(box.x1 - content_box.x1) * scale_x,
-                y1=(box.y1 - content_box.y1) * scale_y,
-                x2=(box.x2 - content_box.x1) * scale_x,
-                y2=(box.y2 - content_box.y1) * scale_y,
+            "detection_box": normalize_batch_detection_box(
+                box,
+                content_box,
+                image_width=image_width,
+                image_height=image_height,
             )
         }
     )
