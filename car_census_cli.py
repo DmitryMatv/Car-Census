@@ -15,6 +15,8 @@ from config import (
     camera_profile_path,
     load_camera_profile,
 )
+from mmr.retrieval_seed import seed_retrieval_cache
+from mmr.retrieval_compact import compact_retrieval_cache
 from pipeline.analyze import analyze_video
 from pipeline.classify import classify_tracks
 from pipeline.default_stages import default_pipeline_stages
@@ -30,7 +32,9 @@ from utils.video import read_first_frame
 
 app = typer.Typer(no_args_is_help=True)
 roi_app = typer.Typer(no_args_is_help=True)
+cache_app = typer.Typer(no_args_is_help=True)
 app.add_typer(roi_app, name="roi")
+app.add_typer(cache_app, name="cache")
 
 SUPPORTED_ACCELERATORS = {"default", "colab-t4"}
 SUPPORTED_DEVICES = {"auto", "cpu", "cuda"}
@@ -197,6 +201,70 @@ def classify(
     store = RunStore.from_existing(run_dir)
     classify_tracks(config=config, run_store=store)
     typer.echo(str(store.labels_path))
+
+
+@cache_app.command("seed")
+def cache_seed(
+    run_dirs: list[Path] = typer.Argument(
+        ...,
+        help="Completed run directories to import into the shared retrieval cache.",
+    ),
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Override the configured shared retrieval cache directory.",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    target_cache_dir = (
+        cache_dir.expanduser().resolve()
+        if cache_dir is not None
+        else (
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
+        ).resolve()
+    )
+    summaries = seed_retrieval_cache(
+        run_dirs=[run_dir.expanduser().resolve() for run_dir in run_dirs],
+        config=config,
+        cache_dir=target_cache_dir,
+    )
+    typer.echo(f"Retrieval cache: {target_cache_dir}")
+    for summary in summaries:
+        typer.echo(
+            f"{summary.run_dir}: imported={summary.imported}, "
+            f"skipped_unaccepted={summary.skipped_unaccepted}, "
+            f"skipped_missing_image={summary.skipped_missing_image}"
+        )
+
+
+@cache_app.command("compact")
+def cache_compact(
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Override the configured shared retrieval cache directory.",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    target_cache_dir = (
+        cache_dir.expanduser().resolve()
+        if cache_dir is not None
+        else (
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
+        ).resolve()
+    )
+    changed = compact_retrieval_cache(config=config, cache_dir=target_cache_dir)
+    typer.echo(f"Compacted {changed} retrieval records in {target_cache_dir}")
 
 
 @app.command()

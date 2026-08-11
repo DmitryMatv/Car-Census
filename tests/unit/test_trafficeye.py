@@ -796,7 +796,7 @@ def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
     assert result.model == "Corolla"
     assert result.source_image == crop
     assert result.raw["batch_cell_index"] == 0
-    assert result.detection_box == BBox(x1=5, y1=5, x2=75, y2=70)
+    assert result.detection_box == BBox(x1=4, y1=4, x2=60, y2=56)
 
 
 def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(

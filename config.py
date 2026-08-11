@@ -14,6 +14,7 @@ class StrictBaseModel(BaseModel):
 class ProjectConfig(StrictBaseModel):
     output_root: Path
     camera_profiles_dir: Path
+    retrieval_cache_dir: Path
 
 
 class VideoConfig(StrictBaseModel):
@@ -104,6 +105,10 @@ class MMRConfig(StrictBaseModel):
     batch_size: int = Field(ge=1)
     batch_grid_columns: int = Field(ge=1)
     batch_cell_size_px: int = Field(ge=64)
+    retrieval_mode: Literal["disabled", "shadow", "enforce"]
+    retrieval_embedding_distance_threshold: float = Field(ge=0.0, le=2.0)
+    retrieval_phash_max_hamming_distance: int = Field(ge=0, le=64)
+    retrieval_min_neighbors: int = Field(ge=1)
 
 
 class RenderConfig(StrictBaseModel):

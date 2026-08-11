@@ -285,7 +285,7 @@ def _write_records(path: Path, records: list[FrameRecord]) -> None:
     )
 
 
-def _config(
+def _render_config(
     config_factory,
     min_visible_track_observations: int = 1,
     require_crop_eligible_track: bool = False,
@@ -1240,7 +1240,7 @@ def test_visible_track_ids_applies_crop_eligibility_when_required(
     ]
 
     assert visible_track_ids_for_render(
-        _config(config_factory, require_crop_eligible_track=True),
+        _render_config(config_factory, require_crop_eligible_track=True),
         records,
     ) == {1}
 
@@ -1260,7 +1260,7 @@ def test_visible_track_ids_skips_crop_eligibility_when_unclassified_tracks_show(
     ]
 
     assert visible_track_ids_for_render(
-        _config(
+        _render_config(
             config_factory,
             require_crop_eligible_track=True,
             show_unclassified_tracks=True,
@@ -1313,7 +1313,10 @@ def test_visible_track_ids_keeps_old_behavior_when_summaries_missing(
         )
     ]
 
-    assert visible_track_ids_for_render(_config(config_factory), records) == {1, 2}
+    assert visible_track_ids_for_render(_render_config(config_factory), records) == {
+        1,
+        2,
+    }
 
 
 def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
@@ -1324,7 +1327,7 @@ def test_resolve_render_frames_path_returns_raw_path_when_smoothing_disabled(
 
     assert (
         _resolve_render_frames_path(
-            _config(config_factory, smoothing_enabled=False),
+            _render_config(config_factory, smoothing_enabled=False),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=None,
@@ -1349,7 +1352,7 @@ def test_resolve_render_frames_path_calls_smoother_when_smoothing_enabled(
 
     assert (
         _resolve_render_frames_path(
-            _config(config_factory, smoothing_enabled=True),
+            _render_config(config_factory, smoothing_enabled=True),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=fake_smoother,
@@ -1367,7 +1370,7 @@ def test_resolve_render_frames_path_requires_smoother_when_smoothing_enabled(
 
     with pytest.raises(ValueError, match="no smoothing stage was provided"):
         _resolve_render_frames_path(
-            _config(config_factory, smoothing_enabled=True),
+            _render_config(config_factory, smoothing_enabled=True),
             build_full_frame_profile(width=32, height=32),
             _as_run_store(store),
             smooth_render_tracks=None,
@@ -1409,7 +1412,7 @@ def test_render_filters_by_visibility_count(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory, min_visible_track_observations=2),
+        config=_render_config(config_factory, min_visible_track_observations=2),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1451,7 +1454,7 @@ def test_render_respects_require_crop_eligible_track(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory, require_crop_eligible_track=True),
+        config=_render_config(config_factory, require_crop_eligible_track=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1583,7 +1586,7 @@ def test_render_allows_unclassified_annotations_for_vehicle_indexed_tracks(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1636,7 +1639,7 @@ def test_render_skips_rejected_classification_labels(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1698,7 +1701,7 @@ def test_render_passes_exact_powertrain_text_colors_to_annotator(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1752,7 +1755,7 @@ def test_render_passes_live_count_to_annotator(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1822,7 +1825,7 @@ def test_render_passes_live_make_statistics_to_annotator(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -1936,7 +1939,7 @@ def test_render_counter_counts_only_rendered_accepted_tracks(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -2005,7 +2008,7 @@ def test_render_make_statistics_use_counter_render_eligibility(
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory, min_visible_track_observations=2),
+        config=_render_config(config_factory, min_visible_track_observations=2),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -2055,7 +2058,7 @@ def test_render_uses_injected_smoother_when_smoothing_is_enabled(
         return store.render_frames_path
 
     render_video(
-        config=_config(config_factory, smoothing_enabled=True),
+        config=_render_config(config_factory, smoothing_enabled=True),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),
@@ -2075,7 +2078,7 @@ def test_render_requires_smoother_when_smoothing_is_enabled(
 
     with pytest.raises(ValueError, match="no smoothing stage was provided"):
         render_video(
-            config=_config(config_factory, smoothing_enabled=True),
+            config=_render_config(config_factory, smoothing_enabled=True),
             profile=build_full_frame_profile(width=32, height=32),
             video_path=store.manifest.video_path,
             run_store=_as_run_store(store),
@@ -2130,7 +2133,7 @@ def test_render_counter_counts_canonical_vehicle_index_once_across_split_track_i
     _patch_render_io(monkeypatch, writer)
 
     render_video(
-        config=_config(config_factory),
+        config=_render_config(config_factory),
         profile=build_full_frame_profile(width=32, height=32),
         video_path=store.manifest.video_path,
         run_store=_as_run_store(store),

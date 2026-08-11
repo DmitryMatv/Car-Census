@@ -30,6 +30,39 @@ def _apply_identity(result: MMRResult, vehicle_index: int) -> MMRResult:
     )
 
 
+def _apply_default_provenance(result: MMRResult) -> MMRResult:
+    if result.evidence_source is not None and result.resolution_method is not None:
+        return result
+    return result.model_copy(
+        update={
+            "evidence_source": result.evidence_source or "api_confirmed",
+            "resolution_method": result.resolution_method or "external_api",
+        }
+    )
+
+
+def _classification_cache_dir(config: AppConfig, run_store: RunStore) -> Path:
+    manifest_file = getattr(run_store, "manifest", None)
+    if manifest_file is not None and hasattr(manifest_file, "read"):
+        manifest = manifest_file.read()
+        if manifest.retrieval_cache_dir is not None:
+            return manifest.retrieval_cache_dir
+    run_root = getattr(run_store, "root", None)
+    if isinstance(run_root, Path):
+        return run_root.parent / config.project.retrieval_cache_dir
+    return run_store.mmr_cache_dir
+
+
+def _build_client(config: AppConfig, run_store: RunStore) -> TrafficEyeClient:
+    client = TrafficEyeClient(
+        config=config,
+        cache_dir=_classification_cache_dir(config, run_store),
+    )
+    if hasattr(client, "batch_grids_dir"):
+        client.batch_grids_dir = run_store.mmr_batch_grids_dir
+    return client
+
+
 def _chunks(
     items: list[_ClassificationTask], size: int
 ) -> list[list[_ClassificationTask]]:
@@ -149,7 +182,7 @@ def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
 
 
 def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
-    client = TrafficEyeClient(config=config, cache_dir=run_store.mmr_cache_dir)
+    client = _build_client(config=config, run_store=run_store)
     classification_tasks, labels_by_track = _collect_classification_tasks(
         config=config, run_store=run_store
     )
@@ -161,7 +194,7 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 f"TrafficEye returned {len(results)} MMR results for {len(batch)} crops"
             )
         for task, result in zip(batch, results, strict=True):
-            result = _apply_identity(result, task.vehicle_index)
+            result = _apply_default_provenance(_apply_identity(result, task.vehicle_index))
             for summary in task.summaries:
                 labels_by_track[summary.track_id] = result
 
@@ -178,9 +211,11 @@ def write_skipped_classification_batch_grids(
 ) -> list[Path]:
     client = TrafficEyeClient(
         config=config,
-        cache_dir=run_store.mmr_cache_dir,
+        cache_dir=_classification_cache_dir(config, run_store),
         require_api_key=False,
     )
+    if hasattr(client, "batch_grids_dir"):
+        client.batch_grids_dir = run_store.mmr_batch_grids_dir
     classification_tasks, _labels_by_track = _collect_classification_tasks(
         config=config, run_store=run_store
     )

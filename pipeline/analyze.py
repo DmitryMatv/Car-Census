@@ -119,6 +119,9 @@ def analyze_video(
         width=metadata.width,
         height=metadata.height,
         frame_count=metadata.frame_count,
+        retrieval_cache_dir=(
+            project_root / config.project.output_root / config.project.retrieval_cache_dir
+        ).resolve(),
     )
     run_store.manifest.write(manifest)
 

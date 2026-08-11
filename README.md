@@ -4,7 +4,7 @@ Car counting and make/model/year identification from video footage.
 
 ## What It Does
 
-`Car-Census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
+`Car-Census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, reuses safe results from a shared retrieval cache, sends unresolved crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
 
 The pipeline is staged:
 
@@ -90,10 +90,51 @@ Set your API key in the environment:
 export TRAFFICEYE_API_KEY=your_key_here
 ```
 
-Classification sends one selected crop per vehicle to TrafficEye. The default
-is one crop per request (`mmr.batch_size: 1`, `mmr.batch_grid_columns: 1`). Each
-request supplies a manual BOX covering the crop and requests only `MMR`;
-`DETECTION`, OCR, and plate detection are not requested.
+Classification sends one selected crop per vehicle to TrafficEye when a safe
+retrieval result is unavailable. The default is one crop per request
+(`mmr.batch_size: 1`, `mmr.batch_grid_columns: 1`). Each request supplies a
+manual BOX covering the crop and requests only `MMR`; `DETECTION`, OCR, and
+plate detection are not requested.
+
+TrafficEye responses are stored as `api_confirmed` evidence rather than
+immutable ground truth. Exact image/request matches are reusable across runs.
+Approximate retrieval uses a versioned local visual representation and is
+configured as shadow-only by default (`mmr.retrieval_mode: shadow`), so it is
+audited while TrafficEye is still called. Set it to `enforce` only after
+calibrating the thresholds against a representative evaluation set. Near
+matches reuse make/model/generation and a variation only when the nearby
+evidence agrees; color, view, tags, and detection metadata are not copied from
+a similar image.
+
+The initial `normalized_pixels_v1` representation is deterministic and local,
+combined with a perceptual hash as an independent near-duplicate check. It is
+an intentionally conservative retrieval baseline, not a trained classifier or
+a semantic vehicle model.
+
+The shared store location is configured relative to `project.output_root` with
+`project.retrieval_cache_dir` and defaults to `.mmr-cache`.
+
+To seed the cache from selected existing runs without making any API calls:
+
+```bash
+Car-Census cache seed \
+  output/full-frame-IMG_5383_1440-20260605T181928Z \
+  output/full-frame-IMG_5386_1440-20260605T190145Z \
+  output/IMG_5458_1440-IMG_5458_1440-20260609T183644Z \
+  output/IMG_5512_1440-IMG_5512_1440-20260610T171931Z \
+  output/IMG_5581_1440-IMG_5581_1440-20260611T070923Z
+```
+
+This imports only accepted labels and their source crops. Unaccepted labels or
+labels whose crop is missing are reported and skipped. Use `--cache-dir PATH`
+to override the configured destination.
+
+To compact an already-seeded cache and remove duplicated batch responses while
+normalizing legacy batch coordinates, run:
+
+```bash
+python -m car_census_cli cache compact
+```
 
 Composite batching is opt-in. For example, set `mmr.batch_size: 16` and
 `mmr.batch_grid_columns: 4` for a 4x4 grid. Composite requests likewise supply
@@ -220,7 +261,18 @@ output/<run-id>/
     cache/
   annotated.mp4
   report.csv
+
+output/.mmr-cache/
+  <request-hash>.json
+  retrieval/
+    records/
+    images/
+    lookup_audit.jsonl
 ```
+
+The `.mmr-cache` directory is shared by runs created under the same output
+root. It retains the original crop bytes, request contract, raw API response,
+and visual representation needed to audit or re-embed retrieval decisions.
 
 ## Notes
 

@@ -1,6 +1,7 @@
 project:
   output_root: output
   camera_profiles_dir: configs/cameras
+  retrieval_cache_dir: .mmr-cache
 
 video:
   fps: 30.00
@@ -86,6 +87,12 @@ mmr:
   batch_size: 1
   batch_grid_columns: 1
   batch_cell_size_px: 512
+  # Exact retrieval is always safe; approximate matches are audited without
+  # skipping TrafficEye until this is changed to enforce after calibration.
+  retrieval_mode: shadow
+  retrieval_embedding_distance_threshold: 0.02
+  retrieval_phash_max_hamming_distance: 4
+  retrieval_min_neighbors: 1
 
 render:
   codec: mp4v
