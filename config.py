@@ -109,6 +109,11 @@ class MMRConfig(StrictBaseModel):
     retrieval_embedding_distance_threshold: float = Field(ge=0.0, le=2.0)
     retrieval_phash_max_hamming_distance: int = Field(ge=0, le=64)
     retrieval_min_neighbors: int = Field(ge=1)
+    retrieval_embedding_api_key_env: str
+    retrieval_embedding_model: str
+    retrieval_embedding_dimensions: int = Field(ge=1)
+    retrieval_calibration_min_same_identity: int = Field(ge=1)
+    retrieval_calibration_min_conflicting_identity: int = Field(ge=1)
 
 
 class RenderConfig(StrictBaseModel):

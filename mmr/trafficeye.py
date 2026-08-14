@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from config import AppConfig
+from mmr.embeddings import ImageEmbeddingProvider, OpenRouterEmbeddingProvider
 from mmr.retrieval_cache import (
     MMRRetrievalStore,
     RetrievalLookup,
@@ -61,10 +62,15 @@ def build_single_request_payload(
 
 class TrafficEyeClient:
     def __init__(
-        self, config: AppConfig, cache_dir: Path, require_api_key: bool = True
+        self,
+        config: AppConfig,
+        cache_dir: Path,
+        require_api_key: bool = True,
+        embedding_provider: ImageEmbeddingProvider | None = None,
     ) -> None:
         api_key = os.getenv(config.mmr.api_key_env)
         self.cache_dir = cache_dir
+        self.responses_dir = cache_dir / "responses"
         self._retrieval_mode = config.mmr.retrieval_mode
         self.accept_model_confidence = config.mmr.accept_model_confidence
         self.mmr_preference = config.mmr.mmr_preference
@@ -72,15 +78,23 @@ class TrafficEyeClient:
         self.batch_grid_columns = config.mmr.batch_grid_columns
         self.batch_cell_size_px = config.mmr.batch_cell_size_px
         self.jpeg_quality = config.analysis.crop_jpeg_quality
-        self.batch_grids_dir = self.cache_dir.parent / "batch_grids"
+        self.batch_grids_dir = self.cache_dir / "batch_grids"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.batch_grids_dir.mkdir(parents=True, exist_ok=True)
         self._cache_client = TrafficEyeCacheClient(
             api_url=config.mmr.api_url,
             api_key=api_key or "",
             timeout=config.mmr.timeout_seconds,
-            cache_dir=self.cache_dir,
+            cache_dir=self.responses_dir,
+            legacy_cache_dir=self.cache_dir,
             require_api_key=require_api_key,
+            http_client_factory=httpx.Client,
+        )
+        self._embedding_provider = embedding_provider or OpenRouterEmbeddingProvider(
+            api_key_env=config.mmr.retrieval_embedding_api_key_env,
+            model=config.mmr.retrieval_embedding_model,
+            dimensions=config.mmr.retrieval_embedding_dimensions,
+            cache_dir=self.cache_dir / "embeddings",
+            timeout=config.mmr.timeout_seconds,
             http_client_factory=httpx.Client,
         )
         self._retrieval_store = MMRRetrievalStore(
@@ -91,6 +105,7 @@ class TrafficEyeClient:
             phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
             min_neighbors=config.mmr.retrieval_min_neighbors,
             min_make_confidence=config.mmr.accept_model_confidence,
+            embedding_provider=self._embedding_provider,
         )
 
     def _request_payload(self, width: int = 0, height: int = 0) -> dict[str, Any]:
@@ -181,6 +196,7 @@ class TrafficEyeClient:
             image_bytes=image_bytes,
             request_hash=request_hash,
             request_payload=request_payload,
+            include_ineligible_match=self._retrieval_mode == "enforce",
         )
         match = lookup.match
         if match is None:

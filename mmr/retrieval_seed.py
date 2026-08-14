@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from config import AppConfig
+from mmr.embeddings import ImageEmbeddingProvider, OpenRouterEmbeddingProvider
 from mmr.retrieval_cache import MMRRetrievalStore
 from mmr.trafficeye import build_single_request_payload
 from mmr.trafficeye_batch_grid import decode_image, normalize_batch_detection_box
@@ -20,13 +21,25 @@ class RetrievalSeedSummary:
     skipped_missing_image: int
 
 
-def _build_store(config: AppConfig, cache_dir: Path) -> MMRRetrievalStore:
+def _build_store(
+    config: AppConfig,
+    cache_dir: Path,
+    embedding_provider: ImageEmbeddingProvider | None = None,
+) -> MMRRetrievalStore:
+    provider = embedding_provider or OpenRouterEmbeddingProvider(
+        api_key_env=config.mmr.retrieval_embedding_api_key_env,
+        model=config.mmr.retrieval_embedding_model,
+        dimensions=config.mmr.retrieval_embedding_dimensions,
+        cache_dir=cache_dir / "embeddings",
+        timeout=config.mmr.timeout_seconds,
+    )
     return MMRRetrievalStore(
         cache_dir / "retrieval",
         embedding_distance_threshold=config.mmr.retrieval_embedding_distance_threshold,
         phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
         min_neighbors=config.mmr.retrieval_min_neighbors,
         min_make_confidence=config.mmr.accept_model_confidence,
+        embedding_provider=provider,
     )
 
 
@@ -86,8 +99,9 @@ def seed_retrieval_cache(
     run_dirs: list[Path],
     config: AppConfig,
     cache_dir: Path,
+    embedding_provider: ImageEmbeddingProvider | None = None,
 ) -> list[RetrievalSeedSummary]:
-    store = _build_store(config, cache_dir)
+    store = _build_store(config, cache_dir, embedding_provider)
     summaries: list[RetrievalSeedSummary] = []
     for run_dir in run_dirs:
         run_store = RunStore.from_existing(run_dir)

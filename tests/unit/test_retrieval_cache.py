@@ -15,11 +15,20 @@ def _image_bytes(quality: int = 95) -> bytes:
     image = np.zeros((80, 120, 3), dtype=np.uint8)
     image[:, :] = [80, 140, 200]
     image[20:60, 30:90] = [200, 100, 40]
-    ok, encoded = cv2.imencode(
-        ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality]
-    )
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
     assert ok
     return encoded.tobytes()
+
+
+class _EmbeddingProvider:
+    model = "google/gemini-embedding-2"
+    dimensions = 768
+    calls = 0
+
+    def embed(self, image_bytes: bytes) -> list[float]:
+        _ = image_bytes
+        type(self).calls += 1
+        return [1.0] + [0.0] * (self.dimensions - 1)
 
 
 def _store(
@@ -34,6 +43,7 @@ def _store(
         phash_max_hamming_distance=4,
         min_neighbors=min_neighbors,
         min_make_confidence=min_make_confidence,
+        embedding_provider=_EmbeddingProvider(),
     )
 
 
@@ -230,6 +240,36 @@ def test_lookup_rechecks_api_confidence_under_current_policy(tmp_path: Path) -> 
     assert lookup.reason == "exact_ineligible"
 
 
+def test_lookup_exact_ineligible_can_report_match_for_enforce(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path, min_make_confidence=0.90)
+    image_bytes = _image_bytes()
+    payload = _request_payload()
+    request_hash = hash_request(image_bytes, payload)
+
+    store.record_api_result(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+        result=_result(make_confidence=0.89, accepted=False),
+    )
+
+    lookup = store.lookup(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+        include_ineligible_match=True,
+    )
+
+    assert lookup.reason == "exact_ineligible"
+    assert lookup.match is not None
+    assert lookup.match.kind == "exact"
+    assert lookup.match.result.make == "Toyota"
+    assert lookup.match.result.accepted is False
+    assert lookup.match.result.make_confidence == 0.89
+
+
 def test_exact_ineligible_evidence_blocks_approximate_reuse(tmp_path: Path) -> None:
     store = _store(tmp_path, min_make_confidence=0.90)
     image_bytes = _image_bytes()
@@ -333,6 +373,106 @@ def test_compact_records_remove_batch_trace_and_normalize_coordinates(
     assert b"batch_image" not in compacted
     assert b"many cars" not in compacted
     assert lookup.match is not None
-    assert lookup.match.result.detection_box == BBox(
-        x1=0, y1=0, x2=120, y2=80
+    assert lookup.match.result.detection_box == BBox(x1=0, y1=0, x2=120, y2=80)
+
+
+def test_phash_gate_runs_before_embedding_provider(tmp_path: Path) -> None:
+    provider = _EmbeddingProvider()
+    provider.calls = 0
+    store = MMRRetrievalStore(
+        tmp_path / "retrieval",
+        embedding_distance_threshold=0.2,
+        phash_max_hamming_distance=0,
+        min_neighbors=1,
+        embedding_provider=provider,
     )
+    stored_bytes = _image_bytes()
+    query_image = np.zeros((80, 120, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(".jpg", query_image)
+    assert ok
+    query_bytes = encoded.tobytes()
+    payload = _request_payload()
+    store.record_api_result(
+        image_bytes=stored_bytes,
+        request_hash=hash_request(stored_bytes, payload),
+        request_payload=payload,
+        result=_result(),
+    )
+    provider.calls = 0
+
+    lookup = store.lookup(
+        image_bytes=query_bytes,
+        request_hash=hash_request(query_bytes, payload),
+        request_payload=payload,
+    )
+
+    assert lookup.reason == "no_match"
+    assert provider.calls == 0
+
+
+def test_unavailable_embedding_is_still_exact_matchable(tmp_path: Path) -> None:
+    class FailingProvider(_EmbeddingProvider):
+        def embed(self, image_bytes: bytes) -> list[float]:
+            _ = image_bytes
+            raise RuntimeError("offline")
+
+    store = MMRRetrievalStore(
+        tmp_path / "retrieval",
+        embedding_distance_threshold=0.2,
+        phash_max_hamming_distance=4,
+        min_neighbors=1,
+        embedding_provider=FailingProvider(),
+    )
+    image_bytes = _image_bytes()
+    payload = _request_payload()
+    request_hash = hash_request(image_bytes, payload)
+    record = store.record_api_result(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+        result=_result(),
+    )
+
+    lookup = store.lookup(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+    )
+
+    assert record.embedding is None
+    assert lookup.reason == "exact_match"
+    assert lookup.match is not None
+
+
+def test_embedding_migration_supersedes_legacy_record(tmp_path: Path) -> None:
+    legacy_provider = _EmbeddingProvider()
+    legacy_provider.model = "normalized_pixels_v1"
+    legacy_store = _store(tmp_path)
+    image_bytes = _image_bytes()
+    payload = _request_payload()
+    original = legacy_store.record_api_result(
+        image_bytes=image_bytes,
+        request_hash=hash_request(image_bytes, payload),
+        request_payload=payload,
+        result=_result(),
+    )
+    original_path = legacy_store.records_dir / f"{original.record_id}.json"
+    payload_on_disk = orjson.loads(original_path.read_bytes())
+    payload_on_disk["embedding_model"] = legacy_provider.model
+    original_path.write_bytes(orjson.dumps(payload_on_disk))
+
+    current_store = MMRRetrievalStore(
+        tmp_path / "retrieval",
+        embedding_distance_threshold=0.2,
+        phash_max_hamming_distance=4,
+        min_neighbors=1,
+        embedding_provider=_EmbeddingProvider(),
+    )
+    migrated, unavailable = current_store.migrate_embeddings()
+
+    assert (migrated, unavailable) == (1, 0)
+    assert original_path.exists()
+    active = current_store.active_records()
+    assert len(active) == 1
+    assert active[0].supersedes_record_id == original.record_id
+    assert active[0].embedding_model == "google/gemini-embedding-2"

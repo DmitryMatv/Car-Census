@@ -98,23 +98,42 @@ plate detection are not requested.
 
 TrafficEye responses are stored as `api_confirmed` evidence rather than
 immutable ground truth. Exact image/request matches are reusable across runs.
-Approximate retrieval uses a versioned local visual representation and is
-configured as shadow-only by default (`mmr.retrieval_mode: shadow`), so it is
-audited while TrafficEye is still called. Set it to `enforce` only after
-calibrating the thresholds against a representative evaluation set. Near
-matches reuse make/model/generation and a variation only when the nearby
-evidence agrees; color, view, tags, and detection metadata are not copied from
-a similar image.
+Approximate retrieval uses OpenRouter's multimodal
+`google/gemini-embedding-2` image embeddings at 768 dimensions, combined with
+an independent perceptual hash gate. The default is `enforce`; both gates must
+pass before a near match is reused. Near matches reuse make/model/generation and
+a variation only when the nearby evidence agrees; color, view, tags, and
+detection metadata are not copied from a similar image.
 
-The initial `normalized_pixels_v1` representation is deterministic and local,
-combined with a perceptual hash as an independent near-duplicate check. It is
-an intentionally conservative retrieval baseline, not a trained classifier or
-a semantic vehicle model.
+Set the OpenRouter key before creating new embeddings:
+
+```bash
+export OPENROUTER_API_KEY=your_key_here
+```
+
+Embedding responses are cached by image SHA, model, and dimension under
+`.mmr-cache/embeddings`. If OpenRouter is unavailable, TrafficEye still runs
+and the API result is retained for exact image/request reuse without an
+embedding.
 
 The shared store location is configured relative to `project.output_root` with
 `project.retrieval_cache_dir` and defaults to `.mmr-cache`.
 
-To seed the cache from selected existing runs without making any API calls:
+The shared cache is organized by purpose:
+
+- `responses/` stores raw TrafficEye response-cache entries.
+- `embeddings/` stores one durable embedding response per image/model/dimension.
+- `retrieval/` stores auditable records, source images, and lookup audit events.
+- `batch_grids/` is created only when composite MMR batching is used.
+
+Move legacy response JSON files from the cache root into `responses/` with:
+
+```bash
+Car-Census cache organize
+```
+
+To seed the cache from selected existing runs without making TrafficEye
+classification calls (embedding requests may be made):
 
 ```bash
 Car-Census cache seed \
@@ -135,6 +154,26 @@ normalizing legacy batch coordinates, run:
 ```bash
 python -m car_census_cli cache compact
 ```
+
+Legacy retrieval records are never mutated during embedding migration. Re-embed
+their retained image bytes and create auditable superseding records with:
+
+```bash
+Car-Census cache migrate-embeddings
+```
+
+Before relying on enforce-mode reuse, compare same-identity and conflicting-
+identity distances:
+
+```bash
+Car-Census cache calibrate
+```
+
+Calibration reports a usable threshold only when the configured minimum evidence
+exists and same-identity distances remain strictly below conflicting-identity
+distances. It exits unsuccessfully when evidence is insufficient or overlapping,
+so enforcement fails closed rather than reusing the old `0.02` pixel-vector
+threshold.
 
 Composite batching is opt-in. For example, set `mmr.batch_size: 16` and
 `mmr.batch_grid_columns: 4` for a 4x4 grid. Composite requests likewise supply
@@ -264,6 +303,8 @@ output/<run-id>/
 
 output/.mmr-cache/
   <request-hash>.json
+  embeddings/
+    <image-sha>-<model-hash>-<dimensions>.json
   retrieval/
     records/
     images/

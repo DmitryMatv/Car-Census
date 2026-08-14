@@ -249,6 +249,7 @@ def write_batch_debug_artifacts(
     cells: list[BatchCell],
     request_payload: dict[str, Any],
 ) -> Path:
+    batch_grids_dir.mkdir(parents=True, exist_ok=True)
     batch_image_path = batch_grids_dir / f"{cache_key}.jpg"
     if not batch_image_path.exists():
         batch_image_path.write_bytes(image_bytes)

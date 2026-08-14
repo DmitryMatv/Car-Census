@@ -12,11 +12,16 @@ import numpy as np
 import orjson
 from pydantic import BaseModel, Field
 
+from mmr.embeddings import (
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    DEFAULT_EMBEDDING_MODEL,
+    ImageEmbeddingProvider,
+)
 from mmr.trafficeye_batch_grid import normalize_batch_detection_box
 from models import BBox, MMRResult
 
-EMBEDDING_MODEL = "normalized_pixels_v1"
-_EMBEDDING_SIZE = 32
+EMBEDDING_MODEL = DEFAULT_EMBEDDING_MODEL
+EMBEDDING_DIMENSIONS = DEFAULT_EMBEDDING_DIMENSIONS
 
 
 def image_sha256(image_bytes: bytes) -> str:
@@ -40,21 +45,6 @@ def _decode_image(image_bytes: bytes) -> cv2.typing.MatLike:
     if image is None:
         raise RuntimeError("Could not decode image for retrieval embedding")
     return image
-
-
-def image_embedding(image_bytes: bytes) -> list[float]:
-    image = _decode_image(image_bytes)
-    resized = cv2.resize(
-        image,
-        (_EMBEDDING_SIZE, _EMBEDDING_SIZE),
-        interpolation=cv2.INTER_AREA,
-    )
-    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    vector = rgb.reshape(-1)
-    norm = float(np.linalg.norm(vector))
-    if norm <= 0.0:
-        return [0.0] * int(vector.size)
-    return (vector / norm).tolist()
 
 
 def perceptual_hash(image_bytes: bytes) -> int:
@@ -200,8 +190,8 @@ class RetrievalRecord(BaseModel):
     request_hash: str
     request_contract_hash: str
     request_contract: dict[str, Any] = Field(default_factory=dict)
-    embedding_model: str
-    embedding: list[float]
+    embedding_model: str | None = None
+    embedding: list[float] | None = None
     perceptual_hash: int
     result: MMRResult
     supersedes_record_id: str | None = None
@@ -235,6 +225,7 @@ class MMRRetrievalStore:
         phash_max_hamming_distance: int,
         min_neighbors: int,
         min_make_confidence: float = 0.0,
+        embedding_provider: ImageEmbeddingProvider | None = None,
     ) -> None:
         self.root = root
         self.records_dir = root / "records"
@@ -244,6 +235,17 @@ class MMRRetrievalStore:
         self.phash_max_hamming_distance = phash_max_hamming_distance
         self.min_neighbors = min_neighbors
         self.min_make_confidence = min_make_confidence
+        self.embedding_provider = embedding_provider
+        self.embedding_model = (
+            embedding_provider.model
+            if embedding_provider is not None
+            else EMBEDDING_MODEL
+        )
+        self.embedding_dimensions = (
+            embedding_provider.dimensions
+            if embedding_provider is not None
+            else EMBEDDING_DIMENSIONS
+        )
         self._record_cache: dict[str, RetrievalRecord] | None = None
         self.records_dir.mkdir(parents=True, exist_ok=True)
         self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -272,6 +274,10 @@ class MMRRetrievalStore:
             if record.supersedes_record_id is not None
         }
         return [record for record in records if record.record_id not in superseded_ids]
+
+    def active_records(self) -> list[RetrievalRecord]:
+        """Return records currently eligible for retrieval or calibration."""
+        return self._active_records()
 
     def _write_record(self, record: RetrievalRecord) -> None:
         path = self._record_path(record.record_id)
@@ -318,14 +324,14 @@ class MMRRetrievalStore:
         stored_result = compact_result_for_cache(stored_result)
         contract = request_contract(request_payload)
         contract_hash = request_contract_hash(request_payload)
-        embedding = image_embedding(image_bytes)
+        embedding = self._try_embed(image_bytes)
         image_hash = perceptual_hash(image_bytes)
         record_payload = {
             "image_sha256": image_digest,
             "request_hash": request_hash,
             "request_contract": contract,
             "request_contract_hash": contract_hash,
-            "embedding_model": EMBEDDING_MODEL,
+            "embedding_model": self.embedding_model,
             "embedding": embedding,
             "perceptual_hash": image_hash,
             "result": stored_result.model_dump(mode="json"),
@@ -339,7 +345,7 @@ class MMRRetrievalStore:
             request_hash=request_hash,
             request_contract_hash=contract_hash,
             request_contract=contract,
-            embedding_model=EMBEDDING_MODEL,
+            embedding_model=self.embedding_model,
             embedding=embedding,
             perceptual_hash=image_hash,
             result=stored_result,
@@ -347,6 +353,17 @@ class MMRRetrievalStore:
         )
         self._write_record(record)
         return record
+
+    def _try_embed(self, image_bytes: bytes) -> list[float] | None:
+        if self.embedding_provider is None:
+            return None
+        try:
+            embedding = self.embedding_provider.embed(image_bytes)
+        except Exception:
+            return None
+        if len(embedding) != self.embedding_dimensions:
+            return None
+        return embedding
 
     def record_adjudication(
         self,
@@ -425,12 +442,62 @@ class MMRRetrievalStore:
             changed += 1
         return changed
 
+    def migrate_embeddings(self) -> tuple[int, int]:
+        """Create superseding current-model records for active legacy records."""
+        if self.embedding_provider is None:
+            return 0, 0
+        migrated = 0
+        unavailable = 0
+        for original in self._active_records():
+            if (
+                original.embedding_model == self.embedding_model
+                and original.embedding is not None
+                and len(original.embedding) == self.embedding_dimensions
+            ):
+                continue
+            image_path = self.images_dir / f"{original.image_sha256}.jpg"
+            if not image_path.exists():
+                unavailable += 1
+                continue
+            embedding = self._try_embed(image_path.read_bytes())
+            if embedding is None:
+                unavailable += 1
+                continue
+            record_payload = {
+                "image_sha256": original.image_sha256,
+                "request_hash": original.request_hash,
+                "request_contract": original.request_contract,
+                "request_contract_hash": original.request_contract_hash,
+                "embedding_model": self.embedding_model,
+                "embedding": embedding,
+                "perceptual_hash": original.perceptual_hash,
+                "result": original.result.model_dump(mode="json"),
+                "supersedes_record_id": original.record_id,
+            }
+            replacement = RetrievalRecord(
+                record_id=hashlib.sha256(orjson.dumps(record_payload)).hexdigest(),
+                created_at=datetime.now(UTC).isoformat(),
+                image_sha256=original.image_sha256,
+                request_hash=original.request_hash,
+                request_contract_hash=original.request_contract_hash,
+                request_contract=original.request_contract,
+                embedding_model=self.embedding_model,
+                embedding=embedding,
+                perceptual_hash=original.perceptual_hash,
+                result=original.result,
+                supersedes_record_id=original.record_id,
+            )
+            self._write_record(replacement)
+            migrated += 1
+        return migrated, unavailable
+
     def lookup(
         self,
         *,
         image_bytes: bytes,
         request_hash: str,
         request_payload: dict[str, Any],
+        include_ineligible_match: bool = False,
     ) -> RetrievalLookup:
         records = self._active_records()
         image_digest = image_sha256(image_bytes)
@@ -445,8 +512,20 @@ class MMRRetrievalStore:
                 not _is_eligible(record.result, self.min_make_confidence)
                 for record in exact_records
             ):
+                match = (
+                    RetrievalMatch(
+                        record=exact_records[0],
+                        result=exact_records[0].result,
+                        kind="exact",
+                        distance=0.0,
+                        perceptual_distance=0,
+                        neighbor_count=len(exact_records),
+                    )
+                    if include_ineligible_match
+                    else None
+                )
                 return RetrievalLookup(
-                    match=None,
+                    match=match,
                     candidate_count=len(exact_records),
                     reason="exact_ineligible",
                 )
@@ -472,24 +551,39 @@ class MMRRetrievalStore:
                 reason="exact_match",
             )
 
-        query_embedding = image_embedding(image_bytes)
         query_hash = perceptual_hash(image_bytes)
         contract_hash = request_contract_hash(request_payload)
+        phash_candidates = [
+            record
+            for record in records
+            if record.embedding_model == self.embedding_model
+            and record.embedding is not None
+            and len(record.embedding) == self.embedding_dimensions
+            and record.request_contract_hash == contract_hash
+            and _hamming_distance(query_hash, record.perceptual_hash)
+            <= self.phash_max_hamming_distance
+        ]
+        if not phash_candidates:
+            return RetrievalLookup(match=None, candidate_count=0, reason="no_match")
+        query_embedding = self._try_embed(image_bytes)
+        if query_embedding is None:
+            return RetrievalLookup(
+                match=None,
+                candidate_count=len(phash_candidates),
+                reason="embedding_unavailable",
+            )
         nearby_candidates = [
             (
                 record,
-                _cosine_distance(query_embedding, record.embedding),
+                _cosine_distance(query_embedding, record.embedding or []),
                 _hamming_distance(query_hash, record.perceptual_hash),
             )
-            for record in records
-            if record.embedding_model == EMBEDDING_MODEL
-            and record.request_contract_hash == contract_hash
+            for record in phash_candidates
         ]
         nearby_candidates = [
             candidate
             for candidate in nearby_candidates
             if candidate[1] <= self.embedding_distance_threshold
-            and candidate[2] <= self.phash_max_hamming_distance
         ]
         if any(
             not _is_eligible(record.result, self.min_make_confidence)

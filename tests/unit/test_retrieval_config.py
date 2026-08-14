@@ -5,8 +5,10 @@ from pydantic import ValidationError
 def test_retrieval_defaults_are_conservative(default_config) -> None:
     assert default_config.project.retrieval_cache_dir.name == ".mmr-cache"
     assert default_config.mmr.retrieval_mode == "shadow"
+    assert default_config.mmr.retrieval_embedding_model == "google/gemini-embedding-2"
+    assert default_config.mmr.retrieval_embedding_dimensions == 768
     assert default_config.mmr.retrieval_embedding_distance_threshold == 0.02
-    assert default_config.mmr.retrieval_phash_max_hamming_distance == 4
+    assert default_config.mmr.retrieval_phash_max_hamming_distance == 8
     assert default_config.mmr.retrieval_min_neighbors == 1
 
 
@@ -19,6 +21,9 @@ def test_retrieval_defaults_are_conservative(default_config) -> None:
         ("retrieval_phash_max_hamming_distance", -1),
         ("retrieval_phash_max_hamming_distance", 65),
         ("retrieval_min_neighbors", 0),
+        ("retrieval_embedding_dimensions", 0),
+        ("retrieval_calibration_min_same_identity", 0),
+        ("retrieval_calibration_min_conflicting_identity", 0),
     ],
 )
 def test_retrieval_config_rejects_unsafe_values(

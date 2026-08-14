@@ -15,8 +15,11 @@ from config import (
     camera_profile_path,
     load_camera_profile,
 )
-from mmr.retrieval_seed import seed_retrieval_cache
+from mmr.retrieval_calibrate import calibrate_retrieval_cache
 from mmr.retrieval_compact import compact_retrieval_cache
+from mmr.retrieval_migrate import migrate_retrieval_embeddings
+from mmr.retrieval_seed import seed_retrieval_cache
+from mmr.trafficeye_cache import migrate_legacy_response_cache
 from pipeline.analyze import analyze_video
 from pipeline.classify import classify_tracks
 from pipeline.default_stages import default_pipeline_stages
@@ -217,6 +220,7 @@ def cache_seed(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
+    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     target_cache_dir = (
@@ -242,8 +246,8 @@ def cache_seed(
         )
 
 
-@cache_app.command("compact")
-def cache_compact(
+@cache_app.command("organize")
+def cache_organize(
     cache_dir: Optional[Path] = typer.Option(
         None,
         "--cache-dir",
@@ -263,8 +267,92 @@ def cache_compact(
             / config.project.retrieval_cache_dir
         ).resolve()
     )
+    migrated = migrate_legacy_response_cache(target_cache_dir)
+    typer.echo(
+        f"Moved {migrated} legacy response files into {target_cache_dir / 'responses'}"
+    )
+
+
+@cache_app.command("compact")
+def cache_compact(
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Override the configured shared retrieval cache directory.",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    load_dotenv()
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    target_cache_dir = (
+        cache_dir.expanduser().resolve()
+        if cache_dir is not None
+        else (
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
+        ).resolve()
+    )
     changed = compact_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(f"Compacted {changed} retrieval records in {target_cache_dir}")
+
+
+@cache_app.command("migrate-embeddings")
+def cache_migrate_embeddings(
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Override the configured shared retrieval cache directory.",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    load_dotenv()
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    target_cache_dir = (
+        cache_dir.expanduser().resolve()
+        if cache_dir is not None
+        else (
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
+        ).resolve()
+    )
+    summary = migrate_retrieval_embeddings(config=config, cache_dir=target_cache_dir)
+    typer.echo(
+        f"Migrated {summary.migrated} retrieval records in {target_cache_dir}; "
+        f"unavailable={summary.unavailable}"
+    )
+
+
+@cache_app.command("calibrate")
+def cache_calibrate(
+    cache_dir: Optional[Path] = typer.Option(
+        None,
+        "--cache-dir",
+        help="Override the configured shared retrieval cache directory.",
+    ),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    target_cache_dir = (
+        cache_dir.expanduser().resolve()
+        if cache_dir is not None
+        else (
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
+        ).resolve()
+    )
+    report = calibrate_retrieval_cache(config=config, cache_dir=target_cache_dir)
+    typer.echo(report)
+    if report.usable_threshold is None:
+        raise typer.Exit(code=1)
 
 
 @app.command()

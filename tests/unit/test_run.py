@@ -31,8 +31,8 @@ def test_run_store_creates_expected_artifact_directories(tmp_path) -> None:
     assert store.analysis_dir.is_dir()
     assert store.crops_dir.is_dir()
     assert store.mmr_dir.is_dir()
-    assert store.mmr_cache_dir.is_dir()
-    assert store.mmr_batch_grids_dir.is_dir()
+    assert not store.mmr_cache_dir.exists()
+    assert not store.mmr_batch_grids_dir.exists()
     assert not (store.root / "render").exists()
 
 
