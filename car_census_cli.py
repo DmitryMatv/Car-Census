@@ -94,6 +94,16 @@ def _load_config_with_accelerator(
     return project_root, config
 
 
+def _resolve_retrieval_cache_dir(
+    project_root: Path, config: AppConfig, cache_dir: Optional[Path]
+) -> Path:
+    if cache_dir is not None:
+        return cache_dir.expanduser().resolve()
+    return (
+        project_root / config.project.output_root / config.project.retrieval_cache_dir
+    ).resolve()
+
+
 def _resolve_profile(
     project_root: Path, config: AppConfig, video: Path, camera_id: Optional[str]
 ) -> CameraProfile:
@@ -223,14 +233,8 @@ def cache_seed(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = (
-        cache_dir.expanduser().resolve()
-        if cache_dir is not None
-        else (
-            project_root
-            / config.project.output_root
-            / config.project.retrieval_cache_dir
-        ).resolve()
+    target_cache_dir = _resolve_retrieval_cache_dir(
+        project_root, config, cache_dir
     )
     summaries = seed_retrieval_cache(
         run_dirs=[run_dir.expanduser().resolve() for run_dir in run_dirs],
@@ -258,14 +262,8 @@ def cache_organize(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = (
-        cache_dir.expanduser().resolve()
-        if cache_dir is not None
-        else (
-            project_root
-            / config.project.output_root
-            / config.project.retrieval_cache_dir
-        ).resolve()
+    target_cache_dir = _resolve_retrieval_cache_dir(
+        project_root, config, cache_dir
     )
     migrated = migrate_legacy_response_cache(target_cache_dir)
     typer.echo(
@@ -286,14 +284,8 @@ def cache_compact(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = (
-        cache_dir.expanduser().resolve()
-        if cache_dir is not None
-        else (
-            project_root
-            / config.project.output_root
-            / config.project.retrieval_cache_dir
-        ).resolve()
+    target_cache_dir = _resolve_retrieval_cache_dir(
+        project_root, config, cache_dir
     )
     changed = compact_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(f"Compacted {changed} retrieval records in {target_cache_dir}")
@@ -312,14 +304,8 @@ def cache_migrate_embeddings(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = (
-        cache_dir.expanduser().resolve()
-        if cache_dir is not None
-        else (
-            project_root
-            / config.project.output_root
-            / config.project.retrieval_cache_dir
-        ).resolve()
+    target_cache_dir = _resolve_retrieval_cache_dir(
+        project_root, config, cache_dir
     )
     summary = migrate_retrieval_embeddings(config=config, cache_dir=target_cache_dir)
     typer.echo(
@@ -340,19 +326,17 @@ def cache_calibrate(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = (
-        cache_dir.expanduser().resolve()
-        if cache_dir is not None
-        else (
-            project_root
-            / config.project.output_root
-            / config.project.retrieval_cache_dir
-        ).resolve()
+    target_cache_dir = _resolve_retrieval_cache_dir(
+        project_root, config, cache_dir
     )
     report = calibrate_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(report)
     if report.usable_threshold is None:
         raise typer.Exit(code=1)
+    typer.echo(
+        f"Calibration artifact: "
+        f"{target_cache_dir / 'retrieval' / 'calibration.json'}"
+    )
 
 
 @app.command()

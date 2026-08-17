@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from config import AppConfig
-from mmr.embeddings import ImageEmbeddingProvider, OpenRouterEmbeddingProvider
+from mmr.embeddings import ImageEmbeddingProvider, build_embedding_provider
 from mmr.retrieval_cache import (
     MMRRetrievalStore,
     RetrievalLookup,
@@ -89,16 +89,14 @@ class TrafficEyeClient:
             require_api_key=require_api_key,
             http_client_factory=httpx.Client,
         )
-        self._embedding_provider = embedding_provider or OpenRouterEmbeddingProvider(
-            api_key_env=config.mmr.retrieval_embedding_api_key_env,
-            model=config.mmr.retrieval_embedding_model,
-            dimensions=config.mmr.retrieval_embedding_dimensions,
-            cache_dir=self.cache_dir / "embeddings",
-            timeout=config.mmr.timeout_seconds,
-            http_client_factory=httpx.Client,
+        self._embedding_provider = embedding_provider or build_embedding_provider(
+            config, self.cache_dir
         )
         self._retrieval_store = MMRRetrievalStore(
             self.cache_dir / "retrieval",
+            retrieval_mode=config.mmr.retrieval_mode,
+            embedding_model=config.mmr.retrieval_embedding_model,
+            embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
             embedding_distance_threshold=(
                 config.mmr.retrieval_embedding_distance_threshold
             ),

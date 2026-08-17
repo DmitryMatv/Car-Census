@@ -10,10 +10,9 @@ from typing import Any, Protocol
 import httpx
 import orjson
 
+from config import AppConfig
 
 OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
-DEFAULT_EMBEDDING_MODEL = "google/gemini-embedding-2"
-DEFAULT_EMBEDDING_DIMENSIONS = 768
 
 
 class EmbeddingUnavailableError(RuntimeError):
@@ -28,9 +27,7 @@ class ImageEmbeddingProvider(Protocol):
         """Return an embedding for one local JPEG image."""
 
 
-def embedding_cache_key(
-    image_bytes: bytes, model: str, dimensions: int
-) -> str:
+def embedding_cache_key(image_bytes: bytes, model: str, dimensions: int) -> str:
     image_sha = hashlib.sha256(image_bytes).hexdigest()
     return f"{image_sha}-{hashlib.sha256(model.encode('utf-8')).hexdigest()[:16]}-{dimensions}"
 
@@ -42,11 +39,11 @@ class OpenRouterEmbeddingProvider:
         self,
         *,
         api_key: str | None = None,
-        api_key_env: str = "OPENROUTER_API_KEY",
-        model: str = DEFAULT_EMBEDDING_MODEL,
-        dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS,
+        api_key_env: str,
+        model: str,
+        dimensions: int,
         cache_dir: Path | None = None,
-        timeout: float = 30.0,
+        timeout: float,
         http_client_factory: Any = httpx.Client,
     ) -> None:
         if dimensions <= 0:
@@ -63,7 +60,10 @@ class OpenRouterEmbeddingProvider:
     def _cache_path(self, image_bytes: bytes) -> Path | None:
         if self.cache_dir is None:
             return None
-        return self.cache_dir / f"{embedding_cache_key(image_bytes, self.model, self.dimensions)}.json"
+        return (
+            self.cache_dir
+            / f"{embedding_cache_key(image_bytes, self.model, self.dimensions)}.json"
+        )
 
     def _load_cached(self, image_bytes: bytes) -> list[float] | None:
         path = self._cache_path(image_bytes)
@@ -111,9 +111,7 @@ class OpenRouterEmbeddingProvider:
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{encoded}"
-                            },
+                            "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
                         }
                     ]
                 }
@@ -170,3 +168,15 @@ def _parse_embedding(payload: Any, dimensions: int) -> list[float]:
 
 
 OpenRouterClient = OpenRouterEmbeddingProvider
+
+
+def build_embedding_provider(
+    config: AppConfig, cache_dir: Path
+) -> OpenRouterEmbeddingProvider:
+    return OpenRouterEmbeddingProvider(
+        api_key_env=config.mmr.retrieval_embedding_api_key_env,
+        model=config.mmr.retrieval_embedding_model,
+        dimensions=config.mmr.retrieval_embedding_dimensions,
+        cache_dir=cache_dir / "embeddings",
+        timeout=config.mmr.timeout_seconds,
+    )

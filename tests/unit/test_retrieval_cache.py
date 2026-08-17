@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import cv2
 import numpy as np
 import orjson
 
 from mmr.retrieval_cache import MMRRetrievalStore
+from mmr.retrieval_calibration_artifact import (
+    RetrievalCalibrationArtifact,
+    save_calibration_artifact,
+)
 from mmr.trafficeye_cache import hash_request
 from models import BBox, MMRResult
 
@@ -23,27 +28,34 @@ def _image_bytes(quality: int = 95) -> bytes:
 class _EmbeddingProvider:
     model = "google/gemini-embedding-2"
     dimensions = 768
-    calls = 0
+
+    def __init__(self) -> None:
+        self.calls = 0
 
     def embed(self, image_bytes: bytes) -> list[float]:
         _ = image_bytes
-        type(self).calls += 1
+        self.calls += 1
         return [1.0] + [0.0] * (self.dimensions - 1)
 
 
 def _store(
     tmp_path: Path,
     *,
+    retrieval_mode: Literal["disabled", "shadow", "enforce"] = "shadow",
     min_neighbors: int = 1,
     min_make_confidence: float = 0.0,
+    embedding_provider: _EmbeddingProvider | None = None,
 ) -> MMRRetrievalStore:
     return MMRRetrievalStore(
         tmp_path / "retrieval",
+        retrieval_mode=retrieval_mode,
+        embedding_model="google/gemini-embedding-2",
+        embedding_dimensions=768,
         embedding_distance_threshold=0.02,
         phash_max_hamming_distance=4,
         min_neighbors=min_neighbors,
         min_make_confidence=min_make_confidence,
-        embedding_provider=_EmbeddingProvider(),
+        embedding_provider=embedding_provider or _EmbeddingProvider(),
     )
 
 
@@ -80,7 +92,7 @@ def test_exact_lookup_round_trips_full_api_result(tmp_path: Path) -> None:
         image_bytes=image_bytes,
         request_hash=request_hash,
         request_payload=payload,
-        result=_result(),
+        result=_result(raw={"response": {"data": {"combinations": ["many cars"]}}}),
     )
 
     lookup = store.lookup(
@@ -96,6 +108,9 @@ def test_exact_lookup_round_trips_full_api_result(tmp_path: Path) -> None:
     assert lookup.match.record.request_contract == payload
     assert lookup.match.result.color == "BLUE"
     assert lookup.match.result.detection_box is not None
+    assert lookup.match.result.raw == {
+        "response": {"data": {"combinations": ["many cars"]}}
+    }
 
 
 def test_embedding_lookup_reuses_identity_but_not_observation_fields(
@@ -110,7 +125,7 @@ def test_embedding_lookup_reuses_identity_but_not_observation_fields(
         image_bytes=stored_bytes,
         request_hash=hash_request(stored_bytes, payload),
         request_payload=payload,
-        result=_result(),
+        result=_result(vehicle_index=2, api_classification_index=3),
     )
 
     lookup = store.lookup(
@@ -130,6 +145,8 @@ def test_embedding_lookup_reuses_identity_but_not_observation_fields(
     assert lookup.match.result.view is None
     assert lookup.match.result.tags == []
     assert lookup.match.result.detection_box is None
+    assert lookup.match.result.vehicle_index is None
+    assert lookup.match.result.api_classification_index is None
 
 
 def test_exact_lookup_rejects_conflicting_api_evidence(tmp_path: Path) -> None:
@@ -323,7 +340,7 @@ def test_embedding_ineligible_neighbor_blocks_local_reuse(tmp_path: Path) -> Non
     assert lookup.reason == "embedding_ineligible"
 
 
-def test_compact_records_remove_batch_trace_and_normalize_coordinates(
+def test_compact_records_normalize_coordinates_and_keep_raw_response(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
@@ -370,10 +387,11 @@ def test_compact_records_remove_batch_trace_and_normalize_coordinates(
     )
 
     assert changed == 1
-    assert b"batch_image" not in compacted
-    assert b"many cars" not in compacted
+    assert b"batch_image" in compacted
+    assert b"many cars" in compacted
     assert lookup.match is not None
     assert lookup.match.result.detection_box == BBox(x1=0, y1=0, x2=120, y2=80)
+    assert lookup.match.result.raw["response"]["data"]["combinations"] == ["many cars"]
 
 
 def test_phash_gate_runs_before_embedding_provider(tmp_path: Path) -> None:
@@ -381,6 +399,9 @@ def test_phash_gate_runs_before_embedding_provider(tmp_path: Path) -> None:
     provider.calls = 0
     store = MMRRetrievalStore(
         tmp_path / "retrieval",
+        retrieval_mode="shadow",
+        embedding_model="google/gemini-embedding-2",
+        embedding_dimensions=768,
         embedding_distance_threshold=0.2,
         phash_max_hamming_distance=0,
         min_neighbors=1,
@@ -418,6 +439,9 @@ def test_unavailable_embedding_is_still_exact_matchable(tmp_path: Path) -> None:
 
     store = MMRRetrievalStore(
         tmp_path / "retrieval",
+        retrieval_mode="shadow",
+        embedding_model="google/gemini-embedding-2",
+        embedding_dimensions=768,
         embedding_distance_threshold=0.2,
         phash_max_hamming_distance=4,
         min_neighbors=1,
@@ -463,6 +487,9 @@ def test_embedding_migration_supersedes_legacy_record(tmp_path: Path) -> None:
 
     current_store = MMRRetrievalStore(
         tmp_path / "retrieval",
+        retrieval_mode="shadow",
+        embedding_model="google/gemini-embedding-2",
+        embedding_dimensions=768,
         embedding_distance_threshold=0.2,
         phash_max_hamming_distance=4,
         min_neighbors=1,
@@ -476,3 +503,124 @@ def test_embedding_migration_supersedes_legacy_record(tmp_path: Path) -> None:
     assert len(active) == 1
     assert active[0].supersedes_record_id == original.record_id
     assert active[0].embedding_model == "google/gemini-embedding-2"
+
+
+def _calibration_artifact(
+    *, threshold: float, **updates: object
+) -> RetrievalCalibrationArtifact:
+    values: dict[str, object] = {
+        "schema_version": 1,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "embedding_model": "google/gemini-embedding-2",
+        "embedding_dimensions": 768,
+        "phash_max_hamming_distance": 4,
+        "threshold": threshold,
+        "same_identity_pairs": 3,
+        "conflicting_identity_pairs": 3,
+        "maximum_same_identity_distance": threshold,
+        "minimum_conflicting_identity_distance": 0.5,
+    }
+    values.update(updates)
+    return RetrievalCalibrationArtifact.model_validate(values)
+
+
+class _QueueEmbeddingProvider(_EmbeddingProvider):
+    def __init__(self, vectors: list[list[float]]) -> None:
+        super().__init__()
+        self._vectors = list(vectors)
+
+    def embed(self, image_bytes: bytes) -> list[float]:
+        _ = image_bytes
+        self.calls += 1
+        return self._vectors.pop(0)
+
+
+def test_enforce_without_calibration_refuses_embedding_reuse(
+    tmp_path: Path,
+) -> None:
+    provider = _EmbeddingProvider()
+    store = _store(tmp_path, retrieval_mode="enforce", embedding_provider=provider)
+    stored_bytes = _image_bytes(quality=95)
+    query_bytes = _image_bytes(quality=90)
+    payload = _request_payload()
+    store.record_api_result(
+        image_bytes=stored_bytes,
+        request_hash=hash_request(stored_bytes, payload),
+        request_payload=payload,
+        result=_result(),
+    )
+    calls_after_record = provider.calls
+    assert calls_after_record == 1
+
+    lookup = store.lookup(
+        image_bytes=query_bytes,
+        request_hash=hash_request(query_bytes, payload),
+        request_payload=payload,
+    )
+
+    assert lookup.match is None
+    assert lookup.reason == "calibration_missing"
+    assert lookup.candidate_count == 1
+    assert provider.calls == calls_after_record
+
+
+def test_enforce_uses_calibrated_threshold(tmp_path: Path) -> None:
+    recording_provider = _QueueEmbeddingProvider([[1.0, 0.0] + [0.0] * 766])
+    recording_store = _store(
+        tmp_path, retrieval_mode="shadow", embedding_provider=recording_provider
+    )
+    stored_bytes = _image_bytes(quality=95)
+    payload = _request_payload()
+    recording_store.record_api_result(
+        image_bytes=stored_bytes,
+        request_hash=hash_request(stored_bytes, payload),
+        request_payload=payload,
+        result=_result(),
+    )
+    save_calibration_artifact(
+        tmp_path / "retrieval",
+        _calibration_artifact(threshold=0.1),
+    )
+
+    query_provider = _QueueEmbeddingProvider([[0.92, 0.3919] + [0.0] * 766])
+    store = _store(
+        tmp_path, retrieval_mode="enforce", embedding_provider=query_provider
+    )
+    lookup = store.lookup(
+        image_bytes=_image_bytes(quality=90),
+        request_hash=hash_request(_image_bytes(quality=90), payload),
+        request_payload=payload,
+    )
+
+    assert lookup.match is not None
+    assert lookup.reason == "embedding_match"
+    assert lookup.match.distance > 0.02
+
+
+def test_stale_calibration_artifact_is_ignored(tmp_path: Path) -> None:
+    save_calibration_artifact(
+        tmp_path / "retrieval",
+        _calibration_artifact(
+            threshold=0.1,
+            embedding_model="previous_embedding_model_v1",
+        ),
+    )
+    provider = _EmbeddingProvider()
+    store = _store(tmp_path, retrieval_mode="enforce", embedding_provider=provider)
+    stored_bytes = _image_bytes(quality=95)
+    payload = _request_payload()
+    store.record_api_result(
+        image_bytes=stored_bytes,
+        request_hash=hash_request(stored_bytes, payload),
+        request_payload=payload,
+        result=_result(),
+    )
+
+    lookup = store.lookup(
+        image_bytes=_image_bytes(quality=90),
+        request_hash=hash_request(_image_bytes(quality=90), payload),
+        request_payload=payload,
+    )
+
+    assert lookup.match is None
+    assert lookup.reason == "calibration_missing"

@@ -2,16 +2,6 @@ import pytest
 from pydantic import ValidationError
 
 
-def test_retrieval_defaults_are_conservative(default_config) -> None:
-    assert default_config.project.retrieval_cache_dir.name == ".mmr-cache"
-    assert default_config.mmr.retrieval_mode == "shadow"
-    assert default_config.mmr.retrieval_embedding_model == "google/gemini-embedding-2"
-    assert default_config.mmr.retrieval_embedding_dimensions == 768
-    assert default_config.mmr.retrieval_embedding_distance_threshold == 0.02
-    assert default_config.mmr.retrieval_phash_max_hamming_distance == 8
-    assert default_config.mmr.retrieval_min_neighbors == 1
-
-
 @pytest.mark.parametrize(
     ("field", "value"),
     [

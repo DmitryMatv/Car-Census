@@ -76,6 +76,9 @@ def test_seed_retrieval_cache_imports_selected_accepted_run_labels(
     )
     lookup = MMRRetrievalStore(
         cache_dir / "retrieval",
+        retrieval_mode=config.mmr.retrieval_mode,
+        embedding_model=config.mmr.retrieval_embedding_model,
+        embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
         embedding_distance_threshold=config.mmr.retrieval_embedding_distance_threshold,
         phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
         min_neighbors=config.mmr.retrieval_min_neighbors,

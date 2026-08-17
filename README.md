@@ -100,10 +100,13 @@ TrafficEye responses are stored as `api_confirmed` evidence rather than
 immutable ground truth. Exact image/request matches are reusable across runs.
 Approximate retrieval uses OpenRouter's multimodal
 `google/gemini-embedding-2` image embeddings at 768 dimensions, combined with
-an independent perceptual hash gate. The default is `enforce`; both gates must
-pass before a near match is reused. Near matches reuse make/model/generation and
-a variation only when the nearby evidence agrees; color, view, tags, and
-detection metadata are not copied from a similar image.
+an independent perceptual hash gate. The default is `enforce`; a near match is
+reused only when both gates pass, and the cosine-distance gate uses the
+threshold produced by `cache calibrate` (see below). Until a calibration
+artifact exists, enforce mode fails closed and falls back to TrafficEye for
+near matches. Near matches reuse make/model/generation and a variation only
+when the nearby evidence agrees; color, view, tags, and detection metadata are
+not copied from a similar image.
 
 Set the OpenRouter key before creating new embeddings:
 
@@ -148,8 +151,8 @@ This imports only accepted labels and their source crops. Unaccepted labels or
 labels whose crop is missing are reported and skipped. Use `--cache-dir PATH`
 to override the configured destination.
 
-To compact an already-seeded cache and remove duplicated batch responses while
-normalizing legacy batch coordinates, run:
+To compact an already-seeded cache and normalize legacy batch coordinates in
+stored evidence, run:
 
 ```bash
 python -m car_census_cli cache compact
@@ -171,9 +174,11 @@ Car-Census cache calibrate
 
 Calibration reports a usable threshold only when the configured minimum evidence
 exists and same-identity distances remain strictly below conflicting-identity
-distances. It exits unsuccessfully when evidence is insufficient or overlapping,
-so enforcement fails closed rather than reusing the old `0.02` pixel-vector
-threshold.
+distances. On success it persists the threshold as `retrieval/calibration.json`
+in the shared cache, and runtime retrieval uses that calibrated value as the
+cosine-distance gate. It exits unsuccessfully when evidence is insufficient or
+overlapping, leaves any previous artifact in place, and enforcement fails
+closed rather than reusing the configured threshold.
 
 Composite batching is opt-in. For example, set `mmr.batch_size: 16` and
 `mmr.batch_grid_columns: 4` for a 4x4 grid. Composite requests likewise supply

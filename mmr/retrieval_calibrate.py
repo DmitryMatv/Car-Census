@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 
 from config import AppConfig
 from mmr.retrieval_cache import MMRRetrievalStore, RetrievalRecord, _is_eligible
+from mmr.retrieval_calibration_artifact import (
+    RetrievalCalibrationArtifact,
+    save_calibration_artifact,
+)
+from mmr.retrieval_similarity import blockwise_cosine_distances, normalized_identity
 
 _CALIBRATION_BLOCK_SIZE = 256
 _BYTE_POPCOUNT = np.asarray([value.bit_count() for value in range(256)], dtype=np.uint8)
@@ -23,11 +29,7 @@ class RetrievalCalibrationReport:
 
 def _identity(record: RetrievalRecord) -> tuple[str, str, str]:
     result = record.result
-    return (
-        (result.make or "").strip().casefold(),
-        (result.model or "").strip().casefold(),
-        (result.generation or "").strip().casefold(),
-    )
+    return normalized_identity(result.make, result.model, result.generation)
 
 
 def _calibration_pair_stats(
@@ -41,10 +43,6 @@ def _calibration_pair_stats(
     embeddings = np.asarray(
         [record.embedding or [] for record in records], dtype=np.float32
     )
-    norms = np.linalg.norm(embeddings, axis=1)
-    nonzero = norms > 0.0
-    normalized = np.zeros_like(embeddings)
-    normalized[nonzero] = embeddings[nonzero] / norms[nonzero, None]
 
     identity_ids: dict[tuple[str, str, str], int] = {}
     identity_codes = np.empty(len(records), dtype=np.intp)
@@ -65,11 +63,7 @@ def _calibration_pair_stats(
     minimum_conflicting: float | None = None
     for start in range(0, len(records), _CALIBRATION_BLOCK_SIZE):
         end = min(start + _CALIBRATION_BLOCK_SIZE, len(records))
-        distances = np.maximum(0.0, 1.0 - normalized[start:end] @ normalized.T)
-        left_zero = ~nonzero[start:end, None]
-        right_zero = ~nonzero[None, :]
-        distances[left_zero & right_zero] = 0.0
-        distances[left_zero ^ right_zero] = np.inf
+        distances = blockwise_cosine_distances(embeddings, start, end)
 
         hash_xor = np.bitwise_xor(
             perceptual_hashes[start:end, None], perceptual_hashes[None, :]
@@ -120,6 +114,9 @@ def calibrate_retrieval_cache(
 ) -> RetrievalCalibrationReport:
     store = MMRRetrievalStore(
         cache_dir / "retrieval",
+        retrieval_mode=config.mmr.retrieval_mode,
+        embedding_model=config.mmr.retrieval_embedding_model,
+        embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
         embedding_distance_threshold=config.mmr.retrieval_embedding_distance_threshold,
         phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
         min_neighbors=config.mmr.retrieval_min_neighbors,
@@ -155,10 +152,31 @@ def calibrate_retrieval_cache(
         and maximum_same < minimum_conflicting
         else None
     )
-    return RetrievalCalibrationReport(
+    report = RetrievalCalibrationReport(
         same_identity_pairs=same_count,
         conflicting_identity_pairs=conflicting_count,
         maximum_same_identity_distance=maximum_same,
         minimum_conflicting_identity_distance=minimum_conflicting,
         usable_threshold=usable_threshold,
     )
+    if (
+        usable_threshold is not None
+        and maximum_same is not None
+        and minimum_conflicting is not None
+    ):
+        save_calibration_artifact(
+            store.root,
+            RetrievalCalibrationArtifact(
+                schema_version=1,
+                created_at=datetime.now(UTC).isoformat(),
+                embedding_model=config.mmr.retrieval_embedding_model,
+                embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
+                phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
+                threshold=usable_threshold,
+                same_identity_pairs=same_count,
+                conflicting_identity_pairs=conflicting_count,
+                maximum_same_identity_distance=maximum_same,
+                minimum_conflicting_identity_distance=minimum_conflicting,
+            ),
+        )
+    return report

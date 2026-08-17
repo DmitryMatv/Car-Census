@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from config import AppConfig
-from mmr.embeddings import ImageEmbeddingProvider, OpenRouterEmbeddingProvider
+from mmr.embeddings import ImageEmbeddingProvider, build_embedding_provider
 from mmr.retrieval_cache import MMRRetrievalStore
 from mmr.trafficeye import build_single_request_payload
 from mmr.trafficeye_batch_grid import decode_image, normalize_batch_detection_box
@@ -26,15 +26,12 @@ def _build_store(
     cache_dir: Path,
     embedding_provider: ImageEmbeddingProvider | None = None,
 ) -> MMRRetrievalStore:
-    provider = embedding_provider or OpenRouterEmbeddingProvider(
-        api_key_env=config.mmr.retrieval_embedding_api_key_env,
-        model=config.mmr.retrieval_embedding_model,
-        dimensions=config.mmr.retrieval_embedding_dimensions,
-        cache_dir=cache_dir / "embeddings",
-        timeout=config.mmr.timeout_seconds,
-    )
+    provider = embedding_provider or build_embedding_provider(config, cache_dir)
     return MMRRetrievalStore(
         cache_dir / "retrieval",
+        retrieval_mode=config.mmr.retrieval_mode,
+        embedding_model=config.mmr.retrieval_embedding_model,
+        embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
         embedding_distance_threshold=config.mmr.retrieval_embedding_distance_threshold,
         phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
         min_neighbors=config.mmr.retrieval_min_neighbors,

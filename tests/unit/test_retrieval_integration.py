@@ -6,6 +6,10 @@ from typing import Self
 import cv2
 import numpy as np
 
+from mmr.retrieval_calibration_artifact import (
+    RetrievalCalibrationArtifact,
+    save_calibration_artifact,
+)
 from mmr.trafficeye import TrafficEyeClient
 
 
@@ -120,6 +124,26 @@ class _FailingEmbeddingProvider(_EmbeddingProvider):
         raise RuntimeError("OpenRouter unavailable")
 
 
+def _write_calibration_artifact(
+    cache_dir: Path, *, threshold: float = 1.0, phash_max_hamming_distance: int = 4
+) -> None:
+    save_calibration_artifact(
+        cache_dir / "retrieval",
+        RetrievalCalibrationArtifact(
+            schema_version=1,
+            created_at="2026-01-01T00:00:00+00:00",
+            embedding_model="google/gemini-embedding-2",
+            embedding_dimensions=768,
+            phash_max_hamming_distance=phash_max_hamming_distance,
+            threshold=threshold,
+            same_identity_pairs=3,
+            conflicting_identity_pairs=3,
+            maximum_same_identity_distance=0.05,
+            minimum_conflicting_identity_distance=0.2,
+        ),
+    )
+
+
 def test_exact_retrieval_hit_does_not_need_api_key_or_http_call(
     default_config, tmp_path, monkeypatch
 ) -> None:
@@ -226,6 +250,7 @@ def test_embedding_enforce_hit_reuses_identity_without_observation_fields(
         cache_dir=cache_dir,
         embedding_provider=_EmbeddingProvider(),
     ).recognize_vehicle_crop(first_path)
+    _write_calibration_artifact(cache_dir, threshold=1.0)
 
     monkeypatch.delenv("TRAFFICEYE_API_KEY")
     enforce_config = config_factory({"mmr": {"retrieval_mode": "enforce"}})
@@ -243,6 +268,41 @@ def test_embedding_enforce_hit_reuses_identity_without_observation_fields(
     assert result.color is None
     assert result.detection_box is None
     assert _FakeHttpClient.calls == 1
+
+
+def test_enforce_without_calibration_falls_back_to_api(
+    config_factory, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr("mmr.trafficeye.httpx.Client", _FakeHttpClient)
+    monkeypatch.setenv("TRAFFICEYE_API_KEY", "test-key")
+    _FakeHttpClient.calls = 0
+    _FakeHttpClient.image_shapes = []
+    first_path = tmp_path / "first.jpg"
+    second_path = tmp_path / "second.jpg"
+    _write_image(first_path, quality=95)
+    _write_image(second_path, quality=90)
+    cache_dir = tmp_path / "cache"
+
+    shadow_config = config_factory({"mmr": {"retrieval_mode": "shadow"}})
+    TrafficEyeClient(
+        config=shadow_config,
+        cache_dir=cache_dir,
+        embedding_provider=_EmbeddingProvider(),
+    ).recognize_vehicle_crop(first_path)
+
+    enforce_config = config_factory({"mmr": {"retrieval_mode": "enforce"}})
+    result = TrafficEyeClient(
+        config=enforce_config,
+        cache_dir=cache_dir,
+        embedding_provider=_EmbeddingProvider(),
+    ).recognize_vehicle_crop(second_path)
+
+    assert result.resolution_method == "external_api"
+    assert _FakeHttpClient.calls == 2
+    audit_lines = (
+        (cache_dir / "retrieval" / "lookup_audit.jsonl").read_text().splitlines()
+    )
+    assert "calibration_missing" in audit_lines[-1]
 
 
 def test_batch_retrieval_removes_exact_hits_before_api_request(
@@ -264,6 +324,7 @@ def test_batch_retrieval_removes_exact_hits_before_api_request(
         cache_dir=cache_dir,
         embedding_provider=_EmbeddingProvider(),
     ).recognize_vehicle_crop(first_path)
+    _write_calibration_artifact(cache_dir, threshold=1.0, phash_max_hamming_distance=64)
 
     batch_config = config_factory(
         {
