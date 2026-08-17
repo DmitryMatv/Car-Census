@@ -394,6 +394,46 @@ def test_compact_records_normalize_coordinates_and_keep_raw_response(
     assert lookup.match.result.raw["response"]["data"]["combinations"] == ["many cars"]
 
 
+def test_compact_records_does_not_renormalize_current_batch_result(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    image = np.zeros((512, 400, 3), dtype=np.uint8)
+    ok, encoded = cv2.imencode(".jpg", image)
+    assert ok
+    image_bytes = encoded.tobytes()
+    payload = _request_payload()
+    result = _result(
+        detection_box=BBox(x1=100, y1=128, x2=300, y2=384),
+        raw={
+            "batch_content_box": {
+                "x1": 56,
+                "y1": 0,
+                "x2": 456,
+                "y2": 512,
+            },
+            "batch_detection_box_coordinates": "source_crop",
+        },
+    )
+    request_hash = hash_request(image_bytes, payload)
+    store.record_api_result(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+        result=result,
+    )
+
+    assert store.compact_records() == 0
+    lookup = store.lookup(
+        image_bytes=image_bytes,
+        request_hash=request_hash,
+        request_payload=payload,
+    )
+
+    assert lookup.match is not None
+    assert lookup.match.result.detection_box == result.detection_box
+
+
 def test_phash_gate_runs_before_embedding_provider(tmp_path: Path) -> None:
     provider = _EmbeddingProvider()
     provider.calls = 0

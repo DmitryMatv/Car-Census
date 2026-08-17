@@ -4,7 +4,9 @@ import base64
 import hashlib
 import math
 import os
+from collections.abc import Mapping
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Protocol
 
 import httpx
@@ -27,6 +29,67 @@ class ImageEmbeddingProvider(Protocol):
         """Return an embedding for one local JPEG image."""
 
 
+class _EmbeddingResponse(Protocol):
+    def raise_for_status(self) -> object: ...
+
+    def json(self) -> Any: ...
+
+
+class _EmbeddingHttpClient(Protocol):
+    def post(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json: dict[str, Any],
+    ) -> _EmbeddingResponse: ...
+
+
+class _EmbeddingHttpClientContext(Protocol):
+    def __enter__(self) -> _EmbeddingHttpClient: ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+
+class _EmbeddingHttpClientFactory(Protocol):
+    def __call__(self, *, timeout: float) -> _EmbeddingHttpClientContext: ...
+
+
+class _DefaultEmbeddingHttpClient:
+    def __init__(self, timeout: float) -> None:
+        self._client = httpx.Client(timeout=timeout)
+
+    def __enter__(self) -> "_DefaultEmbeddingHttpClient":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        _ = exc_type, exc_value, traceback
+        self._client.close()
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        json: dict[str, Any],
+    ) -> _EmbeddingResponse:
+        return self._client.post(url, headers=headers, json=json)
+
+
+def _default_embedding_http_client(*, timeout: float) -> _EmbeddingHttpClientContext:
+    return _DefaultEmbeddingHttpClient(timeout)
+
+
 def embedding_cache_key(image_bytes: bytes, model: str, dimensions: int) -> str:
     image_sha = hashlib.sha256(image_bytes).hexdigest()
     return f"{image_sha}-{hashlib.sha256(model.encode('utf-8')).hexdigest()[:16]}-{dimensions}"
@@ -44,7 +107,7 @@ class OpenRouterEmbeddingProvider:
         dimensions: int,
         cache_dir: Path | None = None,
         timeout: float,
-        http_client_factory: Any = httpx.Client,
+        http_client_factory: _EmbeddingHttpClientFactory | None = None,
     ) -> None:
         if dimensions <= 0:
             raise ValueError("embedding dimensions must be positive")
@@ -53,7 +116,7 @@ class OpenRouterEmbeddingProvider:
         self.dimensions = dimensions
         self.cache_dir = cache_dir
         self.timeout = timeout
-        self.http_client_factory = http_client_factory
+        self.http_client_factory = http_client_factory or _default_embedding_http_client
         if self.cache_dir is not None:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 

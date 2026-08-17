@@ -7,9 +7,12 @@ from config import AppConfig
 from mmr.embeddings import ImageEmbeddingProvider, build_embedding_provider
 from mmr.retrieval_cache import MMRRetrievalStore
 from mmr.trafficeye import build_single_request_payload
-from mmr.trafficeye_batch_grid import decode_image, normalize_batch_detection_box
+from mmr.trafficeye_batch_grid import (
+    decode_image,
+    normalize_batch_result_for_source_crop,
+)
 from mmr.trafficeye_cache import hash_request
-from models import BBox, MMRResult, TrackSummary
+from models import MMRResult, TrackSummary
 from storage.run_store import RunStore
 
 
@@ -69,25 +72,10 @@ def _normalize_batch_result_for_crop(
     image_width: int,
     image_height: int,
 ) -> MMRResult:
-    content_box_payload = result.raw.get("batch_content_box")
-    if not isinstance(content_box_payload, dict):
-        return result
-    try:
-        content_box = BBox.model_validate(content_box_payload)
-    except ValueError:
-        return result
-    box = result.detection_box
-    if box is None or content_box.width <= 0 or content_box.height <= 0:
-        return result
-    return result.model_copy(
-        update={
-            "detection_box": normalize_batch_detection_box(
-                box,
-                content_box,
-                image_width=image_width,
-                image_height=image_height,
-            )
-        }
+    return normalize_batch_result_for_source_crop(
+        result,
+        image_width=image_width,
+        image_height=image_height,
     )
 
 

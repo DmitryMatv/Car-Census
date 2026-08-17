@@ -19,7 +19,7 @@ from mmr.trafficeye_batch_grid import (
     build_batch_image,
     decode_image,
     match_batch_results,
-    normalize_batch_detection_box,
+    normalize_batch_result_for_source_crop,
     write_batch_debug_artifacts,
 )
 from mmr.trafficeye_cache import TrafficEyeCacheClient, hash_request
@@ -165,22 +165,14 @@ class TrafficEyeClient:
         cell: BatchCell,
         image_path: Path,
     ) -> MMRResult:
-        box = result.detection_box
-        if box is None or cell.content_box.width <= 0 or cell.content_box.height <= 0:
-            return result.model_copy(update={"source_image": image_path})
-
         image = decode_image(image_path.read_bytes(), image_path)
         source_height, source_width = image.shape[:2]
-        return result.model_copy(
-            update={
-                "source_image": image_path,
-                "detection_box": normalize_batch_detection_box(
-                    box,
-                    cell.content_box,
-                    image_width=source_width,
-                    image_height=source_height,
-                ),
-            }
+        return normalize_batch_result_for_source_crop(
+            result,
+            content_box=cell.content_box,
+            image_width=source_width,
+            image_height=source_height,
+            source_image=image_path,
         )
 
     def _lookup_retrieval(

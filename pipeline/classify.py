@@ -42,14 +42,11 @@ def _apply_default_provenance(result: MMRResult) -> MMRResult:
 
 
 def _classification_cache_dir(config: AppConfig, run_store: RunStore) -> Path:
-    manifest_file = getattr(run_store, "manifest", None)
-    if manifest_file is not None and hasattr(manifest_file, "read"):
-        manifest = manifest_file.read()
+    if isinstance(run_store, RunStore):
+        manifest = run_store.manifest.read()
         if manifest.retrieval_cache_dir is not None:
             return manifest.retrieval_cache_dir
-    run_root = getattr(run_store, "root", None)
-    if isinstance(run_root, Path):
-        return run_root.parent / config.project.retrieval_cache_dir
+        return run_store.root.parent / config.project.retrieval_cache_dir
     return run_store.mmr_cache_dir
 
 
@@ -58,8 +55,7 @@ def _build_client(config: AppConfig, run_store: RunStore) -> TrafficEyeClient:
         config=config,
         cache_dir=_classification_cache_dir(config, run_store),
     )
-    if hasattr(client, "batch_grids_dir"):
-        client.batch_grids_dir = run_store.mmr_batch_grids_dir
+    client.batch_grids_dir = run_store.mmr_batch_grids_dir
     return client
 
 
@@ -76,9 +72,7 @@ def _recognize_tasks(
         return []
     if batch_size <= 1:
         return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
-    if hasattr(client, "recognize_vehicle_crops"):
-        return client.recognize_vehicle_crops([task.image_path for task in tasks])
-    return [client.recognize_vehicle_crop(task.image_path) for task in tasks]
+    return client.recognize_vehicle_crops([task.image_path for task in tasks])
 
 
 def _best_candidate_for_summaries(
@@ -194,12 +188,14 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
                 f"TrafficEye returned {len(results)} MMR results for {len(batch)} crops"
             )
         for task, result in zip(batch, results, strict=True):
-            result = _apply_default_provenance(_apply_identity(result, task.vehicle_index))
+            result = _apply_default_provenance(
+                _apply_identity(result, task.vehicle_index)
+            )
             for summary in task.summaries:
                 labels_by_track[summary.track_id] = result
 
     run_store.labels.write(labels_by_track)
-    if hasattr(run_store, "frames") and hasattr(run_store.labels, "read"):
+    if isinstance(run_store, RunStore):
         deduplicate_classified_tracks(config=config, run_store=run_store)
         labels_by_track = run_store.labels.read()
     logger.info("Classification complete for %s tracks", len(labels_by_track))
@@ -214,8 +210,7 @@ def write_skipped_classification_batch_grids(
         cache_dir=_classification_cache_dir(config, run_store),
         require_api_key=False,
     )
-    if hasattr(client, "batch_grids_dir"):
-        client.batch_grids_dir = run_store.mmr_batch_grids_dir
+    client.batch_grids_dir = run_store.mmr_batch_grids_dir
     classification_tasks, _labels_by_track = _collect_classification_tasks(
         config=config, run_store=run_store
     )

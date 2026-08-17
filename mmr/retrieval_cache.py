@@ -15,7 +15,11 @@ from pydantic import BaseModel, Field
 from mmr.embeddings import ImageEmbeddingProvider
 from mmr.retrieval_calibration_artifact import load_calibration_artifact
 from mmr.retrieval_similarity import cosine_distance, normalized_identity
-from mmr.trafficeye_batch_grid import normalize_batch_detection_box
+from mmr.trafficeye_batch_grid import (
+    BATCH_DETECTION_BOX_COORDINATES_KEY,
+    SOURCE_CROP_COORDINATES,
+    normalize_batch_result_for_source_crop,
+)
 from models import BBox, MMRResult
 
 
@@ -112,6 +116,8 @@ def normalize_legacy_batch_result(
     image_bytes: bytes,
 ) -> MMRResult:
     """Convert an old grid-relative detection box to source-crop coordinates."""
+    if result.raw.get(BATCH_DETECTION_BOX_COORDINATES_KEY) == SOURCE_CROP_COORDINATES:
+        return result
     content_box_payload = result.raw.get("batch_content_box")
     if not isinstance(content_box_payload, dict) or result.detection_box is None:
         return result
@@ -128,15 +134,11 @@ def normalize_legacy_batch_result(
         return result
     image = _decode_image(image_bytes)
     image_height, image_width = image.shape[:2]
-    return result.model_copy(
-        update={
-            "detection_box": normalize_batch_detection_box(
-                box,
-                content_box,
-                image_width=image_width,
-                image_height=image_height,
-            )
-        }
+    return normalize_batch_result_for_source_crop(
+        result,
+        content_box=content_box,
+        image_width=image_width,
+        image_height=image_height,
     )
 
 
