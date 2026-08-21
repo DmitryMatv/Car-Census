@@ -1,10 +1,22 @@
 import orjson
+import pytest
 
-from config import AppConfig
+from config import AppConfig, CameraProfile, HomographyConfig
 from models import BBox, FrameRecord, MMRResult, TrackedObject, TrackSummary
 from pipeline.report import generate_reports
 from pipeline.sequential_duplicates import deduplicate_classified_tracks
 from storage.run_store import RunStore
+
+
+def _calibrated_profile() -> CameraProfile:
+    return CameraProfile(
+        camera_id="test",
+        polygon={"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+        homography=HomographyConfig(
+            source_points=[[0, 0], [2000, 0], [2000, 1200], [0, 1200]],
+            target_points=[[0.0, 0.0], [200.0, 0.0], [200.0, 120.0], [0.0, 120.0]],
+        ),
+    )
 
 
 def _track(
@@ -334,3 +346,58 @@ def test_bridge_observations_injected_in_gap_between_merged_tracks(
             f"Expected bridge observation for track 1 at frame {fi}"
         )
         assert track_1_in_gap[0].vehicle_index == 1
+
+
+def test_world_gate_blocks_merge_with_implausible_implied_speed(
+    config_factory, tmp_path
+) -> None:
+    store = _write_run(tmp_path, b_start_time=0.30)
+    config = _sequential_duplicate_config(
+        config_factory,
+        sequential_duplicate_max_implied_speed_mps=5.0,
+    )
+
+    payload = deduplicate_classified_tracks(config, store, _calibrated_profile())
+
+    assert payload["world_gate_active"] is True
+    assert payload["merged_pairs"] == []
+    assert store.labels.read()[2].vehicle_index == 2
+
+
+def test_world_gate_allows_merge_within_implied_speed_and_records_metrics(
+    config_factory, tmp_path
+) -> None:
+    store = _write_run(tmp_path, b_start_time=0.30)
+    config = _sequential_duplicate_config(
+        config_factory,
+        sequential_duplicate_max_implied_speed_mps=15.0,
+    )
+
+    payload = deduplicate_classified_tracks(config, store, _calibrated_profile())
+
+    assert payload["world_gate_active"] is True
+    assert len(payload["merged_pairs"]) == 1
+    pair = payload["merged_pairs"][0]
+    distance_m = pair["world_handoff_distance_m"]
+    implied_speed = pair["implied_speed_mps"]
+    assert distance_m == pytest.approx(2.0)
+    assert implied_speed == pytest.approx(distance_m / 0.2)
+    assert store.labels.read()[2].vehicle_index == 1
+
+
+def test_world_gate_inactive_without_profile_does_not_block_merge(
+    config_factory, tmp_path
+) -> None:
+    store = _write_run(tmp_path, b_start_time=0.30)
+    config = _sequential_duplicate_config(
+        config_factory,
+        sequential_duplicate_max_implied_speed_mps=0.5,
+    )
+
+    payload = deduplicate_classified_tracks(config, store)
+
+    assert payload["world_gate_active"] is False
+    assert len(payload["merged_pairs"]) == 1
+    pair = payload["merged_pairs"][0]
+    assert pair["world_handoff_distance_m"] is None
+    assert pair["implied_speed_mps"] is None

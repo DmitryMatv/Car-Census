@@ -21,6 +21,7 @@ from pipeline.analysis_edges import EdgeSuppression
 from pipeline.analysis_reassociation import StaleReassociationRejector
 from pipeline.analysis_track_state import MutableTrackState, TrackStateStore
 from roi.geometry import point_in_polygon
+from roi.transform import ViewTransformer, build_view_transformer
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,12 +315,14 @@ def build_track_state_updater(
     diagnostics: AnalysisDiagnostics,
 ) -> TrackStateUpdater:
     track_store = TrackStateStore()
+    view_transformer = build_view_transformer(config, profile)
     return TrackStateUpdater(
         components=TrackStateUpdaterComponents(
             observation_reader=TrackerObservationReader(diagnostics),
             stale_reassociation_rejector=StaleReassociationRejector(
                 tracker_config=config.tracker,
                 diagnostics=diagnostics,
+                view_transformer=view_transformer,
             ),
             edge_filter=EdgeObservationFilter(
                 edge_suppression=edge_suppression,

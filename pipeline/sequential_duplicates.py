@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
-from config import AppConfig
+from config import AppConfig, CameraProfile
 from models import BBox, FrameRecord, MMRResult, TrackedObject, TrackSummary
+from roi.transform import ViewTransformer, build_view_transformer
 from storage.json_artifacts import write_json
 from storage.run_store import RunStore
 
@@ -199,19 +201,61 @@ def _track_endpoints(records: list[FrameRecord]) -> dict[int, _TrackEndpoints]:
     return endpoints
 
 
+def _world_handoff_metrics(
+    view_transformer: ViewTransformer | None,
+    left: _TrackEndpoints,
+    right: _TrackEndpoints,
+    gap_seconds: float,
+) -> dict[str, float | None]:
+    if view_transformer is None or gap_seconds <= 0.0:
+        return {
+            "world_handoff_distance_m": None,
+            "implied_speed_mps": None,
+        }
+    distance_m = view_transformer.distance_between(
+        left.last_bbox.bottom_center, right.first_bbox.bottom_center
+    )
+    if not math.isfinite(distance_m):
+        return {
+            "world_handoff_distance_m": None,
+            "implied_speed_mps": None,
+        }
+    return {
+        "world_handoff_distance_m": distance_m,
+        "implied_speed_mps": distance_m / gap_seconds,
+    }
+
+
 def _passes_geometry(
     config: AppConfig,
     left: _TrackEndpoints,
     right: _TrackEndpoints,
-) -> tuple[bool, dict[str, float]]:
-    metrics = _prediction_metrics(left, right)
+    view_transformer: ViewTransformer | None = None,
+) -> tuple[bool, dict[str, float | None]]:
+    pixel_metrics = _prediction_metrics(left, right)
     tracker = config.tracker
+    gap_seconds = right.first_time - left.last_time
+    world_metrics = _world_handoff_metrics(
+        view_transformer, left, right, gap_seconds
+    )
+    metrics: dict[str, float | None] = {**pixel_metrics, **world_metrics}
+    implied_speed_mps = world_metrics["implied_speed_mps"]
+    max_implied_speed = tracker.sequential_duplicate_max_implied_speed_mps
+    passes_world_gate = (
+        implied_speed_mps is None
+        or max_implied_speed is None
+        or implied_speed_mps <= max_implied_speed
+    )
     return (
-        metrics["prediction_error_ratio"]
+        passes_world_gate
+        and pixel_metrics["prediction_error_ratio"]
         <= tracker.sequential_duplicate_prediction_error_ratio
-        and metrics["width_ratio"] >= tracker.sequential_duplicate_min_width_ratio
-        and metrics["height_ratio"] >= tracker.sequential_duplicate_min_height_ratio
-        and metrics["handoff_iou"] >= tracker.sequential_duplicate_min_handoff_iou,
+        and pixel_metrics["width_ratio"]
+        >= tracker.sequential_duplicate_min_width_ratio
+        and pixel_metrics["height_ratio"]
+        >= tracker.sequential_duplicate_min_height_ratio
+        and pixel_metrics["handoff_iou"]
+        >= tracker.sequential_duplicate_min_handoff_iou,
         metrics,
     )
 
@@ -367,6 +411,9 @@ def _thresholds(config: AppConfig) -> dict[str, object]:
         "min_width_ratio": tracker.sequential_duplicate_min_width_ratio,
         "min_height_ratio": tracker.sequential_duplicate_min_height_ratio,
         "min_handoff_iou": tracker.sequential_duplicate_min_handoff_iou,
+        "max_implied_speed_mps": (
+            tracker.sequential_duplicate_max_implied_speed_mps
+        ),
         "require_same_color": tracker.sequential_duplicate_require_same_color,
         "require_same_generation": tracker.sequential_duplicate_require_same_generation,
         "require_same_variation": tracker.sequential_duplicate_require_same_variation,
@@ -374,12 +421,22 @@ def _thresholds(config: AppConfig) -> dict[str, object]:
 
 
 def deduplicate_classified_tracks(
-    config: AppConfig, run_store: RunStore
+    config: AppConfig,
+    run_store: RunStore,
+    profile: CameraProfile | None = None,
 ) -> dict[str, Any]:
     audit_path = run_store.analysis_dir / "sequential_duplicates.json"
     thresholds = _thresholds(config)
+    view_transformer = (
+        build_view_transformer(config, profile) if profile is not None else None
+    )
     if not config.tracker.suppress_sequential_duplicate_tracks:
-        payload = {"enabled": False, "thresholds": thresholds, "merged_pairs": []}
+        payload = {
+            "enabled": False,
+            "thresholds": thresholds,
+            "world_gate_active": view_transformer is not None,
+            "merged_pairs": [],
+        }
         write_json(audit_path, payload)
         return payload
 
@@ -418,7 +475,9 @@ def deduplicate_classified_tracks(
                 require_same_variation=config.tracker.sequential_duplicate_require_same_variation,
             ):
                 continue
-            passes_geometry, metrics = _passes_geometry(config, left, right)
+            passes_geometry, metrics = _passes_geometry(
+                config, left, right, view_transformer
+            )
             if not passes_geometry:
                 continue
             if left_label.vehicle_index is None or right_label.vehicle_index is None:
@@ -453,6 +512,7 @@ def deduplicate_classified_tracks(
     payload = {
         "enabled": True,
         "thresholds": thresholds,
+        "world_gate_active": view_transformer is not None,
         "merged_pairs": merged_pairs,
         "canonical_vehicle_indices": {
             str(vehicle_index): canonical

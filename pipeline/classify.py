@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import AppConfig
+from config import AppConfig, CameraProfile
 from mmr.trafficeye import TrafficEyeClient
 from models import CropCandidate, MMRResult, TrackSummary
 from pipeline.analysis_crops import rank_crop_candidate
@@ -175,7 +175,11 @@ def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
     return path
 
 
-def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
+def classify_tracks(
+    config: AppConfig,
+    run_store: RunStore,
+    profile: CameraProfile | None = None,
+) -> dict[int, MMRResult]:
     client = _build_client(config=config, run_store=run_store)
     classification_tasks, labels_by_track = _collect_classification_tasks(
         config=config, run_store=run_store
@@ -196,7 +200,9 @@ def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResu
 
     run_store.labels.write(labels_by_track)
     if isinstance(run_store, RunStore):
-        deduplicate_classified_tracks(config=config, run_store=run_store)
+        deduplicate_classified_tracks(
+            config=config, run_store=run_store, profile=profile
+        )
         labels_by_track = run_store.labels.read()
     logger.info("Classification complete for %s tracks", len(labels_by_track))
     return labels_by_track

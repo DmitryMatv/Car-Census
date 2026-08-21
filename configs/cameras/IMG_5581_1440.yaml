@@ -14,3 +14,11 @@ polygon:
   - - 0
     - 1439
 count_line: null
+# Road-plane homography calibration. Uncomment and fill with >= 4 matching
+# point pairs to enable world-space reassociation gating and speed metrics.
+# source_points: pixel (x, y) coordinates on the road surface; pick
+#   well-separated, non-collinear spots whose real-world positions are known.
+# target_points: matching real-world (X, Y) positions in meters.
+# homography:
+#   source_points: [[0, 0], [0, 0], [0, 0], [0, 0]]
+#   target_points: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]

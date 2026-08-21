@@ -50,6 +50,18 @@ tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
   lost_track_buffer: 12
   max_reassociation_gap_seconds: 0.35
+  # World-space (homography) reassociation gate. When a track ID returns
+  # after max_reassociation_gap_seconds but within
+  # world_reassociation_max_gap_seconds, it is retained only if its road-plane
+  # displacement is physically plausible:
+  #   distance_m <= min(world_reassociation_max_distance_m,
+  #                     world_reassociation_max_speed_mps * gap_seconds)
+  # Requires a calibrated homography in the camera profile; without one the
+  # legacy strict behavior applies unchanged.
+  world_reassociation_enabled: true
+  world_reassociation_max_gap_seconds: 2.0
+  world_reassociation_max_speed_mps: 40.0
+  world_reassociation_max_distance_m: 150.0
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
   minimum_iou_threshold_first_assoc: 0.25 # tracker matching threshold for first association attempt
@@ -77,6 +89,10 @@ tracker:
   sequential_duplicate_require_same_color: false
   sequential_duplicate_require_same_generation: false
   sequential_duplicate_require_same_variation: false
+  # Post-hoc merge guard: a track pair may only be merged into one vehicle if
+  # the implied road-plane speed between the two endpoints stays within this
+  # limit. Requires a calibrated homography; null disables the world check.
+  sequential_duplicate_max_implied_speed_mps: 40.0
 
 mmr:
   api_url: https://trafficeye.ai/recognition

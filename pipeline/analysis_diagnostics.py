@@ -76,6 +76,8 @@ class AnalysisDiagnostics:
     duplicate_track_suppression_blocked_counted: int = 0
     stale_reassociation_observations_suppressed: int = 0
     stale_reassociation_track_ids_dropped: int = 0
+    world_reassociation_observations_accepted: int = 0
+    world_reassociation_tracks_retained: int = 0
     tracker_confidence_histogram: HistogramAccumulator = field(
         default_factory=lambda: HistogramAccumulator(CONFIDENCE_BINS)
     )
@@ -189,6 +191,12 @@ def analysis_diagnostics_payload(
         ),
         "stale_reassociation_track_ids_dropped": (
             diagnostics.stale_reassociation_track_ids_dropped
+        ),
+        "world_reassociation_observations_accepted": (
+            diagnostics.world_reassociation_observations_accepted
+        ),
+        "world_reassociation_tracks_retained": (
+            diagnostics.world_reassociation_tracks_retained
         ),
         "tracks_discarded_min_track_frames": diagnostics.tracks_discarded_min_track_frames,
         "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,

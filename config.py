@@ -81,6 +81,11 @@ class TrackerConfig(StrictBaseModel):
     sequential_duplicate_require_same_color: bool
     sequential_duplicate_require_same_generation: bool
     sequential_duplicate_require_same_variation: bool
+    world_reassociation_enabled: bool
+    world_reassociation_max_gap_seconds: float = Field(gt=0.0)
+    world_reassociation_max_speed_mps: float = Field(gt=0.0)
+    world_reassociation_max_distance_m: float = Field(gt=0.0)
+    sequential_duplicate_max_implied_speed_mps: float | None = Field(gt=0.0)
 
 
 class RenderSmoothingConfig(StrictBaseModel):
@@ -165,10 +170,42 @@ class CountLineConfig(StrictBaseModel):
         return self
 
 
+class HomographyConfig(StrictBaseModel):
+    """Ground-plane calibration mapping pixel coordinates to world meters.
+
+    ``source_points`` are pixel coordinates on the road plane (bottom-center
+    anchors of vehicles), ``target_points`` are the matching real-world
+    positions in meters. At least 4 non-collinear points are required.
+    """
+
+    source_points: list[list[float]] = Field(min_length=4)
+    target_points: list[list[float]] = Field(min_length=4)
+
+    @model_validator(mode="after")
+    def validate_point_lists(self) -> "HomographyConfig":
+        if len(self.source_points) != len(self.target_points):
+            raise ValueError(
+                "homography.source_points and homography.target_points "
+                "must contain the same number of points"
+            )
+        for name, points in (
+            ("source_points", self.source_points),
+            ("target_points", self.target_points),
+        ):
+            for index, point in enumerate(points):
+                if len(point) != 2:
+                    raise ValueError(
+                        f"homography.{name}[{index}] must contain exactly "
+                        "2 coordinates (x, y)"
+                    )
+        return self
+
+
 class CameraProfile(StrictBaseModel):
     camera_id: str
     polygon: PolygonZoneConfig
     count_line: CountLineConfig | None = None
+    homography: HomographyConfig | None = None
 
 
 FULL_FRAME_CAMERA_ID = "__full_frame__"

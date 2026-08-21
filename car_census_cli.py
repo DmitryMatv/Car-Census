@@ -210,9 +210,13 @@ def classify(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    _ = project_root
     store = RunStore.from_existing(run_dir)
-    classify_tracks(config=config, run_store=store)
+    manifest = store.manifest.read()
+    if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
+        profile = load_camera_profile(config, manifest.camera_id, root=project_root)
+    else:
+        profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
+    classify_tracks(config=config, run_store=store, profile=profile)
     typer.echo(str(store.labels_path))
 
 

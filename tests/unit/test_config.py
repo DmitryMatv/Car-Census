@@ -471,3 +471,67 @@ def test_render_smoothing_rejects_non_positive_max_interpolation_gap(
             config_factory(
                 {"render": {"smoothing": {"max_interpolation_gap_seconds": value}}}
             )
+
+
+def test_camera_profile_homography_round_trip() -> None:
+    profile = CameraProfile.model_validate(
+        {
+            "camera_id": "test",
+            "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+            "homography": {
+                "source_points": [[0, 0], [1000, 0], [1000, 600], [0, 600]],
+                "target_points": [[0.0, 0.0], [50.0, 0.0], [50.0, 30.0], [0.0, 30.0]],
+            },
+        }
+    )
+
+    assert profile.homography is not None
+    assert profile.homography.source_points[2] == [1000, 600]
+
+
+def test_camera_profile_without_homography_defaults_to_none() -> None:
+    profile = CameraProfile.model_validate(
+        {
+            "camera_id": "test",
+            "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+        }
+    )
+    assert profile.homography is None
+
+
+def test_homography_rejects_mismatched_point_counts() -> None:
+    with pytest.raises(ValidationError):
+        CameraProfile.model_validate(
+            {
+                "camera_id": "test",
+                "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+                "homography": {
+                    "source_points": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                    "target_points": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+                },
+            }
+        )
+
+
+def test_homography_rejects_non_planar_points() -> None:
+    with pytest.raises(ValidationError):
+        CameraProfile.model_validate(
+            {
+                "camera_id": "test",
+                "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+                "homography": {
+                    "source_points": [[0, 0], [1, 0], [1, 1]],
+                    "target_points": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+                },
+            }
+        )
+
+
+def test_default_world_reassociation_settings(default_config) -> None:
+    tracker = default_config.tracker
+
+    assert tracker.world_reassociation_enabled is True
+    assert tracker.world_reassociation_max_gap_seconds == 2.0
+    assert tracker.world_reassociation_max_speed_mps == 40.0
+    assert tracker.world_reassociation_max_distance_m == 150.0
+    assert tracker.sequential_duplicate_max_implied_speed_mps == 40.0
