@@ -10,6 +10,9 @@ from config import (
     CountLineConfig,
     build_effective_config,
     build_full_frame_profile,
+    camera_profile_path,
+    clean_camera_id,
+    validate_camera_id,
 )
 
 
@@ -28,6 +31,47 @@ def test_camera_profile_accepts_polygon_without_count_line() -> None:
         }
     )
     assert profile.count_line is None
+
+
+@pytest.mark.parametrize(
+    "camera_id",
+    ["../evil", "..", ".", "", "a/b", "a\\b", ".mp4", "../../escape.mp4"],
+)
+def test_clean_camera_id_rejects_unsafe_names(camera_id: str) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        clean_camera_id(camera_id)
+
+
+@pytest.mark.parametrize(
+    ("camera_id", "expected"),
+    [
+        ("cam-01", "cam-01"),
+        ("__full_frame__", "__full_frame__"),
+        ("front_cam.mp4", "front_cam"),
+    ],
+)
+def test_clean_camera_id_accepts_safe_names(camera_id: str, expected: str) -> None:
+    assert clean_camera_id(camera_id) == expected
+
+
+def test_validate_camera_id_rejects_path_separators() -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        validate_camera_id("sub/dir")
+
+
+def test_camera_profile_path_rejects_traversal_and_stays_in_profiles_dir(
+    default_config, tmp_path
+) -> None:
+    profiles_dir = tmp_path / default_config.project.camera_profiles_dir
+
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        camera_profile_path(default_config, "../evil", root=tmp_path)
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        camera_profile_path(default_config, "sub/dir.mp4", root=tmp_path)
+
+    path = camera_profile_path(default_config, "cam-01.mp4", root=tmp_path)
+    assert path.parent == profiles_dir
+    assert path.name == "cam-01.yaml"
 
 
 def test_canonical_tracker_confidence_contract(default_config) -> None:

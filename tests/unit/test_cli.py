@@ -16,3 +16,22 @@ def test_analyze_rejects_overwrite_without_explicit_run_directory() -> None:
 
     assert result.exit_code == 2
     assert "--overwrite requires --run-dir" in result.stderr
+
+
+def test_analyze_rejects_camera_id_with_path_traversal() -> None:
+    result = CliRunner().invoke(
+        app, ["analyze", "input.mp4", "--camera-id", "../evil"]
+    )
+
+    assert result.exit_code == 2
+    assert "Invalid camera id" in result.stderr
+    assert "--camera-id" in result.stderr
+
+
+def test_roi_edit_rejects_camera_id_with_path_traversal() -> None:
+    result = CliRunner().invoke(
+        app, ["roi", "edit", "input.mp4", "--camera-id", "../../evil"]
+    )
+
+    assert result.exit_code == 2
+    assert "Invalid camera id" in result.stderr

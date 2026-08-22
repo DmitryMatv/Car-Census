@@ -155,17 +155,13 @@ class VideoAnnotator:
             cv2.getTextSize(str(row.count), font, scale, thickness)[0][0]
             for row in visible_rows
         )
-        flag_widths = [
-            int(
-                _render_flag_emoji(
-                    row.origin_flag,
-                    max(1, int(text_height)),
-                ).shape[1]
-            )
-            for row in visible_rows
-            if row.origin_flag
+        flag_height = max(1, int(text_height))
+        row_flags = [_split_flag_emojis(row.origin_flag or "") for row in visible_rows]
+        row_flag_widths = [
+            sum(int(_render_flag_emoji(flag, flag_height).shape[1]) for flag in flags)
+            for flags in row_flags
         ]
-        flag_slot_width = max(flag_widths, default=0)
+        flag_slot_width = max(row_flag_widths, default=0)
         bar_width = max(32, round(120 * scale))
         bar_height = max(4, round(text_height * 0.38))
         desired_make_width = max(
@@ -235,7 +231,9 @@ class VideoAnnotator:
             self._make_count_by_make.pop(label, None)
             self._make_pulse_frames_by_make.pop(label, None)
 
-        animated_rows: list[tuple[float, MakeStatisticRow, float, int]] = []
+        animated_rows: list[
+            tuple[float, MakeStatisticRow, float, int, tuple[str, ...]]
+        ] = []
         for index, row in enumerate(visible_rows):
             label = row.make
             target_y = float(index * row_stride)
@@ -260,7 +258,9 @@ class VideoAnnotator:
             self._make_count_by_make[label] = row.count
 
             pulse_frames = self._make_pulse_frames_by_make.get(label, 0)
-            animated_rows.append((current_y, row, current_progress, pulse_frames))
+            animated_rows.append(
+                (current_y, row, current_progress, pulse_frames, row_flags[index])
+            )
 
         text_color = _hex_to_bgr(self.config.render.label_text_color)
         bar_color = _hex_to_bgr(_MAKE_STATS_BAR_COLOR)
@@ -268,7 +268,7 @@ class VideoAnnotator:
         track_color = _hex_to_bgr(_MAKE_STATS_TRACK_COLOR)
         separator_color = _hex_to_bgr(_MAKE_STATS_SEPARATOR_COLOR)
 
-        for animated_y, row, animated_progress, pulse_frames in sorted(
+        for animated_y, row, animated_progress, pulse_frames, flags in sorted(
             animated_rows, key=lambda item: item[0]
         ):
             row_top = padding + round(animated_y)
@@ -277,17 +277,15 @@ class VideoAnnotator:
                 continue
 
             text_x = padding
-            if flag_slot_width and row.origin_flag:
-                flag_image = _render_flag_emoji(
-                    row.origin_flag,
-                    max(1, int(text_height)),
-                )
+            for flag in flags:
+                flag_image = _render_flag_emoji(flag, flag_height)
                 _alpha_composite_rgba(
                     panel,
                     flag_image,
                     text_x,
                     baseline_y - int(flag_image.shape[0]),
                 )
+                text_x += int(flag_image.shape[1])
             text_x += flag_slot_width + (flag_gap if flag_slot_width else 0)
 
             display_make = _truncate_text_to_width(
@@ -429,6 +427,15 @@ def _is_flag_emoji(value: str) -> bool:
     return len(value) == 2 and all(
         "\U0001f1e6" <= character <= "\U0001f1ff" for character in value
     )
+
+
+def _split_flag_emojis(value: str) -> tuple[str, ...]:
+    flags: list[str] = []
+    index = 0
+    while index + 2 <= len(value) and _is_flag_emoji(value[index : index + 2]):
+        flags.append(value[index : index + 2])
+        index += 2
+    return tuple(flags)
 
 
 def _split_leading_flags(line: str) -> tuple[tuple[str, ...], str]:

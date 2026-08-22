@@ -54,6 +54,27 @@ def test_run_descriptor_omits_redundant_camera_names(
     assert _run_descriptor(camera_id, video_stem) == expected
 
 
+@pytest.mark.parametrize(
+    "camera_id",
+    ["../escape", "..", ".", "", "a/b", "a\\b"],
+)
+def test_run_descriptor_rejects_unsafe_camera_ids(
+    camera_id: str, video_stem: str = "video"
+) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        _run_descriptor(camera_id, video_stem)
+
+
+def test_run_store_create_rejects_traversal_camera_id(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        RunStore.create(
+            output_root=tmp_path,
+            camera_id="../../outside",
+            video_stem="video",
+        )
+    assert not (tmp_path / "outside").exists()
+
+
 def test_compact_timestamp_converts_to_utc() -> None:
     riga_summer_time = timezone(timedelta(hours=3))
 

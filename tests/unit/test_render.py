@@ -569,6 +569,36 @@ def test_video_annotator_make_statistics_animation_smoke(
     assert np.any(first != second)
 
 
+def test_split_flag_emojis_splits_pairs_and_skips_invalid_tail() -> None:
+    assert annotators_module._split_flag_emojis("🇩🇪🇨🇭") == ("🇩🇪", "🇨🇭")
+    assert annotators_module._split_flag_emojis("🇯🇵") == ("🇯🇵",)
+    assert annotators_module._split_flag_emojis("🇩🇪x") == ("🇩🇪",)
+    assert annotators_module._split_flag_emojis("xx") == ()
+    assert annotators_module._split_flag_emojis("") == ()
+
+
+def test_video_annotator_make_statistics_renders_multi_flag_origin(
+    config_factory,
+) -> None:
+    config = config_factory(
+        {"render": {"counter_enabled": True, "label_font_scale": 0.5}}
+    )
+    frame = np.full((180, 420, 3), 255, dtype=np.uint8)
+
+    annotated = VideoAnnotator(config).annotate(
+        frame,
+        tracks=[],
+        labels_by_track={},
+        counter_value=1,
+        make_statistics_rows=[
+            MakeStatisticRow(make="Smart", origin_flag="🇩🇪🇨🇭", count=1, progress=1.0),
+        ],
+    )
+
+    assert annotated.shape == frame.shape
+    assert np.any(annotated != frame)
+
+
 def test_video_annotator_counter_uses_balanced_visible_vertical_padding(
     config_factory,
 ) -> None:
@@ -1217,6 +1247,90 @@ def test_unclassified_label_text_has_no_powertrain_color_override(
     assert label_text == {1: "UNKNOWN"}
     assert label_text_colors == {}
     assert accepted_labels == {}
+
+
+def test_show_unclassified_tracks_extends_label_text_beyond_accepted_labels(
+    config_factory, tmp_path
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, vehicle_index=1), _track(2, vehicle_index=2)],
+            )
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json")
+            }
+        )
+    )
+    config = config_factory({"render": {"show_unclassified_tracks": True}})
+
+    label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
+        config,
+        _as_run_store(store),
+        store.frames_path,
+        allow_unclassified_annotations=False,
+        origin_country_by_make={},
+        powertrain_catalog={},
+    )
+
+    assert set(label_text) == {1, 2}
+    assert label_text[1] == "Toyota"
+    assert label_text[2] == "UNKNOWN"
+    assert label_text_colors == {}
+    assert set(accepted_labels) == {1}
+
+
+def test_flags_off_keep_accepted_only_label_text_with_existing_labels(
+    default_config, tmp_path
+) -> None:
+    store = DummyRunStore(tmp_path)
+    _write_records(
+        store.frames_path,
+        [
+            FrameRecord(
+                frame_index=0,
+                timestamp_seconds=0.0,
+                tracks=[_track(1, vehicle_index=1), _track(2, vehicle_index=2)],
+            )
+        ],
+    )
+    store.labels_path.parent.mkdir(parents=True, exist_ok=True)
+    store.labels_path.write_bytes(
+        orjson.dumps(
+            {
+                "1": MMRResult(
+                    make="Toyota",
+                    accepted=True,
+                    vehicle_index=1,
+                ).model_dump(mode="json")
+            }
+        )
+    )
+
+    label_text, label_text_colors, accepted_labels = _label_text_and_colors_by_track(
+        default_config,
+        _as_run_store(store),
+        store.frames_path,
+        allow_unclassified_annotations=False,
+        origin_country_by_make={},
+        powertrain_catalog={},
+    )
+
+    assert set(label_text) == {1}
+    assert set(accepted_labels) == {1}
 
 
 def test_output_fps_caps_configured_render_fps_at_source_fps(config_factory) -> None:

@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — Car-Census</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 4; }
+      .deep-box { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .chip { font-size: 10px; letter-spacing: .04em; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <!-- ============ HEADER ============ -->
+      <header class="space-y-3">
+        <h1 class="font-serif text-3xl font-semibold">Architecture review — Car-Census</h1>
+        <p class="text-sm text-slate-500">Aug 21, 2026 · hot spots weighted by recent history: retrieval cache &amp; calibration, sequential duplicates, rendering.</p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-600 border border-slate-200 rounded-lg bg-white px-4 py-2">
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-3 border border-slate-500 bg-white"></span> module</span>
+          <span class="flex items-center gap-2"><svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="#64748b" stroke-width="2" class="seam"/></svg> seam</span>
+          <span class="flex items-center gap-2"><svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="#dc2626" stroke-width="2"/></svg> leakage</span>
+          <span class="flex items-center gap-2"><span class="inline-block w-4 h-3 deep-box rounded-sm"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+      <!-- ============ CANDIDATE 1 ============ -->
+      <article id="c1" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">1 · Make the Retrieval match verdict a typed decision</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">mmr/retrieval_cache.py:462–663 · mmr/trafficeye.py:249–254, 301–306</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- BEFORE -->
+          <div class="rounded-lg border border-slate-200 p-4 relative" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — stringly-typed wire</div>
+            <div class="border-2 border-slate-500 rounded-lg p-3 bg-white">
+              <div class="text-xs uppercase tracking-wider font-semibold">MMRRetrievalStore.lookup()</div>
+              <div class="flex flex-wrap gap-1 mt-2">
+                <span class="chip px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">exact_match</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">no_match</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">calibration_missing</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">embedding_conflict</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">exact_ineligible</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">insufficient_neighbors …</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mt-2">emits <code>reason: str</code></div>
+            </div>
+            <svg class="absolute left-0 right-0" style="top:150px" height="40" width="100%">
+              <line x1="18%" y1="8" x2="82%" y2="8" stroke="#dc2626" stroke-width="2"/>
+              <polygon points="82%,8 74%,4 74%,12" fill="#dc2626"/>
+              <text x="50%" y="26" text-anchor="middle" font-size="10" fill="#dc2626">caller must know which strings mean “don’t trust cache”</text>
+            </svg>
+            <div class="absolute bottom-4 left-4 right-4 border-2 border-slate-500 rounded-lg p-3 bg-white">
+              <div class="text-xs uppercase tracking-wider font-semibold">TrafficEyeClient</div>
+              <div class="mt-2 flex flex-wrap gap-1 items-center">
+                <span class="text-[10px] text-slate-500">re-implements the subset:</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">{exact_conflict, exact_ineligible, embedding_conflict, embedding_ineligible}</span>
+                <span class="text-[10px]">→ force_api_request</span>
+              </div>
+              <div class="text-[10px] text-red-600 mt-2">new blocking reason in store ⇒ silent fail-open here</div>
+            </div>
+          </div>
+          <!-- AFTER -->
+          <div class="rounded-lg border border-slate-200 p-4 relative deep-box/0" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">After — typed verdict at the seam</div>
+            <div class="deep-box text-white rounded-lg p-3">
+              <div class="text-xs uppercase tracking-wider font-semibold">Retrieval cache — deep module</div>
+              <div class="mt-2 text-[11px] text-slate-300">lookup() decides everything: match kind, reuse safety, audit action (Shadow retrieval vs enforce)</div>
+              <div class="mt-2 inline-block chip px-2 py-1 rounded bg-emerald-500/20 border border-emerald-400 text-emerald-200">LookupVerdict { reusable, force_fresh_api }</div>
+            </div>
+            <svg class="w-full" height="44">
+              <line x1="10%" y1="14" x2="90%" y2="14" stroke="#64748b" stroke-width="2" class="seam"/>
+              <polygon points="90%,14 82%,10 82%,18" fill="#64748b"/>
+              <text x="50%" y="34" text-anchor="middle" font-size="10" fill="#475569">the interface is one typed value — nothing to re-interpret</text>
+            </svg>
+            <div class="border-2 border-slate-400 rounded-lg p-3 bg-white">
+              <div class="text-xs uppercase tracking-wider font-semibold">TrafficEyeClient — thin adapter</div>
+              <div class="text-[11px] text-slate-500 mt-1">verdict.reusable ? return API-confirmed reuse : request &amp; record</div>
+            </div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> The Retrieval cache’s interface is a bag of magic strings; the client re-interprets a hardcoded subset into <code>force_api_request</code>, so the conservative-reuse policy the ADR mandates survives only because both sides happen to agree today.</p>
+        <p><strong>Solution.</strong> Return a closed <code>LookupVerdict</code> carrying the decisions the caller actually needs (<code>reusable</code>, <code>force_fresh_api</code>) and move audit-action selection inside the store, which already knows mode and match kind.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>locality: reuse policy lives in one module</li>
+          <li>depth: interface shrinks to one verdict value</li>
+          <li>fail-open drift becomes unrepresentable</li>
+          <li>leverage: integration tests assert the type, not strings</li>
+        </ul>
+      </article>
+
+      <!-- ============ CANDIDATE 2 ============ -->
+      <article id="c2" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">2 · One factory for the configured Retrieval cache</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">local-substitutable</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">mmr/trafficeye.py:95 · mmr/retrieval_seed.py:33 · mmr/retrieval_calibrate.py:115 · mmr/retrieval_migrate.py:24 · mmr/retrieval_compact.py:17</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="rounded-lg border border-slate-200 bg-white p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — five hand-written adapters</div>
+            <pre class="mermaid">
+flowchart LR
+  CFG[MMRConfig<br/>9 retrieval fields] --> S1
+  CFG --> S2
+  CFG --> S3
+  CFG --> S4
+  CFG --> S5
+  S1[TrafficEyeClient] --> ST[MMRRetrievalStore]
+  S2[retrieval_seed] --> ST
+  S3[retrieval_calibrate] --> ST
+  S4[retrieval_migrate] --> ST
+  S5[retrieval_compact] --> ST
+  linkStyle default stroke:#dc2626,stroke-width:1.5px
+  classDef leak stroke:#dc2626,color:#dc2626;
+  class S1,S2,S3,S4,S5 leak
+            </pre>
+            <div class="text-[10px] text-red-600 mt-1">miss one site ⇒ seed/calibrate run different thresholds than the online client</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one seam, one adapter per need</div>
+            <pre class="mermaid">
+flowchart LR
+  CFG[MMRConfig] --> F[build_retrieval_store<br/>config + cache_dir +<br/>embedding_provider?]
+  F --> ST[MMRRetrievalStore]
+  U1[TrafficEyeClient] --> F
+  U2[seed / calibrate /<br/>migrate / compact] --> F
+  EP[build_embedding_provider] -.-> F
+  style F fill:#0f172a,color:#fff,stroke:#0f172a
+            </pre>
+            <div class="text-[10px] text-slate-500 mt-1">pattern already exists: <code>build_embedding_provider</code></div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> “The configured Retrieval cache” is constructed by hand at five call sites, each mapping the same nine config fields — the deletion test says the complexity reappears at every site, so a factory earns its keep.</p>
+        <p><strong>Solution.</strong> One <code>build_retrieval_store(config, cache_dir, embedding_provider=None)</code>; callers shrink to one line each.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>locality: new retrieval knob edits two files</li>
+          <li>calibration and online paths can’t drift</li>
+          <li>deletes ~45 lines of duplicated mapping</li>
+          <li>tests already cover every call site</li>
+        </ul>
+      </article>
+
+      <!-- ============ CANDIDATE 3 ============ -->
+      <article id="c3" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">3 · A recognition seam for classification</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">ports &amp; adapters</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">pipeline/classify.py:44–59, 205–227 · pipeline/analyze.py:122–124 · car_census_cli.py:97–104</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- BEFORE hand-built -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — dependency constructed inside</div>
+            <div class="border-2 border-slate-500 rounded-lg p-3">
+              <div class="text-xs uppercase tracking-wider font-semibold">classify_tracks()</div>
+              <div class="mt-2 space-y-1.5 text-[11px]">
+                <div class="bg-red-50 border border-red-200 rounded px-2 py-1 text-red-700"><code>isinstance(run_store, RunStore)</code> — branch exists only for a test double</div>
+                <div class="bg-red-50 border border-red-200 rounded px-2 py-1 text-red-700"><code>TrafficEyeClient(...)</code> built inline; then <code>client.batch_grids_dir = …</code> injected post-construction</div>
+                <div class="bg-red-50 border border-red-200 rounded px-2 py-1 text-red-700">cache-dir math encoded here <em>and</em> in analyze.py <em>and</em> car_census_cli.py</div>
+              </div>
+            </div>
+            <svg class="w-full" height="52">
+              <path d="M 30 6 C 30 30, 120 20, 160 34" stroke="#dc2626" stroke-width="2" fill="none"/>
+              <polygon points="160,34 149,28 152,38" fill="#dc2626"/>
+              <text x="170" y="38" font-size="10" fill="#dc2626">9 tests monkeypatch the class symbol</text>
+            </svg>
+            <div class="text-[10px] text-slate-500">hidden I/O: HTTP client appears mid-function</div>
+          </div>
+          <!-- AFTER hand-built -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">After — accept dependencies, don’t create them</div>
+            <div class="border-2 border-slate-500 rounded-lg p-3">
+              <div class="text-xs uppercase tracking-wider font-semibold">classify_tracks(config, run_store, recognizer)</div>
+              <div class="text-[11px] text-slate-500 mt-1">knows grouping, batching, ranking — nothing about HTTP or keys</div>
+            </div>
+            <svg class="w-full" height="48">
+              <line x1="15%" y1="16" x2="85%" y2="16" stroke="#64748b" stroke-width="2" class="seam"/>
+              <text x="50%" y="36" text-anchor="middle" font-size="10" fill="#475569">VehicleRecognizer protocol — the seam</text>
+            </svg>
+            <div class="flex gap-2">
+              <div class="deep-box text-white rounded-lg p-2.5 flex-1">
+                <div class="text-[10px] uppercase tracking-wider font-semibold">Default adapter</div>
+                <div class="text-[10px] text-slate-300 mt-1">TrafficEyeClient via one factory</div>
+              </div>
+              <div class="border-2 border-slate-400 rounded-lg p-2.5 flex-1 bg-white">
+                <div class="text-[10px] uppercase tracking-wider font-semibold">Test fake</div>
+                <div class="text-[10px] text-slate-500 mt-1">passed through the seam — no monkeypatch</div>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2">cache location moves to RunStore/layout — encoded once</div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> Classification constructs its TrafficEye dependency inline (with a production branch that exists only to serve a test double), so tests can only reach the interface by monkeypatching, and “where the shared Retrieval cache lives” is encoded in three modules.</p>
+        <p><strong>Solution.</strong> Inject a small <code>VehicleRecognizer</code> protocol matching what <code>TrafficEyeClient</code> already exposes; a default adapter builds it via one factory that also owns cache-dir resolution, moved into RunStore/layout.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>two adapters justify the seam: HTTP, fake</li>
+          <li>tests cross the same seam as callers</li>
+          <li>locality: cache location defined once</li>
+          <li>interface stops lying about hidden I/O</li>
+        </ul>
+      </article>
+
+      <!-- ============ CANDIDATE 4 ============ -->
+      <article id="c4" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">4 · One vehicle-identity module; merge becomes a stage</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">pipeline/sequential_duplicates.py:48–92 · mmr/retrieval_cache.py:74–75 · mmr/retrieval_similarity.py:6–13 · pipeline/classify.py:197–200</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="rounded-lg border border-slate-200 bg-white p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — Identity fields compared three ways</div>
+            <pre class="mermaid">
+flowchart TB
+  A["sequential_duplicates<br/>_identity_tuple<br/>(make, model, generation, color)"]:::leak
+  B["retrieval_cache<br/>_identity_signature"]:::leak
+  C["retrieval_similarity<br/>normalized_identity"]:::leak
+  D["classify_tracks"] -->|"writes labels, then silently<br/>rewrites labels+frames+tracks on disk"| E[(artifacts)]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+            </pre>
+            <div class="text-[10px] text-red-600 mt-1">subtly different field sets — color only in one; a policy change edits three files</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one definition, explicit stage</div>
+            <pre class="mermaid">
+flowchart TB
+  ID["vehicle_identity(result)<br/>mmr/retrieval_similarity"]:::deep
+  A[sequential_duplicates] --> ID
+  B[retrieval_cache] --> ID
+  C[near-duplicate policy] --> ID
+  subgraph stages
+    direction LR
+    S1[Classify stage] --> S2[Merge sequential<br/>duplicates stage] --> S3[Render stage]
+  end
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+            </pre>
+            <div class="text-[10px] text-slate-500 mt-1">merge already has the stage-shaped signature <code>(config, run_store)</code></div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> “Identity fields match” has three implementations with subtly different fields, and the temporal near-duplicate merge rewrites three persisted artifacts while hiding inside <code>classify_tracks</code>, whose interface says nothing about it.</p>
+        <p><strong>Solution.</strong> One <code>vehicle_identity()</code> used by all three consumers, and promote the merge to its own PipelineStage so artifact mutation is visible in the stage list.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>locality: identity policy changes in one place</li>
+          <li>interface stops hiding disk rewrites</li>
+          <li>stage list reads as the true pipeline</li>
+          <li>one test can equate all identity uses</li>
+        </ul>
+      </article>
+
+      <!-- ============ CANDIDATE 5 ============ -->
+      <article id="c5" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">5 · Split the annotator’s implementation: pure layout, injected emoji raster</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">Speculative</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">ports &amp; adapters</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">render/annotators.py:36–58, 426–517, 452–501, 64–67 · pipeline/render.py:85–116</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- BEFORE cross-section -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — one 830-line implementation</div>
+            <div class="space-y-1">
+              <div class="h-9 border-l-4 border-slate-400 bg-white pl-3 flex items-center text-[11px]">annotate(frame, tracks, labels…) — small interface ✓</div>
+              <div class="h-9 border-l-4 border-red-400 bg-red-50 pl-3 flex items-center text-[11px] text-red-700">flag / tag-emoji string parsing</div>
+              <div class="h-9 border-l-4 border-red-400 bg-red-50 pl-3 flex items-center text-[11px] text-red-700">label layout math (_LabelLineLayout)</div>
+              <div class="h-9 border-l-4 border-red-400 bg-red-50 pl-3 flex items-center text-[11px] text-red-700">lru_cache’d Pillow raster — RuntimeError if NotoColorEmoji absent</div>
+              <div class="h-9 border-l-4 border-red-400 bg-red-50 pl-3 flex items-center text-[11px] text-red-700">per-make animation dicts — frame-order-dependent state on self</div>
+              <div class="h-9 border-l-4 border-slate-400 bg-white pl-3 flex items-center text-[11px]">cv2 drawing + stats panel</div>
+            </div>
+            <div class="text-[10px] text-red-600 mt-2">64 tests assert pixels with cv2 monkeypatched at module level</div>
+          </div>
+          <!-- AFTER cross-section -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">After — internals get their own seams</div>
+            <div class="space-y-1">
+              <div class="h-9 border-l-4 border-slate-400 bg-white pl-3 flex items-center text-[11px]">annotate(...) — unchanged interface</div>
+              <div class="h-9 border-l-4 border-emerald-500 bg-emerald-50 pl-3 flex items-center text-[11px] text-emerald-700">LabelLayout — pure value, plain assertions</div>
+              <div class="h-9 border-l-4 border-slate-300 bg-stone-100 pl-3 flex items-center text-[11px] text-slate-600 seam-b">EmojiRaster seam — Pillow adapter default</div>
+              <div class="h-9 border-l-4 border-emerald-500 bg-emerald-50 pl-3 flex items-center text-[11px] text-emerald-700">MakeStatsAnimator — owned by caller per video</div>
+              <div class="h-9 border-l-4 border-slate-400 bg-white pl-3 flex items-center text-[11px]">cv2 drawing stays put</div>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2">“what a label says” (render.py) and “how it’s drawn” stop sharing emoji vocabulary by side effect</div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> The annotator’s interface is small but its implementation mixes pure layout, environment-dependent global caches, and frame-order-dependent mutable state, so every test must go through rendered pixels.</p>
+        <p><strong>Solution.</strong> Extract pure <code>LabelLayout</code> computation, inject an <code>EmojiRaster</code> protocol (Pillow as the default adapter), and move animation state into an object the caller owns per video.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>most pixel tests become plain assertions</li>
+          <li>font absence is a constructor concern</li>
+          <li>annotator reusable across videos again</li>
+          <li>internal seams, external interface unchanged</li>
+        </ul>
+      </article>
+
+      <!-- ============ CANDIDATE 6 ============ -->
+      <article id="c6" class="rounded-xl border border-slate-200 bg-white shadow-sm p-6 space-y-5">
+        <div class="flex items-start justify-between gap-4">
+          <h2 class="font-serif text-xl font-semibold">6 · Collapse the FFmpeg writer twins; make smoothing’s signal explicit</h2>
+          <div class="flex gap-2 shrink-0">
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">Speculative</span>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+          </div>
+        </div>
+        <p class="font-mono text-sm text-slate-600">utils/video.py:62–135, 138–216, 489–549 · pipeline/render.py:159–160 · pipeline/smooth.py:644–662 · pipeline/default_stages.py:15–29</p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- BEFORE hand-built -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">Before — copy-paste twins + covert channel</div>
+            <div class="flex gap-3">
+              <div class="flex-1 border-2 border-slate-500 rounded-lg p-2.5">
+                <div class="text-[10px] uppercase tracking-wider font-semibold">FFmpegRawVideoWriter</div>
+                <div class="mt-1 space-y-1">
+                  <span class="chip block px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">-cq</span>
+                  <span class="chip block px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">pix_fmt nv12</span>
+                  <span class="chip block px-1.5 py-0.5 rounded bg-stone-100 border border-stone-300">stderr handling</span>
+                </div>
+              </div>
+              <div class="flex-1 border-2 border-slate-500 rounded-lg p-2.5">
+                <div class="text-[10px] uppercase tracking-wider font-semibold">FFmpegCPUFrameWriter</div>
+                <div class="mt-1 space-y-1">
+                  <span class="chip block px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">-crf</span>
+                  <span class="chip block px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">-threads 0</span>
+                  <span class="chip block px-1.5 py-0.5 rounded bg-red-50 border border-red-300 text-red-700">same stderr handling, again</span>
+                </div>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2">+ OpenCV fallback pasted three times in build_frame_writer</div>
+            <div class="mt-3 border-t border-dashed border-slate-300 pt-2">
+              <div class="text-[11px] text-red-700"><span class="font-semibold">covert channel:</span> render decides raw-vs-smoothed by <code>frames_path == render_frames_path</code> — smooth’s return value doubles as a boolean</div>
+            </div>
+          </div>
+          <!-- AFTER hand-built -->
+          <div class="rounded-lg border border-slate-200 p-4" style="min-height:320px">
+            <div class="text-xs uppercase tracking-wider text-slate-400 mb-3">After — one parameterized implementation</div>
+            <div class="deep-box text-white rounded-lg p-3">
+              <div class="text-[10px] uppercase tracking-wider font-semibold">_FFmpegPipeWriter(base_args, codec_args)</div>
+              <div class="text-[10px] text-slate-300 mt-1">pipe setup, stderr, close — written once</div>
+              <div class="flex gap-1 mt-2">
+                <span class="chip px-1.5 py-0.5 rounded bg-white/10 border border-white/20">raw: -cq, nv12</span>
+                <span class="chip px-1.5 py-0.5 rounded bg-white/10 border border-white/20">cpu: -crf, -threads 0</span>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2">single _opencv_fallback() helper replaces three blocks</div>
+            <div class="mt-3 border-t border-dashed border-slate-300 pt-2">
+              <div class="text-[11px] text-emerald-700"><span class="font-semibold">explicit:</span> smooth returns <code>(path, used_smoothing)</code>; the stage adapter folds into render_video</div>
+            </div>
+          </div>
+        </div>
+
+        <p><strong>Problem.</strong> Two ~95% identical FFmpeg writers and a tripled OpenCV fallback mean every fix lands twice, and render↔smooth communicate through path equality — a covert channel nothing type-checks.</p>
+        <p><strong>Solution.</strong> One parameterized pipe writer plus a single fallback helper; smoothing returns an explicit <code>(path, used_smoothing)</code> pair.</p>
+        <ul class="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li>mechanical; 16 writer tests already exist</li>
+          <li>mode signal survives refactoring</li>
+          <li>deletes ~80 lines of duplication</li>
+        </ul>
+      </article>
+
+      </section>
+
+      <!-- ============ TOP RECOMMENDATION ============ -->
+      <section id="top-recommendation" class="rounded-xl border-2 border-emerald-600 bg-emerald-50 p-8 space-y-3">
+        <div class="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Top recommendation</div>
+        <h2 class="font-serif text-2xl font-semibold"><a href="#c1" class="hover:underline">1 · Make the Retrieval match verdict a typed decision</a></h2>
+        <p class="text-sm text-slate-700 max-w-3xl">It sits in the hottest area of the codebase, protects the cost-and-precision policy ADR-0001 exists to defend — today a new blocking reason fails open, silently spending TrafficEye calls — and both test suites that would carry the refactor already exist. Candidate 2 is a natural half-day follow-on in the same files.</p>
+      </section>
+
+      <footer class="text-xs text-slate-400 pb-8">Car-Census · generated by /improve-codebase-architecture · vocabulary: module, interface, depth, seam, adapter, leverage, locality</footer>
+    </main>
+  </body>
+</html>

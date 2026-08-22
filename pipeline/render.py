@@ -222,42 +222,39 @@ def _label_text_and_colors_by_track(
     powertrain_catalog: PowertrainCatalog,
 ) -> tuple[dict[int, str], dict[int, str], dict[int, MMRResult]]:
     labels = run_store.labels.read()
-    if labels:
-        accepted_labels = {
-            track_id: result for track_id, result in labels.items() if result.accepted
-        }
-        label_text = {
-            track_id: format_label_text(
-                result,
-                config.render.unknown_label,
-                origin_country_by_make,
-            )
-            for track_id, result in accepted_labels.items()
-        }
-        label_text_colors = {
-            track_id: text_color
-            for track_id, result in accepted_labels.items()
-            if (
-                text_color := _powertrain_text_color(
-                    config,
-                    lookup_powertrain_class(powertrain_catalog, result),
-                )
-            )
-            is not None
-        }
-        return label_text, label_text_colors, accepted_labels
-    if allow_unclassified_annotations or config.render.show_unclassified_tracks:
-        return (
-            visible_track_label_text_by_track(
-                run_store.frames.iter(
-                    smoothed=_uses_smoothed_frames(frames_path, run_store)
-                ),
-                config.render.unknown_label,
-            ),
-            {},
-            {},
+    accepted_labels = {
+        track_id: result for track_id, result in labels.items() if result.accepted
+    }
+    label_text = {
+        track_id: format_label_text(
+            result,
+            config.render.unknown_label,
+            origin_country_by_make,
         )
-    return {}, {}, {}
+        for track_id, result in accepted_labels.items()
+    }
+    label_text_colors = {
+        track_id: text_color
+        for track_id, result in accepted_labels.items()
+        if (
+            text_color := _powertrain_text_color(
+                config,
+                lookup_powertrain_class(powertrain_catalog, result),
+            )
+        )
+        is not None
+    }
+    if allow_unclassified_annotations or config.render.show_unclassified_tracks:
+        unclassified_label_text = visible_track_label_text_by_track(
+            run_store.frames.iter(
+                smoothed=_uses_smoothed_frames(frames_path, run_store)
+            ),
+            config.render.unknown_label,
+        )
+        for track_id, text in unclassified_label_text.items():
+            if track_id not in label_text:
+                label_text[track_id] = text
+    return label_text, label_text_colors, accepted_labels
 
 
 def _make_statistics_rows(

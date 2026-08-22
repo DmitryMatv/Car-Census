@@ -123,7 +123,10 @@ def roi_edit(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    output_path = camera_profile_path(config, camera_id, root=project_root)
+    try:
+        output_path = camera_profile_path(config, camera_id, root=project_root)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     profile = edit_camera_profile(
         video_path=video, camera_id=camera_id, output_path=output_path
     )
@@ -165,7 +168,10 @@ def analyze(
     project_root, config = _load_config_with_accelerator(
         config_path, accelerator, device
     )
-    profile = _resolve_profile(project_root, config, video, camera_id)
+    try:
+        profile = _resolve_profile(project_root, config, video, camera_id)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     if run_dir is None:
         store = RunStore.create(
             output_root=project_root / config.project.output_root,
@@ -428,7 +434,10 @@ def run(
     project_root, config = _load_config_with_accelerator(
         config_path, accelerator, device
     )
-    profile = _resolve_profile(project_root, config, video, camera_id)
+    try:
+        profile = _resolve_profile(project_root, config, video, camera_id)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     store = run_pipeline(
         project_root=project_root,
         config=config,

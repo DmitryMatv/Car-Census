@@ -16,7 +16,10 @@ Never guess at intent. If a task leaves anything open - which screen, which endp
 
 Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
 
-Use Virtual Environment `source .venv/bin/activate` because `pytest` and everything else needed is installed there already probably.
+Use Virtual Environment `source .venv/bin/activate`. The venv does not reliably
+ship the quality gates: as of 2026-08-21 it was missing both `pytest` and
+`pyrefly`. Check before running them and `pip install pytest pyrefly` into
+`.venv` if absent.
 
 ## Project Snapshot
 

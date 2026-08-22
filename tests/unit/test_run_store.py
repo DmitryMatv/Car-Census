@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from models import BBox, CountEvent, FrameRecord, MMRResult, RunManifest, TrackedObject
 from storage.run_layout import RunLayout
 from storage.run_store import RunStore
@@ -100,3 +102,31 @@ def test_missing_optional_artifacts_read_as_empty_dicts(tmp_path) -> None:
 
     assert store.labels.read() == {}
     assert store.detection_stats.read() == {}
+
+
+def test_failed_jsonl_writer_leaves_existing_artifact_intact(tmp_path) -> None:
+    store = RunStore(tmp_path)
+    store.ensure_directories()
+    frame = FrameRecord(frame_index=1, timestamp_seconds=0.1, tracks=[_track(10)])
+    store.frames.write_all([frame], smoothed=True)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with store.frames.open_writer(smoothed=True) as writer:
+            writer.write(frame)
+            raise RuntimeError("boom")
+
+    assert store.frames.read_all(smoothed=True) == [frame]
+    assert sorted(path.name for path in tmp_path.rglob("*.tmp")) == []
+
+
+def test_failed_json_write_preserves_previous_payload(tmp_path) -> None:
+    store = RunStore(tmp_path)
+    store.ensure_directories()
+    result = MMRResult(make="Toyota", model="Corolla", vehicle_index=1)
+    store.labels.write({10: result})
+
+    with pytest.raises(AttributeError):
+        store.labels.write({10: object()})
+
+    assert store.labels.read() == {10: result}
+    assert sorted(path.name for path in tmp_path.rglob("*.tmp")) == []

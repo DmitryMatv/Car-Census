@@ -236,8 +236,26 @@ def load_app_config(path: Path) -> AppConfig:
     return AppConfig.model_validate(load_yaml(path))
 
 
+def validate_camera_id(camera_id: str) -> str:
+    if (
+        not camera_id
+        or camera_id in {".", ".."}
+        or "/" in camera_id
+        or "\\" in camera_id
+    ):
+        raise ValueError(
+            f"Invalid camera id: {camera_id!r}. Camera ids may not be empty, "
+            "'.' or '..', or contain path separators."
+        )
+    return camera_id
+
+
+def clean_camera_id(camera_id: str) -> str:
+    return validate_camera_id(camera_id.removesuffix(".mp4"))
+
+
 def camera_profile_path(config: AppConfig, camera_id: str, root: Path) -> Path:
-    clean_id = camera_id.removesuffix(".mp4")
+    clean_id = clean_camera_id(camera_id)
     return root / config.project.camera_profiles_dir / f"{clean_id}.yaml"
 
 

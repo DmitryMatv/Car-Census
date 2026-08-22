@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from models import CountEvent, RunManifest, TrackSummary
+from config import validate_camera_id
 from storage.run_artifacts import (
     DetectionStatsFile,
     FrameRecordsFile,
@@ -17,7 +18,7 @@ from storage.run_layout import RunLayout
 def _run_descriptor(camera_id: str, video_stem: str) -> str:
     if camera_id == "__full_frame__" or camera_id == video_stem:
         return video_stem
-    return f"{video_stem}--camera-{camera_id}"
+    return f"{video_stem}--camera-{validate_camera_id(camera_id)}"
 
 
 def _compact_utc_timestamp(timestamp: datetime | None = None) -> str:
