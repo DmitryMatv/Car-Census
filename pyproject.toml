@@ -18,7 +18,7 @@ dependencies = [
   "python-dotenv>=1.0,<2",
   "PyYAML>=6.0,<7",
   "rfdetr>=1.9.2,<2",
-  "supervision>=0.28,<0.40",
+  "supervision>=0.30.1,<0.40.0",
   "trackers>=2.6,<3",
   "typer>=0.16,<0.27",
 ]
