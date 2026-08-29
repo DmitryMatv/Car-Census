@@ -175,7 +175,16 @@ def _resolve_candidate_image_path(path: Path, run_store: RunStore) -> Path:
     return path
 
 
+def _invalidate_stale_labels(run_store: RunStore) -> None:
+    if run_store.labels_path.exists():
+        run_store.labels_path.unlink()
+        logger.warning(
+            "Removed stale labels from a previous classification attempt"
+        )
+
+
 def classify_tracks(config: AppConfig, run_store: RunStore) -> dict[int, MMRResult]:
+    _invalidate_stale_labels(run_store)
     client = _build_client(config=config, run_store=run_store)
     classification_tasks, labels_by_track = _collect_classification_tasks(
         config=config, run_store=run_store

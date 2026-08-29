@@ -218,6 +218,7 @@ def classify(
     project_root, config = _load_config_with_accelerator(config_path)
     _ = project_root
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     classify_tracks(config=config, run_store=store)
     typer.echo(str(store.labels_path))
 
@@ -360,15 +361,25 @@ def render(
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path, accelerator)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
     else:
         profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
+    video_path = manifest.video_path.expanduser()
+    if not video_path.is_file():
+        typer.secho(
+            "Source video recorded in the run manifest does not exist: "
+            f"{manifest.video_path}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
     render_video(
         config=config,
         profile=profile,
-        video_path=manifest.video_path,
+        video_path=video_path,
         run_store=store,
         smooth_render_tracks=smooth_render_tracks,
     )
@@ -385,6 +396,7 @@ def smooth(
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
@@ -401,6 +413,7 @@ def report(
 ) -> None:
     configure_logging(verbose)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     payload = generate_reports(run_store=store)
     typer.echo(typer.style("Report generated", fg=typer.colors.GREEN))
     typer.echo(str(payload))

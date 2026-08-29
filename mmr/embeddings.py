@@ -230,9 +230,6 @@ def _parse_embedding(payload: Any, dimensions: int) -> list[float]:
     return vector
 
 
-OpenRouterClient = OpenRouterEmbeddingProvider
-
-
 def build_embedding_provider(
     config: AppConfig, cache_dir: Path
 ) -> OpenRouterEmbeddingProvider:
