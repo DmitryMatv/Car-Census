@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import math
 import shutil
+import statistics
 from pathlib import Path
 from typing import Protocol, Sequence
 
-from models import CountEvent, CropCandidate, TrackSummary
+from models import CountEvent, CropCandidate, FrameRecord, TrackSummary
+from roi.transform import ViewTransformer
 from storage.run_store import RunStore
 
 
@@ -43,7 +46,50 @@ def discard_track_artifacts(state: TrackStateProtocol | None, crops_dir: Path) -
             path.rmdir()
 
 
-def track_summary_from_state(state: TrackStateProtocol) -> TrackSummary:
+def compute_track_world_speeds(
+    records: Sequence[FrameRecord],
+    view_transformer: ViewTransformer | None,
+) -> dict[int, tuple[float, float]]:
+    """Median and max road-plane speed in m/s per track ID.
+
+    Speeds are measured between consecutive observations of a track, so
+    detection dropouts yield the average speed across the gap.
+    """
+    if view_transformer is None:
+        return {}
+    speeds_by_track: dict[int, list[float]] = {}
+    last_observation_by_track: dict[int, tuple[float, tuple[float, float]]] = {}
+    for record in records:
+        for track in record.tracks:
+            previous = last_observation_by_track.get(track.track_id)
+            last_observation_by_track[track.track_id] = (
+                track.timestamp_seconds,
+                track.bottom_center,
+            )
+            if previous is None:
+                continue
+            elapsed = track.timestamp_seconds - previous[0]
+            if elapsed <= 0.0:
+                continue
+            distance_m = view_transformer.distance_between(
+                previous[1], track.bottom_center
+            )
+            if not math.isfinite(distance_m):
+                continue
+            speeds_by_track.setdefault(track.track_id, []).append(
+                distance_m / elapsed
+            )
+    return {
+        track_id: (statistics.median(values), max(values))
+        for track_id, values in speeds_by_track.items()
+        if values
+    }
+
+
+def track_summary_from_state(
+    state: TrackStateProtocol,
+    world_speeds_mps: tuple[float, float] | None = None,
+) -> TrackSummary:
     return TrackSummary(
         track_id=state.track_id,
         vehicle_index=state.vehicle_index,
@@ -52,6 +98,12 @@ def track_summary_from_state(state: TrackStateProtocol) -> TrackSummary:
         frames_seen=state.frames_seen,
         min_box_width_px=state.min_box_width_px,
         max_box_width_px=state.max_box_width_px,
+        speed_mps_median=(
+            world_speeds_mps[0] if world_speeds_mps is not None else None
+        ),
+        speed_mps_max=(
+            world_speeds_mps[1] if world_speeds_mps is not None else None
+        ),
         counted=state.counted,
         count_event=state.count_event,
         candidates=state.candidates,

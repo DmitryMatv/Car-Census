@@ -153,6 +153,8 @@ class TrackSummary(BaseModel):
     frames_seen: int
     min_box_width_px: float | None = None
     max_box_width_px: float
+    speed_mps_median: float | None = None
+    speed_mps_max: float | None = None
     counted: bool = False
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = Field(default_factory=list)

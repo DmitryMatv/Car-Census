@@ -23,7 +23,7 @@ ship the quality gates: as of 2026-08-21 it was missing both `pytest` and
 
 ## Project Snapshot
 
-Car-Census is a video analysis and annotation tool for conducting real-world, on-the-road car make and model visual surveys. It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
+Car-Census is a video analysis and annotation tool for conducting real-world car make and model visual surveys (road traffic surveying). It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
 
 ## Type Safety
 
@@ -50,6 +50,10 @@ Maintain a strict type-safety direction for the project.
   `lost_track_buffer: 15` at 5 analysis FPS becomes 2, so a mature track
   survives only one fully missed analysis frame; an immature track can be
   removed on its first miss.
+- The footage comes from a static tripod-mounted camera; the camera never
+  moves. Do not assume dashcam/moving-camera scenarios (ego-motion, CMC
+  usefulness, "on-the-road" meaning the camera is in a car). CMC stays
+  disabled; "on-the-road survey" refers to surveying road traffic.
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
 - TrafficEye manual `combinations` are projected into the response by order, but
   manually supplied boxes may not be returned. For batched MMR grids, match
@@ -87,6 +91,15 @@ analysis.min_box_width_px`. Check the analysis artifacts before assuming a
   code and tests must load defaults through `build_effective_config`; do not
   reintroduce zero-argument `AppConfig()` construction or Pydantic field
   defaults for application settings.
+- `pyrefly check` currently reports a pre-existing baseline of ~40 findings,
+  almost all in `tests/unit/`. Diff against the baseline (e.g. `git stash -u`,
+  run pyrefly, pop, compare) before attributing new findings to your change;
+  `--output-format json` wraps everything under an `errors` key including
+  warnings.
+- OpenCV's `cv2.getPerspectiveTransform` silently accepts degenerate or
+  collinear calibration points instead of raising. `roi/transform.py`
+  (`ViewTransformer`) guards this with a reprojection check; do not bypass it
+  when building homographies elsewhere.
 - Retrieval enforce mode fails closed when `retrieval/calibration.json` is
   missing or stale (embedding model, dimensions, or `phash_max_hamming_distance`
   no longer match the artifact): lookups return `calibration_missing` and
@@ -115,4 +128,5 @@ analysis.min_box_width_px`. Check the analysis artifacts before assuming a
   superseded ones. `record_id` hashes the payload including the embedding, so
   one crop+request can legitimately hold two active records until migration
   supersedes the stale one; deduplicating or editing records in place breaks
-  the audit trail.
+   the audit trail.
+

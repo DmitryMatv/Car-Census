@@ -51,6 +51,42 @@ class DetectorConfig(StrictBaseModel):
     inference_dtype: Literal["auto", "float32", "float16"]
 
 
+class ReidConfig(StrictBaseModel):
+    """Selective appearance-embedding (ReID) settings.
+
+    Embeddings are computed for a small subset of detections (per-track
+    cadence plus rescue candidates) and kept per track in a bounded history;
+    they are consumed by the world-space rescue layer to confirm or reject
+    identity takeovers.
+    """
+
+    enabled: bool
+    device: Literal["auto", "cpu", "cuda"]
+    embed_every_n_frames: int = Field(ge=1)
+    history_length: int = Field(ge=1)
+    min_appearance_similarity: float = Field(ge=0.0, le=1.0)
+    batch_size: int = Field(ge=1)
+
+
+class RescueConfig(StrictBaseModel):
+    """World-space rescue layer for tracks whose IoU association failed.
+
+    When BoT-SORT spawns a fresh tracklet for a detection that no existing
+    track claimed, the rescue layer predicts the missing track's road-plane
+    position from its own recent trajectory (constant world velocity, static
+    camera) and takes the identity over when the handoff is physically
+    plausible. Requires a calibrated homography; without one it stays inert.
+    """
+
+    enabled: bool
+    max_gap_seconds: float = Field(gt=0.0)
+    max_speed_mps: float = Field(gt=0.0)
+    max_distance_m: float = Field(gt=0.0)
+    lateral_tolerance_m: float = Field(gt=0.0)
+    velocity_fit_points: int = Field(ge=2)
+    min_direction_speed_mps: float = Field(ge=0.0)
+
+
 class TrackerConfig(StrictBaseModel):
     lost_track_buffer: int
     max_reassociation_gap_seconds: float | None = Field(ge=0.0)
@@ -67,11 +103,6 @@ class TrackerConfig(StrictBaseModel):
     frame_rate: int
     ignore_edge_touches: bool
     edge_margin_px: int
-    suppress_duplicate_tracks: bool
-    duplicate_track_iou_threshold: float = Field(gt=0.0, le=1.0)
-    duplicate_track_containment_threshold: float = Field(gt=0.0, le=1.0)
-    duplicate_track_min_area_ratio: float = Field(ge=0.0, le=1.0)
-    duplicate_track_center_distance_ratio: float = Field(ge=0.0)
     suppress_sequential_duplicate_tracks: bool
     sequential_duplicate_max_gap_seconds: float = Field(gt=0.0)
     sequential_duplicate_prediction_error_ratio: float = Field(ge=0.0)
@@ -81,6 +112,11 @@ class TrackerConfig(StrictBaseModel):
     sequential_duplicate_require_same_color: bool
     sequential_duplicate_require_same_generation: bool
     sequential_duplicate_require_same_variation: bool
+    world_reassociation_enabled: bool
+    world_reassociation_max_gap_seconds: float = Field(gt=0.0)
+    world_reassociation_max_speed_mps: float = Field(gt=0.0)
+    world_reassociation_max_distance_m: float = Field(gt=0.0)
+    sequential_duplicate_max_implied_speed_mps: float | None = Field(gt=0.0)
 
 
 class RenderSmoothingConfig(StrictBaseModel):
@@ -165,10 +201,42 @@ class CountLineConfig(StrictBaseModel):
         return self
 
 
+class HomographyConfig(StrictBaseModel):
+    """Ground-plane calibration mapping pixel coordinates to world meters.
+
+    ``source_points`` are pixel coordinates on the road plane (bottom-center
+    anchors of vehicles), ``target_points`` are the matching real-world
+    positions in meters. At least 4 non-collinear points are required.
+    """
+
+    source_points: list[list[float]] = Field(min_length=4)
+    target_points: list[list[float]] = Field(min_length=4)
+
+    @model_validator(mode="after")
+    def validate_point_lists(self) -> "HomographyConfig":
+        if len(self.source_points) != len(self.target_points):
+            raise ValueError(
+                "homography.source_points and homography.target_points "
+                "must contain the same number of points"
+            )
+        for name, points in (
+            ("source_points", self.source_points),
+            ("target_points", self.target_points),
+        ):
+            for index, point in enumerate(points):
+                if len(point) != 2:
+                    raise ValueError(
+                        f"homography.{name}[{index}] must contain exactly "
+                        "2 coordinates (x, y)"
+                    )
+        return self
+
+
 class CameraProfile(StrictBaseModel):
     camera_id: str
     polygon: PolygonZoneConfig
     count_line: CountLineConfig | None = None
+    homography: HomographyConfig | None = None
 
 
 FULL_FRAME_CAMERA_ID = "__full_frame__"
@@ -200,6 +268,8 @@ class AppConfig(StrictBaseModel):
     analysis: AnalysisConfig
     detector: DetectorConfig
     tracker: TrackerConfig
+    reid: ReidConfig
+    rescue: RescueConfig
     mmr: MMRConfig
     render: RenderConfig
 

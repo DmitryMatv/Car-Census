@@ -5,7 +5,6 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import numpy as np
-
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
 from detectors.factory import create_detector
@@ -26,10 +25,13 @@ from pipeline.analysis_tracking import (
     build_track_state_updater,
 )
 from pipeline.vehicles import (
+    compute_track_world_speeds,
     discard_track_artifacts,
     finalize_vehicle_identities,
     track_summary_from_state,
 )
+from roi.transform import ViewTransformer, build_view_transformer
+from storage.json_artifacts import write_json
 from storage.run_store import RunStore
 from tracking_adapters.botsort import BotSortAdapter
 from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
@@ -57,6 +59,7 @@ def _finalize_analysis(
     diagnostics: AnalysisDiagnostics,
     detector: Detector,
     config: AppConfig,
+    view_transformer: ViewTransformer | None,
 ) -> None:
     diagnostics.tracks_without_crop_candidates = sum(
         1 for state in track_states if not state.candidates
@@ -89,8 +92,12 @@ def _finalize_analysis(
 
     vehicle_index_by_track = finalize_vehicle_identities(run_store, track_states)
     run_store.frames.rewrite_vehicle_indices(vehicle_index_by_track)
+    world_speeds = compute_track_world_speeds(
+        run_store.frames.read_all(smoothed=False), view_transformer
+    )
     run_store.tracks.write_all(
-        track_summary_from_state(state) for state in track_states
+        track_summary_from_state(state, world_speeds.get(state.track_id))
+        for state in track_states
     )
     run_store.detection_stats.write(analysis_diagnostics_payload(diagnostics, detector))
 
@@ -120,13 +127,19 @@ def analyze_video(
         height=metadata.height,
         frame_count=metadata.frame_count,
         retrieval_cache_dir=(
-            project_root / config.project.output_root / config.project.retrieval_cache_dir
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
         ).resolve(),
     )
     run_store.manifest.write(manifest)
 
     detector = create_detector(config, project_root=project_root)
-    tracker = BotSortAdapter(config, frame_rate=analysis_fps)
+    tracker = BotSortAdapter(
+        config,
+        frame_rate=analysis_fps,
+        view_transformer=build_view_transformer(config, profile),
+    )
     diagnostics = AnalysisDiagnostics()
     crop_selector = CropCandidateSelector(config, run_store)
     edge_suppression = EdgeSuppression(config, profile)
@@ -165,7 +178,11 @@ def analyze_video(
             )
 
             diagnostics.detections_passed_to_tracker += len(global_detections)
-            tracked = tracker.update(global_detections, sampled_frame.frame)
+            tracked = tracker.update(
+                global_detections,
+                sampled_frame.frame,
+                timestamp=sampled_frame.timestamp_seconds,
+            )
             update_result = track_updater.process_tracker_outputs(
                 tracked=tracked,
                 frame_input=FrameTrackingInput(
@@ -184,12 +201,19 @@ def analyze_video(
             for count_event in update_result.counted_events:
                 count_writer.write(count_event)
 
+    audit_payload = getattr(tracker, "rescue_audit_payload", None)
+    if callable(audit_payload):
+        write_json(
+            run_store.analysis_dir / "rescue_reassociations.json",
+            audit_payload(),
+        )
     _finalize_analysis(
         run_store=run_store,
         track_states=track_updater.sorted_track_states(),
         diagnostics=diagnostics,
         detector=detector,
         config=config,
+        view_transformer=build_view_transformer(config, profile),
     )
 
     logger.info("Analysis complete. Run directory: %s", run_store.root)

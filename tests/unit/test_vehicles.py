@@ -1,18 +1,22 @@
+import statistics
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from config import AppConfig
 from models import BBox, FrameRecord, TrackedObject
 from pipeline.analysis_crops import save_candidate
 from pipeline.analysis_tracking import MutableTrackState
 from pipeline.vehicles import (
+    compute_track_world_speeds,
     discard_track_artifacts,
     finalize_vehicle_identities,
     staged_track_crop_dir,
     track_summary_from_state,
     vehicle_crop_path,
 )
+from roi.transform import ViewTransformer
 from storage.run_store import RunStore
 
 
@@ -188,3 +192,74 @@ def test_track_summary_from_state_preserves_vehicle_index(tmp_path) -> None:
     assert summary.counted is True
     assert summary.candidates == []
     assert store.crops_dir.exists()
+
+
+def _moving_track(
+    track_id: int,
+    timestamp_seconds: float,
+    bottom_center: tuple[float, float],
+) -> TrackedObject:
+    x, y = bottom_center
+    bbox = BBox(x1=x - 10, y1=y - 20, x2=x + 10, y2=y)
+    return TrackedObject(
+        track_id=track_id,
+        vehicle_index=None,
+        frame_index=int(round(timestamp_seconds * 10)),
+        timestamp_seconds=timestamp_seconds,
+        bbox=bbox,
+        confidence=0.9,
+        class_id=2,
+        class_name="car",
+        centroid=bbox.center,
+        bottom_center=bbox.bottom_center,
+        inside_roi=True,
+    )
+
+
+def test_compute_track_world_speeds_median_and_max() -> None:
+    source_points = [[0, 0], [2000, 0], [2000, 1200], [0, 1200]]
+    target_points = [[0.0, 0.0], [200.0, 0.0], [200.0, 120.0], [0.0, 120.0]]
+    transformer = ViewTransformer(source_points, target_points)
+    records = [
+        FrameRecord(
+            frame_index=index,
+            timestamp_seconds=timestamp,
+            tracks=[_moving_track(7, timestamp, position)],
+        )
+        for index, (timestamp, position) in enumerate(
+            [(0.0, (100.0, 100.0)), (0.5, (160.0, 100.0)), (1.0, (300.0, 100.0))]
+        )
+    ]
+
+    speeds = compute_track_world_speeds(records, transformer)
+
+    assert speeds[7][0] == pytest.approx(statistics.median([12.0, 28.0]))
+    assert speeds[7][1] == pytest.approx(28.0)
+
+
+def test_compute_track_world_speeds_without_transformer_returns_empty() -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_moving_track(7, 0.0, (100.0, 100.0))],
+        )
+    ]
+
+    assert compute_track_world_speeds(records, None) == {}
+
+
+def test_compute_track_world_speeds_skips_non_positive_elapsed_time() -> None:
+    source_points = [[0, 0], [2000, 0], [2000, 1200], [0, 1200]]
+    target_points = [[0.0, 0.0], [200.0, 0.0], [200.0, 120.0], [0.0, 120.0]]
+    transformer = ViewTransformer(source_points, target_points)
+    record = FrameRecord(
+        frame_index=0,
+        timestamp_seconds=1.0,
+        tracks=[
+            _moving_track(7, 1.0, (100.0, 100.0)),
+            _moving_track(7, 1.0, (500.0, 100.0)),
+        ],
+    )
+
+    assert compute_track_world_speeds([record], transformer) == {}

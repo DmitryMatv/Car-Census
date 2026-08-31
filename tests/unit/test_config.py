@@ -80,33 +80,21 @@ def test_canonical_tracker_confidence_contract(default_config) -> None:
     assert config.detector.confidence == 0.15
     assert config.tracker.high_conf_det_threshold == 0.30
     assert config.detector.confidence < config.tracker.high_conf_det_threshold
-    assert config.tracker.suppress_duplicate_tracks is False
+
+
+def test_canonical_reassociation_and_buffer_contract(default_config) -> None:
+    config = default_config
+
+    assert config.tracker.lost_track_buffer == 60
+    assert config.tracker.max_reassociation_gap_seconds == 0.35
+    assert config.tracker.world_reassociation_max_gap_seconds == 2.0
+    assert config.tracker.sequential_duplicate_max_gap_seconds == 2.0
 
 
 def test_tracker_config_accepts_supported_cmc_methods(config_factory) -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
         config = config_factory({"tracker": {"cmc_method": cmc_method}})
         assert config.tracker.cmc_method == cmc_method
-
-
-def test_tracker_config_accepts_duplicate_suppression_options(config_factory) -> None:
-    config = config_factory(
-        {
-            "tracker": {
-                "suppress_duplicate_tracks": False,
-                "duplicate_track_iou_threshold": 0.95,
-                "duplicate_track_containment_threshold": 0.99,
-                "duplicate_track_min_area_ratio": 0.40,
-                "duplicate_track_center_distance_ratio": 0.20,
-            }
-        }
-    )
-
-    assert config.tracker.suppress_duplicate_tracks is False
-    assert config.tracker.duplicate_track_iou_threshold == 0.95
-    assert config.tracker.duplicate_track_containment_threshold == 0.99
-    assert config.tracker.duplicate_track_min_area_ratio == 0.40
-    assert config.tracker.duplicate_track_center_distance_ratio == 0.20
 
 
 def test_tracker_config_accepts_sequential_duplicate_options(config_factory) -> None:
@@ -515,3 +503,67 @@ def test_render_smoothing_rejects_non_positive_max_interpolation_gap(
             config_factory(
                 {"render": {"smoothing": {"max_interpolation_gap_seconds": value}}}
             )
+
+
+def test_camera_profile_homography_round_trip() -> None:
+    profile = CameraProfile.model_validate(
+        {
+            "camera_id": "test",
+            "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+            "homography": {
+                "source_points": [[0, 0], [1000, 0], [1000, 600], [0, 600]],
+                "target_points": [[0.0, 0.0], [50.0, 0.0], [50.0, 30.0], [0.0, 30.0]],
+            },
+        }
+    )
+
+    assert profile.homography is not None
+    assert profile.homography.source_points[2] == [1000, 600]
+
+
+def test_camera_profile_without_homography_defaults_to_none() -> None:
+    profile = CameraProfile.model_validate(
+        {
+            "camera_id": "test",
+            "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+        }
+    )
+    assert profile.homography is None
+
+
+def test_homography_rejects_mismatched_point_counts() -> None:
+    with pytest.raises(ValidationError):
+        CameraProfile.model_validate(
+            {
+                "camera_id": "test",
+                "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+                "homography": {
+                    "source_points": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                    "target_points": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+                },
+            }
+        )
+
+
+def test_homography_rejects_non_planar_points() -> None:
+    with pytest.raises(ValidationError):
+        CameraProfile.model_validate(
+            {
+                "camera_id": "test",
+                "polygon": {"points": [[0, 0], [100, 0], [100, 100], [0, 100]]},
+                "homography": {
+                    "source_points": [[0, 0], [1, 0], [1, 1]],
+                    "target_points": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+                },
+            }
+        )
+
+
+def test_default_world_reassociation_settings(default_config) -> None:
+    tracker = default_config.tracker
+
+    assert tracker.world_reassociation_enabled is True
+    assert tracker.world_reassociation_max_gap_seconds == 2.0
+    assert tracker.world_reassociation_max_speed_mps == 40.0
+    assert tracker.world_reassociation_max_distance_m == 150.0
+    assert tracker.sequential_duplicate_max_implied_speed_mps == 40.0
