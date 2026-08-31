@@ -22,6 +22,7 @@ from mmr.trafficeye_batch_grid import (
     decode_image,
     match_batch_results,
 )
+from mmr.trafficeye_cache import migrate_legacy_response_cache
 from mmr.trafficeye_cache import hash_request
 from models import BBox, MMRResult
 
@@ -33,6 +34,16 @@ def test_hash_request_is_stable_for_same_image_and_payload() -> None:
     second = hash_request(b"image-bytes", payload)
 
     assert first == second
+
+
+def test_migrate_legacy_response_cache_moves_root_json_files(tmp_path) -> None:
+    legacy_path = tmp_path / "cache" / "legacy.json"
+    legacy_path.parent.mkdir()
+    legacy_path.write_bytes(b"{}")
+
+    assert migrate_legacy_response_cache(legacy_path.parent) == 1
+    assert not legacy_path.exists()
+    assert (legacy_path.parent / "responses" / "legacy.json").read_bytes() == b"{}"
 
 
 def test_batch_request_payload_uses_content_boxes(tmp_path) -> None:
@@ -682,8 +693,8 @@ def test_traffic_eye_client_batches_crops_with_manual_boxes(
 
     client = TrafficEyeClient(config=config, cache_dir=tmp_path / "cache")
     results = client.recognize_vehicle_crops([first_crop, second_crop])
-    debug_images = sorted((tmp_path / "batch_grids").glob("*.jpg"))
-    debug_manifests = sorted((tmp_path / "batch_grids").glob("*.json"))
+    debug_images = sorted(client.batch_grids_dir.glob("*.jpg"))
+    debug_manifests = sorted(client.batch_grids_dir.glob("*.json"))
 
     request = captured["request"]
     assert request["tasks"] == ["MMR"]
@@ -796,7 +807,7 @@ def test_traffic_eye_client_batch_cell_uses_largest_returned_box(
     assert result.model == "Corolla"
     assert result.source_image == crop
     assert result.raw["batch_cell_index"] == 0
-    assert result.detection_box == BBox(x1=5, y1=5, x2=75, y2=70)
+    assert result.detection_box == BBox(x1=4, y1=4, x2=60, y2=56)
 
 
 def test_traffic_eye_client_matches_manual_batch_results_by_combination_order(

@@ -10,10 +10,10 @@ from config import (
     CountLineConfig,
     build_effective_config,
     build_full_frame_profile,
-    load_app_config,
+    camera_profile_path,
+    clean_camera_id,
+    validate_camera_id,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_build_full_frame_profile_covers_entire_frame() -> None:
@@ -31,6 +31,47 @@ def test_camera_profile_accepts_polygon_without_count_line() -> None:
         }
     )
     assert profile.count_line is None
+
+
+@pytest.mark.parametrize(
+    "camera_id",
+    ["../evil", "..", ".", "", "a/b", "a\\b", ".mp4", "../../escape.mp4"],
+)
+def test_clean_camera_id_rejects_unsafe_names(camera_id: str) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        clean_camera_id(camera_id)
+
+
+@pytest.mark.parametrize(
+    ("camera_id", "expected"),
+    [
+        ("cam-01", "cam-01"),
+        ("__full_frame__", "__full_frame__"),
+        ("front_cam.mp4", "front_cam"),
+    ],
+)
+def test_clean_camera_id_accepts_safe_names(camera_id: str, expected: str) -> None:
+    assert clean_camera_id(camera_id) == expected
+
+
+def test_validate_camera_id_rejects_path_separators() -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        validate_camera_id("sub/dir")
+
+
+def test_camera_profile_path_rejects_traversal_and_stays_in_profiles_dir(
+    default_config, tmp_path
+) -> None:
+    profiles_dir = tmp_path / default_config.project.camera_profiles_dir
+
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        camera_profile_path(default_config, "../evil", root=tmp_path)
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        camera_profile_path(default_config, "sub/dir.mp4", root=tmp_path)
+
+    path = camera_profile_path(default_config, "cam-01.mp4", root=tmp_path)
+    assert path.parent == profiles_dir
+    assert path.name == "cam-01.yaml"
 
 
 def test_canonical_tracker_confidence_contract(default_config) -> None:
@@ -166,8 +207,8 @@ def test_analysis_config_rejects_removed_crop_limit_per_track(config_factory) ->
         config_factory({"analysis": {"crop_limit_per_track": 1}})
 
 
-def test_canonical_default_yaml_is_complete() -> None:
-    config = load_app_config(PROJECT_ROOT / "configs/default.yaml")
+def test_canonical_default_yaml_is_complete(default_config) -> None:
+    config = default_config
 
     assert config.detector.device == "auto"
     assert config.analysis.detector_batch_size is None
@@ -180,23 +221,25 @@ def test_app_config_requires_complete_input() -> None:
         AppConfig.model_validate({})
 
 
-def test_custom_config_is_a_partial_overlay(tmp_path: Path) -> None:
+def test_custom_config_is_a_partial_overlay(project_root: Path, tmp_path: Path) -> None:
     custom_config = tmp_path / "custom.yaml"
     custom_config.write_text("mmr:\n  batch_size: 4\n", encoding="utf-8")
 
-    config = build_effective_config(PROJECT_ROOT, config_path=custom_config)
+    config = build_effective_config(project_root, config_path=custom_config)
 
     assert config.mmr.batch_size == 4
     assert config.mmr.batch_grid_columns == 1
     assert config.detector.confidence == 0.15
 
 
-def test_runtime_overrides_win_over_custom_config(tmp_path: Path) -> None:
+def test_runtime_overrides_win_over_custom_config(
+    project_root: Path, tmp_path: Path
+) -> None:
     custom_config = tmp_path / "custom.yaml"
     custom_config.write_text("detector:\n  device: cpu\n", encoding="utf-8")
 
     config = build_effective_config(
-        PROJECT_ROOT,
+        project_root,
         config_path=custom_config,
         overrides={"detector": {"device": "cuda"}},
     )
@@ -204,12 +247,14 @@ def test_runtime_overrides_win_over_custom_config(tmp_path: Path) -> None:
     assert config.detector.device == "cuda"
 
 
-def test_custom_config_overlay_rejects_unknown_fields(tmp_path: Path) -> None:
+def test_custom_config_overlay_rejects_unknown_fields(
+    project_root: Path, tmp_path: Path
+) -> None:
     custom_config = tmp_path / "custom.yaml"
     custom_config.write_text("render:\n  line_thickness: 1\n", encoding="utf-8")
 
     with pytest.raises(ValidationError):
-        build_effective_config(PROJECT_ROOT, config_path=custom_config)
+        build_effective_config(project_root, config_path=custom_config)
 
 
 def test_config_factory_returns_fresh_instances(config_factory) -> None:

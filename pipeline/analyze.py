@@ -111,7 +111,7 @@ def analyze_video(
     analysis_fps = min(config.analysis.fps, config.video.fps)
     manifest = RunManifest(
         run_id=run_store.root.name,
-        video_path=video_path,
+        video_path=video_path.expanduser().resolve(),
         camera_id=profile.camera_id,
         root_dir=run_store.root,
         source_fps=config.video.fps,
@@ -119,6 +119,9 @@ def analyze_video(
         width=metadata.width,
         height=metadata.height,
         frame_count=metadata.frame_count,
+        retrieval_cache_dir=(
+            project_root / config.project.output_root / config.project.retrieval_cache_dir
+        ).resolve(),
     )
     run_store.manifest.write(manifest)
 

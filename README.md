@@ -4,7 +4,7 @@ Car counting and make/model/year identification from video footage.
 
 ## What It Does
 
-`Car-Census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, sends those crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
+`Car-Census` takes a video, analyzes only a configured polygon zone, tracks vehicles with BoT-SORT, selects the best crops per track, reuses safe results from a shared retrieval cache, sends unresolved crops to TrafficEye/Eyedea for make/model recognition, then renders a clean annotated video with offline-smoothed boxes and exports a detailed vehicle CSV.
 
 The pipeline is staged:
 
@@ -90,10 +90,95 @@ Set your API key in the environment:
 export TRAFFICEYE_API_KEY=your_key_here
 ```
 
-Classification sends one selected crop per vehicle to TrafficEye. The default
-is one crop per request (`mmr.batch_size: 1`, `mmr.batch_grid_columns: 1`). Each
-request supplies a manual BOX covering the crop and requests only `MMR`;
-`DETECTION`, OCR, and plate detection are not requested.
+Classification sends one selected crop per vehicle to TrafficEye when a safe
+retrieval result is unavailable. The default is one crop per request
+(`mmr.batch_size: 1`, `mmr.batch_grid_columns: 1`). Each request supplies a
+manual BOX covering the crop and requests only `MMR`; `DETECTION`, OCR, and
+plate detection are not requested.
+
+TrafficEye responses are stored as `api_confirmed` evidence rather than
+immutable ground truth. Exact image/request matches are reusable across runs.
+Approximate retrieval uses OpenRouter's multimodal
+`google/gemini-embedding-2` image embeddings at 768 dimensions, combined with
+an independent perceptual hash gate. The default is `enforce`; a near match is
+reused only when both gates pass, and the cosine-distance gate uses the
+threshold produced by `cache calibrate` (see below). Until a calibration
+artifact exists, enforce mode fails closed and falls back to TrafficEye for
+near matches. Near matches reuse make/model/generation and a variation only
+when the nearby evidence agrees; color, view, tags, and detection metadata are
+not copied from a similar image.
+
+Set the OpenRouter key before creating new embeddings:
+
+```bash
+export OPENROUTER_API_KEY=your_key_here
+```
+
+Embedding responses are cached by image SHA, model, and dimension under
+`.mmr-cache/embeddings`. If OpenRouter is unavailable, TrafficEye still runs
+and the API result is retained for exact image/request reuse without an
+embedding.
+
+The shared store location is configured relative to `project.output_root` with
+`project.retrieval_cache_dir` and defaults to `.mmr-cache`.
+
+The shared cache is organized by purpose:
+
+- `responses/` stores raw TrafficEye response-cache entries.
+- `embeddings/` stores one durable embedding response per image/model/dimension.
+- `retrieval/` stores auditable records, source images, and lookup audit events.
+- `batch_grids/` is created only when composite MMR batching is used.
+
+Move legacy response JSON files from the cache root into `responses/` with:
+
+```bash
+Car-Census cache organize
+```
+
+To seed the cache from selected existing runs without making TrafficEye
+classification calls (embedding requests may be made):
+
+```bash
+Car-Census cache seed \
+  output/full-frame-IMG_5383_1440-20260605T181928Z \
+  output/full-frame-IMG_5386_1440-20260605T190145Z \
+  output/IMG_5458_1440-IMG_5458_1440-20260609T183644Z \
+  output/IMG_5512_1440-IMG_5512_1440-20260610T171931Z \
+  output/IMG_5581_1440-IMG_5581_1440-20260611T070923Z
+```
+
+This imports only accepted labels and their source crops. Unaccepted labels or
+labels whose crop is missing are reported and skipped. Use `--cache-dir PATH`
+to override the configured destination.
+
+To compact an already-seeded cache and normalize legacy batch coordinates in
+stored evidence, run:
+
+```bash
+python -m car_census_cli cache compact
+```
+
+Legacy retrieval records are never mutated during embedding migration. Re-embed
+their retained image bytes and create auditable superseding records with:
+
+```bash
+Car-Census cache migrate-embeddings
+```
+
+Before relying on enforce-mode reuse, compare same-identity and conflicting-
+identity distances:
+
+```bash
+Car-Census cache calibrate
+```
+
+Calibration reports a usable threshold only when the configured minimum evidence
+exists and same-identity distances remain strictly below conflicting-identity
+distances. On success it persists the threshold as `retrieval/calibration.json`
+in the shared cache, and runtime retrieval uses that calibrated value as the
+cosine-distance gate. It exits unsuccessfully when evidence is insufficient or
+overlapping, leaves any previous artifact in place, and enforcement fails
+closed rather than reusing the configured threshold.
 
 Composite batching is opt-in. For example, set `mmr.batch_size: 16` and
 `mmr.batch_grid_columns: 4` for a 4x4 grid. Composite requests likewise supply
@@ -220,7 +305,20 @@ output/<run-id>/
     cache/
   annotated.mp4
   report.csv
+
+output/.mmr-cache/
+  <request-hash>.json
+  embeddings/
+    <image-sha>-<model-hash>-<dimensions>.json
+  retrieval/
+    records/
+    images/
+    lookup_audit.jsonl
 ```
+
+The `.mmr-cache` directory is shared by runs created under the same output
+root. It retains the original crop bytes, request contract, raw API response,
+and visual representation needed to audit or re-embed retrieval decisions.
 
 ## Notes
 

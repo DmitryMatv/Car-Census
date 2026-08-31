@@ -70,7 +70,5 @@ class RunLayout:
             self.analysis_dir,
             self.crops_dir,
             self.mmr_dir,
-            self.mmr_cache_dir,
-            self.mmr_batch_grids_dir,
         ]:
             path.mkdir(parents=True, exist_ok=True)

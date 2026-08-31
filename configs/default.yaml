@@ -1,6 +1,7 @@
 project:
   output_root: output
   camera_profiles_dir: configs/cameras
+  retrieval_cache_dir: .mmr-cache
 
 video:
   fps: 30.00
@@ -86,6 +87,15 @@ mmr:
   batch_size: 1
   batch_grid_columns: 1
   batch_cell_size_px: 512
+  retrieval_mode: enforce
+  retrieval_embedding_distance_threshold: 0.02
+  retrieval_phash_max_hamming_distance: 4
+  retrieval_min_neighbors: 1
+  retrieval_embedding_api_key_env: OPENROUTER_API_KEY
+  retrieval_embedding_model: google/gemini-embedding-2
+  retrieval_embedding_dimensions: 768
+  retrieval_calibration_min_same_identity: 3
+  retrieval_calibration_min_conflicting_identity: 3
 
 render:
   codec: mp4v

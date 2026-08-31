@@ -1,0 +1,23 @@
+import pytest
+from pydantic import ValidationError
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("retrieval_mode", "local_classifier"),
+        ("retrieval_embedding_distance_threshold", -0.01),
+        ("retrieval_embedding_distance_threshold", 2.01),
+        ("retrieval_phash_max_hamming_distance", -1),
+        ("retrieval_phash_max_hamming_distance", 65),
+        ("retrieval_min_neighbors", 0),
+        ("retrieval_embedding_dimensions", 0),
+        ("retrieval_calibration_min_same_identity", 0),
+        ("retrieval_calibration_min_conflicting_identity", 0),
+    ],
+)
+def test_retrieval_config_rejects_unsafe_values(
+    config_factory, field: str, value: object
+) -> None:
+    with pytest.raises(ValidationError):
+        config_factory({"mmr": {field: value}})

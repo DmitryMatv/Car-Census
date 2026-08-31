@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from models import CropCandidate, RunManifest, TrackSummary
+from models import CropCandidate, MMRResult, RunManifest, TrackSummary
 from storage.run_store import RunStore
 from storage.run_transaction import AnalysisRunTransaction, RunDirectoryError
 
@@ -249,3 +249,51 @@ def test_from_existing_rejects_missing_and_manifestless_directories(
     empty.mkdir()
     with pytest.raises(FileNotFoundError, match="manifest does not exist"):
         RunStore.from_existing(empty)
+
+
+def test_promotion_rebases_label_source_image_paths(tmp_path: Path) -> None:
+    target = tmp_path / "explicit-run"
+    video_path = tmp_path / "input.mp4"
+
+    with _transaction(target, video_path) as staging_store:
+        staging = _seed_analysis(staging_store.root, video_path=video_path)
+        crop_path = staging.crops_dir / "vehicle_000009.jpg"
+        crop_path.write_bytes(b"crop")
+        staging.labels.write(
+            {
+                7: MMRResult(
+                    make="Toyota",
+                    model="Corolla",
+                    accepted=True,
+                    source_image=crop_path,
+                )
+            }
+        )
+
+    promoted = RunStore.from_existing(target)
+    label = promoted.labels.read()[7]
+    assert label.source_image == target.resolve() / "crops" / "vehicle_000009.jpg"
+
+
+def test_promotion_refuses_label_source_image_outside_staging(tmp_path: Path) -> None:
+    outside_crop = tmp_path / "outside.jpg"
+    outside_crop.write_bytes(b"crop")
+    target = tmp_path / "explicit-run"
+
+    with pytest.raises(ValueError, match="outside the staging run"):
+        with _transaction(target, tmp_path / "input.mp4") as staging_store:
+            staging = _seed_analysis(
+                staging_store.root, video_path=tmp_path / "input.mp4"
+            )
+            staging.labels.write(
+                {
+                    7: MMRResult(
+                        make="Toyota",
+                        model="Corolla",
+                        accepted=True,
+                        source_image=outside_crop,
+                    )
+                }
+            )
+
+    assert not target.exists()

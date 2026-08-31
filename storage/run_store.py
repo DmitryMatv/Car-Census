@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from models import CountEvent, RunManifest, TrackSummary
+from models import CountEvent, MMRResult, RunManifest, TrackSummary
+from config import validate_camera_id
 from storage.run_artifacts import (
     DetectionStatsFile,
     FrameRecordsFile,
@@ -17,7 +18,7 @@ from storage.run_layout import RunLayout
 def _run_descriptor(camera_id: str, video_stem: str) -> str:
     if camera_id == "__full_frame__" or camera_id == video_stem:
         return video_stem
-    return f"{video_stem}--camera-{camera_id}"
+    return f"{video_stem}--camera-{validate_camera_id(camera_id)}"
 
 
 def _compact_utc_timestamp(timestamp: datetime | None = None) -> str:
@@ -53,16 +54,29 @@ class RunStore:
         self.detection_stats = DetectionStatsFile(self.layout.detection_stats_path)
 
     @classmethod
+    def reserve_root(
+        cls,
+        output_root: Path,
+        camera_id: str,
+        video_stem: str,
+    ) -> Path:
+        output_root.mkdir(parents=True, exist_ok=True)
+        descriptor = _run_descriptor(camera_id, video_stem)
+        timestamp = _compact_utc_timestamp()
+        return _allocate_run_root(output_root, f"{descriptor}--{timestamp}")
+
+    @classmethod
     def create(
         cls,
         output_root: Path,
         camera_id: str,
         video_stem: str,
     ) -> "RunStore":
-        output_root.mkdir(parents=True, exist_ok=True)
-        descriptor = _run_descriptor(camera_id, video_stem)
-        timestamp = _compact_utc_timestamp()
-        run_root = _allocate_run_root(output_root, f"{descriptor}--{timestamp}")
+        run_root = cls.reserve_root(
+            output_root=output_root,
+            camera_id=camera_id,
+            video_stem=video_stem,
+        )
         store = cls(run_root)
         store.ensure_directories()
         return store
@@ -127,6 +141,25 @@ class RunStore:
                 )
             summaries.append(summary.model_copy(update={"candidates": candidates}))
         self.tracks.write_all(summaries)
+
+        if not self.labels_path.exists():
+            return
+        labels: dict[int, MMRResult] = {}
+        for track_id, label in self.labels.read().items():
+            source_image = label.source_image
+            if source_image is not None:
+                try:
+                    relative_path = source_image.resolve().relative_to(source_root)
+                except ValueError as exc:
+                    raise ValueError(
+                        "Label source image path is outside the staging run "
+                        f"directory: {source_image}"
+                    ) from exc
+                label = label.model_copy(
+                    update={"source_image": destination_root / relative_path}
+                )
+            labels[track_id] = label
+        self.labels.write(labels)
 
     def ensure_directories(self) -> None:
         self.layout.ensure_directories()

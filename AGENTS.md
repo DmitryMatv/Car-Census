@@ -2,9 +2,24 @@
 
 The role of this file is to describe common mistakes and confusion points that agents might encounter as they work in this project. If you ever encounter something in this project that surprises you, please alert the developer working with you and indicate that this is the case in the AGENTS.md file to help prevent future agents from having the same issue.
 
+## Ask Before You Assume
+
+Never guess at intent. If a task leaves anything open - which screen, which endpoint, what happens on failure, whether it needs a migration, whether this is user-facing - stop and ask. If an important decision is unresolved, stop and ask. One question up front is cheaper than half-a-day of work in the wrong direction.
+
+- Ask when the request could reasonably mean two different things.
+- Ask before changing a public API shape.
+- Do not invent product decisions, copy, or acceptance criteria.
+- Do not widen scope past what was asked. Note the adjacent thing you spotted; don't fix it unprompted.
+- If you had to assume something you couldn't resolve, list it explicitly at the top of your summary.
+
+## Testing
+
 Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
 
-Use Virtual Environment `source .venv/bin/activate` because `pytest` and everything else needed is installed there already probably.
+Use Virtual Environment `source .venv/bin/activate`. The venv does not reliably
+ship the quality gates: as of 2026-08-21 it was missing both `pytest` and
+`pyrefly`. Check before running them and `pip install pytest pyrefly` into
+`.venv` if absent.
 
 ## Project Snapshot
 
@@ -54,7 +69,50 @@ analysis.min_box_width_px`. Check the analysis artifacts before assuming a
 - The current test baseline emits an upstream NumPy 2D-cross deprecation
   warning from Supervision `LineZone`. Do not broadly suppress it or treat it as
   a Car-Census counting failure.
+- `classify` regenerates the whole run: `classify_tracks` deletes the existing
+  `labels.json` up front and re-identifies every track, so a re-run pays
+  TrafficEye costs again unless retrieval reuses. Treat a "re-classify one
+  track" request as a full re-run plus cache reuse; resume semantics do not
+  exist.
+- A failed `run` leaves no run directory behind: `run_pipeline` reserves a
+  root, executes under `AnalysisRunTransaction`, and discards the reserved
+  root when it is still empty after a failure. Missing artifacts after a
+  crash mean the transaction rolled back, not that the run never started.
+- Run directories are not relocatable: the manifest stores an absolute
+  `video_path`, and label `source_image` paths are absolute. Move a run
+  directory and `render`/`classify` fail with "source video does not exist"
+  or "outside the staging run directory" style errors; fix the paths in the
+  artifacts rather than hunting for a rename bug.
 - `configs/default.yaml` is the sole source of application defaults. Production
   code and tests must load defaults through `build_effective_config`; do not
   reintroduce zero-argument `AppConfig()` construction or Pydantic field
   defaults for application settings.
+- Retrieval enforce mode fails closed when `retrieval/calibration.json` is
+  missing or stale (embedding model, dimensions, or `phash_max_hamming_distance`
+  no longer match the artifact): lookups return `calibration_missing` and
+  TrafficEye keeps being called. Re-run `cache calibrate` after changing any of
+  those settings; the failure shows up as API calls "still happening" in
+  enforce mode, not as an error.
+- `cache compact` only rewrites legacy batch-relative detection boxes to
+  source-crop coordinates. It no longer strips raw API responses from records.
+- CLI commands that can make network calls load `.env` (`analyze`, `classify`,
+  `run`, `cache seed`, `cache migrate-embeddings`); purely local commands
+  (`cache organize`, `cache compact`, `cache calibrate`, `render`, `smooth`,
+  `report`) skip `load_dotenv`. `cache seed` embeds at record time, so it
+  genuinely needs the key despite looking like a local import.
+- Record-time embedding is eager by decision (2026-08-29): every crop written
+  to the retrieval cache is embedded immediately so it is query-ready later.
+  Embedding is cheap; do not make it lazy. `_try_embed` failures degrade to
+  `embedding: null` records, which `cache migrate-embeddings` backfills.
+- Enforce mode reuses exact hits even when the record is ineligible (below
+  `accept_model_confidence`): the stored identity is served as-is, and only
+  shadow mode re-checks `exact_ineligible` hits through the API. This is
+  deliberate (exact bytes + request hash) and pinned by
+  `test_enforce_reuses_exact_ineligible_record_without_api_call`; do not
+  turn it into an API re-check.
+- Retrieval records are immutable: corrections and embedding migrations write
+  a new record with `supersedes_record_id` while `_active_records()` filters
+  superseded ones. `record_id` hashes the payload including the embedding, so
+  one crop+request can legitimately hold two active records until migration
+  supersedes the stale one; deduplicating or editing records in place breaks
+  the audit trail.

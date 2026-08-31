@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -133,6 +133,16 @@ class MMRResult(BaseModel):
     source_image: Path | None = None
     vehicle_index: int | None = None
     api_classification_index: int | None = None
+    evidence_source: Literal["api_confirmed", "human_adjudicated"] | None = None
+    resolution_method: Literal[
+        "external_api",
+        "exact_retrieval",
+        "embedding_retrieval",
+        "human_adjudication",
+    ] | None = None
+    retrieval_record_id: str | None = None
+    retrieval_distance: float | None = None
+    retrieval_neighbor_count: int | None = None
 
 
 class TrackSummary(BaseModel):
@@ -177,3 +187,4 @@ class RunManifest(BaseModel):
     width: int
     height: int
     frame_count: int = 0
+    retrieval_cache_dir: Path | None = None

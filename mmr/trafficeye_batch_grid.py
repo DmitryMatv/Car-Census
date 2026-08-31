@@ -22,6 +22,70 @@ class BatchCell:
     content_box: BBox
 
 
+BATCH_DETECTION_BOX_COORDINATES_KEY = "batch_detection_box_coordinates"
+SOURCE_CROP_COORDINATES = "source_crop"
+
+
+def normalize_batch_detection_box(
+    box: BBox,
+    content_box: BBox,
+    *,
+    image_width: int,
+    image_height: int,
+) -> BBox:
+    scale_x = image_width / content_box.width
+    scale_y = image_height / content_box.height
+    return BBox(
+        x1=(box.x1 - content_box.x1) * scale_x,
+        y1=(box.y1 - content_box.y1) * scale_y,
+        x2=(box.x2 - content_box.x1) * scale_x,
+        y2=(box.y2 - content_box.y1) * scale_y,
+    )
+
+
+def normalize_batch_result_for_source_crop(
+    result: MMRResult,
+    *,
+    image_width: int,
+    image_height: int,
+    content_box: BBox | None = None,
+    source_image: Path | None = None,
+) -> MMRResult:
+    """Normalize a batch result once and record its coordinate space."""
+    box = result.detection_box
+    updates: dict[str, object] = {}
+    if source_image is not None:
+        updates["source_image"] = source_image
+    if (
+        result.raw.get(BATCH_DETECTION_BOX_COORDINATES_KEY) == SOURCE_CROP_COORDINATES
+        or box is None
+    ):
+        return result.model_copy(update=updates) if updates else result
+
+    if content_box is None:
+        content_box_payload = result.raw.get("batch_content_box")
+        if not isinstance(content_box_payload, dict):
+            return result.model_copy(update=updates) if updates else result
+        try:
+            content_box = BBox.model_validate(content_box_payload)
+        except ValueError:
+            return result.model_copy(update=updates) if updates else result
+
+    if content_box.width <= 0 or content_box.height <= 0:
+        return result.model_copy(update=updates) if updates else result
+
+    updates["detection_box"] = normalize_batch_detection_box(
+        box,
+        content_box,
+        image_width=image_width,
+        image_height=image_height,
+    )
+    raw = dict(result.raw)
+    raw[BATCH_DETECTION_BOX_COORDINATES_KEY] = SOURCE_CROP_COORDINATES
+    updates["raw"] = raw
+    return result.model_copy(update=updates)
+
+
 def decode_image(image_bytes: bytes, image_path: Path) -> cv2.typing.MatLike:
     """Decode image bytes for TrafficEye requests.
 
@@ -232,6 +296,7 @@ def write_batch_debug_artifacts(
     cells: list[BatchCell],
     request_payload: dict[str, Any],
 ) -> Path:
+    batch_grids_dir.mkdir(parents=True, exist_ok=True)
     batch_image_path = batch_grids_dir / f"{cache_key}.jpg"
     if not batch_image_path.exists():
         batch_image_path.write_bytes(image_bytes)

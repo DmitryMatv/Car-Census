@@ -27,6 +27,13 @@ BASE_REPORT_COLUMNS = [
 ]
 
 _TAG_PREFIX = "tag_"
+_PROVENANCE_COLUMNS = [
+    "evidence_source",
+    "resolution_method",
+    "retrieval_record_id",
+    "retrieval_distance",
+    "retrieval_neighbor_count",
+]
 
 
 def _empty_if_none(value: Any) -> Any:
@@ -88,6 +95,13 @@ def _base_report_row(track_id: int, label: MMRResult) -> dict[str, Any]:
         "view": _empty_if_none(label.view),
         "view8": _empty_if_none(label.view8),
         "accepted": label.accepted,
+        "evidence_source": _empty_if_none(label.evidence_source),
+        "resolution_method": _empty_if_none(label.resolution_method),
+        "retrieval_record_id": _empty_if_none(label.retrieval_record_id),
+        "retrieval_distance": _empty_if_none(label.retrieval_distance),
+        "retrieval_neighbor_count": _empty_if_none(
+            label.retrieval_neighbor_count
+        ),
         "make_confidence": _empty_if_none(label.make_confidence),
         "model_confidence": _empty_if_none(label.model_confidence),
         "category_confidence": _empty_if_none(label.category_confidence),
@@ -140,7 +154,7 @@ def report_csv_columns(rows: list[dict[str, Any]]) -> list[str]:
     ordered_tag_columns: list[str] = []
     for column in dict.fromkeys(tag_columns):
         ordered_tag_columns.extend([column, f"{column}_confidence"])
-    return [*BASE_REPORT_COLUMNS, *ordered_tag_columns]
+    return [*BASE_REPORT_COLUMNS, *ordered_tag_columns, *_PROVENANCE_COLUMNS]
 
 
 def write_vehicle_report_csv(path: Path, rows: list[dict[str, Any]]) -> None:

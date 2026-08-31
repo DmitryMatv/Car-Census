@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from config import AppConfig, build_full_frame_profile
-from pipeline import run as run_module
+from config import build_full_frame_profile
+from models import RunManifest
 from pipeline.run import run_pipeline
 from pipeline.stages import PipelineStages
 from storage import run_store as run_store_module
@@ -16,8 +16,22 @@ from storage.run_store import (
 )
 
 
-class DummyRunStore:
-    root = Path("output/test-run")
+def _write_analysis_artifacts(run_store: RunStore, video_path: Path) -> None:
+    run_store.manifest.write(
+        RunManifest(
+            run_id=run_store.root.name,
+            video_path=video_path,
+            root_dir=run_store.root,
+            source_fps=30.0,
+            analysis_fps=10.0,
+            width=16,
+            height=16,
+            frame_count=2,
+        )
+    )
+    run_store.frames.write_all([])
+    run_store.tracks.write_all([])
+    run_store.detection_stats.write({})
 
 
 def test_run_store_creates_expected_artifact_directories(tmp_path) -> None:
@@ -31,8 +45,8 @@ def test_run_store_creates_expected_artifact_directories(tmp_path) -> None:
     assert store.analysis_dir.is_dir()
     assert store.crops_dir.is_dir()
     assert store.mmr_dir.is_dir()
-    assert store.mmr_cache_dir.is_dir()
-    assert store.mmr_batch_grids_dir.is_dir()
+    assert not store.mmr_cache_dir.exists()
+    assert not store.mmr_batch_grids_dir.exists()
     assert not (store.root / "render").exists()
 
 
@@ -52,6 +66,27 @@ def test_run_descriptor_omits_redundant_camera_names(
     camera_id: str, video_stem: str, expected: str
 ) -> None:
     assert _run_descriptor(camera_id, video_stem) == expected
+
+
+@pytest.mark.parametrize(
+    "camera_id",
+    ["../escape", "..", ".", "", "a/b", "a\\b"],
+)
+def test_run_descriptor_rejects_unsafe_camera_ids(
+    camera_id: str, video_stem: str = "video"
+) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        _run_descriptor(camera_id, video_stem)
+
+
+def test_run_store_create_rejects_traversal_camera_id(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Invalid camera id"):
+        RunStore.create(
+            output_root=tmp_path,
+            camera_id="../../outside",
+            video_stem="video",
+        )
+    assert not (tmp_path / "outside").exists()
 
 
 def test_compact_timestamp_converts_to_utc() -> None:
@@ -125,42 +160,38 @@ def test_creating_readable_run_does_not_rename_existing_directories(
 
 
 def test_run_pipeline_orders_analyze_classify_render_report(
-    default_config, tmp_path, monkeypatch
+    default_config, tmp_path
 ) -> None:
     calls: list[str] = []
-    render_kwargs = {}
-    store = DummyRunStore()
+    render_kwargs: dict[str, object] = {}
+    video_path = tmp_path / "input.mp4"
 
-    monkeypatch.setattr(
-        run_module.RunStore,
-        "create",
-        lambda **kwargs: store,
-    )
-
-    def fake_analyze_video(project_root, config, profile, video_path, run_store):
-        _ = project_root, config, profile, video_path
+    def fake_analyze_video(project_root, config, profile, analyzed_video, run_store):
+        _ = project_root, config, profile
         calls.append("analyze")
-        assert run_store is store
-        return store
+        assert analyzed_video == video_path
+        assert run_store.root.name.startswith(".")
+        _write_analysis_artifacts(run_store, video_path)
+        return run_store
 
     def fake_classify_tracks(config, run_store):
         _ = config
         calls.append("classify")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return {}
 
     def fake_render_video(
-        config, profile, video_path, run_store, allow_unclassified_annotations
+        config, profile, rendered_video, run_store, allow_unclassified_annotations
     ):
-        _ = config, profile, video_path
+        _ = config, profile, rendered_video
         calls.append("render")
-        render_kwargs["run_store"] = run_store
+        render_kwargs["run_store_root"] = run_store.root
         render_kwargs["allow_unclassified_annotations"] = allow_unclassified_annotations
-        return store.root / "annotated.mp4"
+        return run_store.root / "annotated.mp4"
 
     def fake_generate_reports(run_store):
         calls.append("report")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return {}
 
     def fake_write_skipped_classification_batch_grids(config, run_store):
@@ -171,7 +202,7 @@ def test_run_pipeline_orders_analyze_classify_render_report(
         project_root=tmp_path,
         config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
-        video_path=tmp_path / "input.mp4",
+        video_path=video_path,
         stages=PipelineStages(
             analyze_video=fake_analyze_video,
             classify_tracks=fake_classify_tracks,
@@ -184,61 +215,58 @@ def test_run_pipeline_orders_analyze_classify_render_report(
         skip_classification=False,
     )
 
-    assert result is store
     assert calls == ["analyze", "classify", "render", "report"]
-    assert render_kwargs["run_store"] is store
+    output_root = tmp_path / "output"
+    assert result.root.parent == output_root
+    assert not result.root.name.startswith(".")
+    assert result.manifest.read().run_id == result.root.name
+    assert result.frames_path.is_file()
+    assert [path.name for path in output_root.iterdir()] == [result.root.name]
     assert render_kwargs["allow_unclassified_annotations"] is False
+    assert render_kwargs["run_store_root"] != result.root
 
 
 def test_run_pipeline_allows_unclassified_annotations_when_classification_is_skipped(
-    default_config, tmp_path, monkeypatch
+    default_config, tmp_path
 ) -> None:
     calls: list[str] = []
-    render_kwargs = {}
-    store = DummyRunStore()
+    render_kwargs: dict[str, object] = {}
+    video_path = tmp_path / "input.mp4"
 
-    monkeypatch.setattr(
-        run_module.RunStore,
-        "create",
-        lambda **kwargs: store,
-    )
-
-    def fake_analyze_video(project_root, config, profile, video_path, run_store):
-        _ = project_root, config, profile, video_path
+    def fake_analyze_video(project_root, config, profile, analyzed_video, run_store):
+        _ = project_root, config, profile
         calls.append("analyze")
-        assert run_store is store
-        return store
+        _write_analysis_artifacts(run_store, video_path)
+        return run_store
 
     def fake_classify_tracks(config, run_store):
         _ = config, run_store
-        calls.append("classify")
-        return {}
+        raise AssertionError("Classification stage should not run")
 
     def fake_write_skipped_classification_batch_grids(config, run_store):
         _ = config
         calls.append("batch_grids")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return []
 
     def fake_render_video(
-        config, profile, video_path, run_store, allow_unclassified_annotations
+        config, profile, rendered_video, run_store, allow_unclassified_annotations
     ):
-        _ = config, profile, video_path
+        _ = config, profile, rendered_video
         calls.append("render")
-        render_kwargs["run_store"] = run_store
         render_kwargs["allow_unclassified_annotations"] = allow_unclassified_annotations
-        return store.root / "annotated.mp4"
+        return run_store.root / "annotated.mp4"
 
     def fake_generate_reports(run_store):
         calls.append("report")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return {}
 
     result = run_pipeline(
         project_root=tmp_path,
         config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
-        video_path=tmp_path / "input.mp4",
+        video_path=video_path,
         stages=PipelineStages(
             analyze_video=fake_analyze_video,
             classify_tracks=fake_classify_tracks,
@@ -251,34 +279,27 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
         skip_classification=True,
     )
 
-    assert result is store
     assert calls == ["analyze", "batch_grids", "render", "report"]
-    assert render_kwargs["run_store"] is store
     assert render_kwargs["allow_unclassified_annotations"] is True
+    assert not (tmp_path / "output" / result.root.name / "mmr" / "labels.json").exists()
 
 
 def test_run_pipeline_can_skip_render_while_still_generating_report(
-    default_config, tmp_path, monkeypatch
+    default_config, tmp_path
 ) -> None:
     calls: list[str] = []
-    store = DummyRunStore()
+    video_path = tmp_path / "input.mp4"
 
-    monkeypatch.setattr(
-        run_module.RunStore,
-        "create",
-        lambda **kwargs: store,
-    )
-
-    def fake_analyze_video(project_root, config, profile, video_path, run_store):
-        _ = project_root, config, profile, video_path
+    def fake_analyze_video(project_root, config, profile, analyzed_video, run_store):
+        _ = project_root, config, profile
         calls.append("analyze")
-        assert run_store is store
-        return store
+        _write_analysis_artifacts(run_store, video_path)
+        return run_store
 
     def fake_classify_tracks(config, run_store):
         _ = config
         calls.append("classify")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return {}
 
     def fake_write_skipped_classification_batch_grids(config, run_store):
@@ -286,21 +307,21 @@ def test_run_pipeline_can_skip_render_while_still_generating_report(
         raise AssertionError("Skipped classification stage should not run")
 
     def fake_render_video(
-        config, profile, video_path, run_store, allow_unclassified_annotations
+        config, profile, rendered_video, run_store, allow_unclassified_annotations
     ):
-        _ = config, profile, video_path, run_store, allow_unclassified_annotations
+        _ = config, profile, rendered_video, run_store, allow_unclassified_annotations
         raise AssertionError("Render stage should not run")
 
     def fake_generate_reports(run_store):
         calls.append("report")
-        assert run_store is store
+        assert isinstance(run_store, RunStore)
         return {}
 
     result = run_pipeline(
         project_root=tmp_path,
         config=default_config,
         profile=build_full_frame_profile(width=16, height=16),
-        video_path=tmp_path / "input.mp4",
+        video_path=video_path,
         stages=PipelineStages(
             analyze_video=fake_analyze_video,
             classify_tracks=fake_classify_tracks,
@@ -314,5 +335,54 @@ def test_run_pipeline_can_skip_render_while_still_generating_report(
         skip_render=True,
     )
 
-    assert result is store
     assert calls == ["analyze", "classify", "report"]
+    assert result.frames_path.is_file()
+
+
+def test_run_pipeline_failure_leaves_no_partial_run_directory(
+    default_config, tmp_path
+) -> None:
+    video_path = tmp_path / "input.mp4"
+
+    def fake_analyze_video(project_root, config, profile, analyzed_video, run_store):
+        _ = project_root, config, profile
+        _write_analysis_artifacts(run_store, video_path)
+        return run_store
+
+    def fake_classify_tracks(config, run_store):
+        _ = config, run_store
+        return {}
+
+    def fake_write_skipped_classification_batch_grids(config, run_store):
+        _ = config, run_store
+        return []
+
+    def fake_render_video(
+        config, profile, rendered_video, run_store, allow_unclassified_annotations
+    ):
+        _ = config, profile, rendered_video, run_store, allow_unclassified_annotations
+        raise RuntimeError("render failed")
+
+    def fake_generate_reports(run_store):
+        _ = run_store
+        raise AssertionError("Report stage should not run")
+
+    with pytest.raises(RuntimeError, match="render failed"):
+        run_pipeline(
+            project_root=tmp_path,
+            config=default_config,
+            profile=build_full_frame_profile(width=16, height=16),
+            video_path=video_path,
+            stages=PipelineStages(
+                analyze_video=fake_analyze_video,
+                classify_tracks=fake_classify_tracks,
+                write_skipped_classification_batch_grids=(
+                    fake_write_skipped_classification_batch_grids
+                ),
+                render_video=fake_render_video,
+                generate_reports=fake_generate_reports,
+            ),
+        )
+
+    output_root = tmp_path / "output"
+    assert list(output_root.iterdir()) == []

@@ -9,7 +9,6 @@ description = "Roadside car MMR"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "click>=8.2,<9",
   "httpx>=0.27,<0.29",
   "numpy>=1.26,<3",
   "opencv-python>=4.10,<5",
@@ -18,16 +17,16 @@ dependencies = [
   "pydantic>=2.8,<3",
   "python-dotenv>=1.0,<2",
   "PyYAML>=6.0,<7",
-  "rfdetr>=1.6,<2",
-  "types-PyYAML>=6.0,<7",
-  "supervision>=0.28,<0.40",
-  "trackers>=2.4,<3",
+  "rfdetr>=1.9.2,<2",
+  "supervision>=0.30.1,<0.40.0",
+  "trackers>=2.6,<3",
   "typer>=0.16,<0.27",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3,<9",
+  "types-PyYAML>=6.0,<7",
 ]
 
 [project.scripts]
