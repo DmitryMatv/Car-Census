@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import supervision as sv
@@ -13,11 +13,26 @@ from trackers import BoTSORTTracker
 
 from tracking_adapters.rescue import RescueEngine
 
+if TYPE_CHECKING:
+    # Dynamic third-party module; typed for mypy via the package's py.typed.
+    from trackers.core.botsort.tracklet import (  # pyrefly: ignore[missing-import]
+        BoTSORTTracklet,
+    )
+
 logger = logging.getLogger(__name__)
 
 
 class _BoTSortLike(Protocol):
-    def update(self, detections: sv.Detections, frame: np.ndarray) -> sv.Detections: ...
+    """Structural view of ``BoTSORTTracker`` used by this adapter."""
+
+    tracks: list[BoTSORTTracklet]
+
+    def update(
+        self,
+        detections: sv.Detections,
+        frame: np.ndarray | None = None,
+        timestamp: float | None = None,
+    ) -> sv.Detections: ...
 
 
 def _effective_frame_rate(config: AppConfig, frame_rate: float | None) -> float:
@@ -44,22 +59,19 @@ def _create_botsort_tracker(
     )
 
 
-def _xyxy_tuple(bbox: np.ndarray | Any) -> tuple[float, float, float, float]:
+def _xyxy_tuple(bbox: np.ndarray) -> tuple[float, float, float, float]:
     x1, y1, x2, y2 = (float(value) for value in bbox)
     return (x1, y1, x2, y2)
 
 
-def _is_fresh_spawn(track: object) -> bool:
+def _is_fresh_spawn(track: BoTSORTTracklet) -> bool:
     """True for a tracklet spawned from an unmatched detection this frame.
 
     BoT-SORT counts the initial bbox as the first successful update, so a
     just-spawned tracklet has exactly one successful update and has not been
     predicted yet. Matured unconfirmed tracklets have >= 2 updates.
     """
-    successful = getattr(track, "number_of_successful_updates", None)
-    since_update = getattr(track, "time_since_update", None)
-    state_bbox = getattr(track, "get_state_bbox", None)
-    return successful == 1 and since_update == 0 and callable(state_bbox)
+    return track.number_of_successful_updates == 1 and track.time_since_update == 0
 
 
 def _crop_with_padding(
@@ -90,7 +102,9 @@ class BotSortAdapter:
         view_transformer: ViewTransformer | None = None,
         embedder: AppearanceEmbedder | None = None,
     ) -> None:
-        self.tracker: Any = tracker or _create_botsort_tracker(config, frame_rate)
+        self.tracker: _BoTSortLike = tracker or _create_botsort_tracker(
+            config, frame_rate
+        )
         self._config = config
         self._embedder: AppearanceEmbedder | None = (
             embedder if embedder is not None else build_embedder(config.reid)
@@ -120,14 +134,14 @@ class BotSortAdapter:
     def drop_tracks(self, track_ids: Collection[int]) -> None:
         if not track_ids:
             return
-        tracks = getattr(self.tracker, "tracks", None)
+        tracks = self.tracker.tracks
         if not isinstance(tracks, list):
             return
         suppressed_ids = set(track_ids)
         filtered_tracks = [
             track for track in tracks if _track_identity(track) not in suppressed_ids
         ]
-        setattr(self.tracker, "tracks", filtered_tracks)
+        self.tracker.tracks = filtered_tracks
         for track_id in suppressed_ids:
             self._memory.forget(track_id)
             self._rescue.forget(track_id)
@@ -187,7 +201,7 @@ class BotSortAdapter:
     ) -> None:
         if not self._rescue.active:
             return
-        tracks = getattr(self.tracker, "tracks", None)
+        tracks = self.tracker.tracks
         if not isinstance(tracks, list):
             return
         spawns = [track for track in tracks if _is_fresh_spawn(track)]

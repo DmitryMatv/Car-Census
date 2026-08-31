@@ -94,10 +94,6 @@ module = "render.annotators"
 disable_error_code = ["assignment"]
 
 [[tool.mypy.overrides]]
-module = "tracking_adapters.botsort"
-disable_error_code = ["union-attr"]
-
-[[tool.mypy.overrides]]
 module = "utils.video"
 disable_error_code = ["attr-defined"]
 

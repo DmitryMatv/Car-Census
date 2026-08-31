@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 from config import RescueConfig
+from reid import TrackAppearanceMemory
 from roi.transform import ViewTransformer
 
 
@@ -124,7 +125,7 @@ class RescueEngine:
         candidate_bbox: tuple[float, float, float, float],
         candidate_time: float,
         busy_ids: set[int],
-        memory: Any = None,
+        memory: TrackAppearanceMemory | None = None,
         candidate_vector: np.ndarray | None = None,
         min_appearance_similarity: float | None = None,
     ) -> tuple[RescueMatch | None, list[RescueRejection]]:
@@ -179,7 +180,7 @@ class RescueEngine:
         trajectory: _Trajectory,
         candidate_world: tuple[float, float],
         candidate_time: float,
-        memory: Any,
+        memory: TrackAppearanceMemory | None,
         candidate_vector: np.ndarray | None,
         min_appearance_similarity: float | None,
     ) -> RescueMatch | RescueRejection:
@@ -267,7 +268,9 @@ class RescueEngine:
 
 
 def _appearance_similarity(
-    old_id: int, memory: Any, candidate_vector: np.ndarray | None
+    old_id: int,
+    memory: TrackAppearanceMemory | None,
+    candidate_vector: np.ndarray | None,
 ) -> float | None:
     if memory is None or candidate_vector is None:
         return None

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import numpy as np
 
@@ -22,6 +22,14 @@ class AppearanceEmbedder(Protocol):
     def embed(self, crops: Sequence[np.ndarray]) -> np.ndarray:
         """Return an ``(N, D)`` float32 array, one row per crop."""
         ...
+
+
+class EmbedderSettings(Protocol):
+    """Structural view of the ``ReidConfig`` fields ``build_embedder`` needs."""
+
+    enabled: bool
+    device: Literal["auto", "cpu", "cuda"]
+    batch_size: int
 
 
 class TorchvisionEmbedder:
@@ -143,19 +151,15 @@ class TrackAppearanceMemory:
         return best
 
 
-def build_embedder(config: object) -> AppearanceEmbedder | None:
-    """Build the embedder for a ``ReidConfig``-like object; None if disabled.
+def build_embedder(config: EmbedderSettings) -> AppearanceEmbedder | None:
+    """Build the embedder for the given ReID settings; None if disabled.
 
     Import or model-load failures degrade to ``None`` so the tracking
     pipeline keeps working without appearance evidence.
     """
-    enabled = getattr(config, "enabled", False)
-    if not enabled:
+    if not config.enabled:
         return None
     try:
-        return TorchvisionEmbedder(
-            device=str(getattr(config, "device", "auto")),
-            batch_size=int(getattr(config, "batch_size", 16)),
-        )
+        return TorchvisionEmbedder(device=config.device, batch_size=config.batch_size)
     except Exception:  # pragma: no cover - depends on runtime environment
         return None
