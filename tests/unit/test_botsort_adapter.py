@@ -135,7 +135,7 @@ def test_create_botsort_tracker_uses_analysis_frame_rate(default_config) -> None
 
     assert isinstance(tracker, BoTSORTTracker)
     assert _effective_frame_rate(default_config, frame_rate=analysis_fps) == 10.0
-    assert tracker.maximum_frames_without_update == 4
+    assert tracker.maximum_frames_without_update == 20
 
 
 def test_create_botsort_tracker_allows_configured_frame_rate_override(
@@ -145,7 +145,7 @@ def test_create_botsort_tracker_allows_configured_frame_rate_override(
     tracker = _create_botsort_tracker(config, frame_rate=10)
 
     assert _effective_frame_rate(config, frame_rate=10) == 15.0
-    assert tracker.maximum_frames_without_update == 6
+    assert tracker.maximum_frames_without_update == 30
 
 
 def test_create_botsort_tracker_disables_cmc_by_default(default_config) -> None:

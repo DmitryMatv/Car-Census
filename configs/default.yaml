@@ -48,7 +48,11 @@ detector:
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
-  lost_track_buffer: 12
+  # 60 at the default 10 analysis FPS keeps IDs alive through ~2 s of missed
+  # analysis frames; reattachment safety is enforced downstream by the
+  # world-space reassociation gate, so the buffer no longer needs to stay
+  # defensive on its own.
+  lost_track_buffer: 60
   max_reassociation_gap_seconds: 0.35
   # World-space (homography) reassociation gate. When a track ID returns
   # after max_reassociation_gap_seconds but within
@@ -81,7 +85,10 @@ tracker:
   duplicate_track_min_area_ratio: 0.30
   duplicate_track_center_distance_ratio: 0.30
   suppress_sequential_duplicate_tracks: false
-  sequential_duplicate_max_gap_seconds: 0.70
+  # Extended from 0.70 s: post-hoc merges are now policed by the implied
+  # world-speed gate (sequential_duplicate_max_implied_speed_mps) whenever a
+  # camera homography is calibrated, so a wider gap window is safe.
+  sequential_duplicate_max_gap_seconds: 2.0
   sequential_duplicate_prediction_error_ratio: 0.70
   sequential_duplicate_min_width_ratio: 0.50
   sequential_duplicate_min_height_ratio: 0.45

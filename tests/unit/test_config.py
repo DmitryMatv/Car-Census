@@ -39,6 +39,15 @@ def test_canonical_tracker_confidence_contract(default_config) -> None:
     assert config.tracker.suppress_duplicate_tracks is False
 
 
+def test_canonical_reassociation_and_buffer_contract(default_config) -> None:
+    config = default_config
+
+    assert config.tracker.lost_track_buffer == 60
+    assert config.tracker.max_reassociation_gap_seconds == 0.35
+    assert config.tracker.world_reassociation_max_gap_seconds == 2.0
+    assert config.tracker.sequential_duplicate_max_gap_seconds == 2.0
+
+
 def test_tracker_config_accepts_supported_cmc_methods(config_factory) -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
         config = config_factory({"tracker": {"cmc_method": cmc_method}})

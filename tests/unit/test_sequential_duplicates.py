@@ -246,7 +246,12 @@ def test_sequential_duplicate_no_merge_when_gap_exceeds_limit(
 ) -> None:
     store = _write_run(tmp_path, b_start_time=0.60)
 
-    deduplicate_classified_tracks(_sequential_duplicate_config(config_factory), store)
+    deduplicate_classified_tracks(
+        _sequential_duplicate_config(
+            config_factory, sequential_duplicate_max_gap_seconds=0.40
+        ),
+        store,
+    )
 
     assert store.labels.read()[2].vehicle_index == 2
 
