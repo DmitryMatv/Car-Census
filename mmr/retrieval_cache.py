@@ -12,6 +12,7 @@ import numpy as np
 import orjson
 from pydantic import BaseModel, Field
 
+from config import AppConfig
 from mmr.embeddings import ImageEmbeddingProvider
 from mmr.retrieval_calibration_artifact import load_calibration_artifact
 from mmr.retrieval_similarity import cosine_distance, normalized_identity
@@ -218,6 +219,25 @@ class MMRRetrievalStore:
         self._record_cache: dict[str, RetrievalRecord] | None = None
         self.records_dir.mkdir(parents=True, exist_ok=True)
         self.images_dir.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: AppConfig,
+        cache_dir: Path,
+        embedding_provider: ImageEmbeddingProvider | None = None,
+    ) -> "MMRRetrievalStore":
+        return cls(
+            cache_dir / "retrieval",
+            retrieval_mode=config.mmr.retrieval_mode,
+            embedding_model=config.mmr.retrieval_embedding_model,
+            embedding_dimensions=config.mmr.retrieval_embedding_dimensions,
+            embedding_distance_threshold=config.mmr.retrieval_embedding_distance_threshold,
+            phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
+            min_neighbors=config.mmr.retrieval_min_neighbors,
+            min_make_confidence=config.mmr.accept_model_confidence,
+            embedding_provider=embedding_provider,
+        )
 
     def _record_path(self, record_id: str) -> Path:
         return self.records_dir / f"{record_id}.json"

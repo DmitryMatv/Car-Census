@@ -5,6 +5,7 @@ from typing import Self
 
 import cv2
 import numpy as np
+import orjson
 
 from mmr.retrieval_calibration_artifact import (
     RetrievalCalibrationArtifact,
@@ -209,7 +210,12 @@ def test_embedding_shadow_match_still_calls_traffic_eye(
     audit_lines = (
         (cache_dir / "retrieval" / "lookup_audit.jsonl").read_text().splitlines()
     )
-    assert '"action":"shadow"' in audit_lines[-1]
+    payloads = [orjson.loads(line) for line in audit_lines]
+    assert [payload["action"] for payload in payloads] == [
+        "api_fallback",
+        "shadow",
+    ]
+    assert payloads[-1]["match"]["kind"] == "embedding"
 
 
 def test_embedding_failure_falls_back_to_traffic_eye(
@@ -302,7 +308,12 @@ def test_enforce_without_calibration_falls_back_to_api(
     audit_lines = (
         (cache_dir / "retrieval" / "lookup_audit.jsonl").read_text().splitlines()
     )
-    assert "calibration_missing" in audit_lines[-1]
+    payloads = [orjson.loads(line) for line in audit_lines]
+    assert [payload["action"] for payload in payloads] == [
+        "api_fallback",
+        "api_fallback",
+    ]
+    assert payloads[-1]["reason"] == "calibration_missing"
 
 
 def test_batch_retrieval_removes_exact_hits_before_api_request(

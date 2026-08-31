@@ -123,7 +123,10 @@ def roi_edit(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    output_path = camera_profile_path(config, camera_id, root=project_root)
+    try:
+        output_path = camera_profile_path(config, camera_id, root=project_root)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     profile = edit_camera_profile(
         video_path=video, camera_id=camera_id, output_path=output_path
     )
@@ -165,7 +168,10 @@ def analyze(
     project_root, config = _load_config_with_accelerator(
         config_path, accelerator, device
     )
-    profile = _resolve_profile(project_root, config, video, camera_id)
+    try:
+        profile = _resolve_profile(project_root, config, video, camera_id)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     if run_dir is None:
         store = RunStore.create(
             output_root=project_root / config.project.output_root,
@@ -211,6 +217,7 @@ def classify(
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
@@ -237,9 +244,7 @@ def cache_seed(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     summaries = seed_retrieval_cache(
         run_dirs=[run_dir.expanduser().resolve() for run_dir in run_dirs],
         config=config,
@@ -266,9 +271,7 @@ def cache_organize(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     migrated = migrate_legacy_response_cache(target_cache_dir)
     typer.echo(
         f"Moved {migrated} legacy response files into {target_cache_dir / 'responses'}"
@@ -285,12 +288,9 @@ def cache_compact(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     changed = compact_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(f"Compacted {changed} retrieval records in {target_cache_dir}")
 
@@ -308,9 +308,7 @@ def cache_migrate_embeddings(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     summary = migrate_retrieval_embeddings(config=config, cache_dir=target_cache_dir)
     typer.echo(
         f"Migrated {summary.migrated} retrieval records in {target_cache_dir}; "
@@ -330,16 +328,13 @@ def cache_calibrate(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     report = calibrate_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(report)
     if report.usable_threshold is None:
         raise typer.Exit(code=1)
     typer.echo(
-        f"Calibration artifact: "
-        f"{target_cache_dir / 'retrieval' / 'calibration.json'}"
+        f"Calibration artifact: {target_cache_dir / 'retrieval' / 'calibration.json'}"
     )
 
 
@@ -354,19 +349,28 @@ def render(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path, accelerator)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
     else:
         profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
+    video_path = manifest.video_path.expanduser()
+    if not video_path.is_file():
+        typer.secho(
+            "Source video recorded in the run manifest does not exist: "
+            f"{manifest.video_path}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
     render_video(
         config=config,
         profile=profile,
-        video_path=manifest.video_path,
+        video_path=video_path,
         run_store=store,
         smooth_render_tracks=smooth_render_tracks,
     )
@@ -379,10 +383,10 @@ def smooth(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
@@ -399,6 +403,7 @@ def report(
 ) -> None:
     configure_logging(verbose)
     store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
     payload = generate_reports(run_store=store)
     typer.echo(typer.style("Report generated", fg=typer.colors.GREEN))
     typer.echo(str(payload))
@@ -432,7 +437,10 @@ def run(
     project_root, config = _load_config_with_accelerator(
         config_path, accelerator, device
     )
-    profile = _resolve_profile(project_root, config, video, camera_id)
+    try:
+        profile = _resolve_profile(project_root, config, video, camera_id)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--camera-id") from exc
     store = run_pipeline(
         project_root=project_root,
         config=config,

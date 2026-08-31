@@ -3,6 +3,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import orjson
+import pytest
 
 from config import AppConfig
 from models import BBox, CropCandidate, MMRResult, TrackSummary
@@ -695,6 +696,88 @@ def test_classify_tracks_ignores_candidate_less_unqualified_tracks(
     assert set(labels) == {20}
     payload = orjson.loads(store.labels_path.read_bytes())
     assert set(payload) == {"20"}
+
+
+def test_classify_tracks_removes_stale_labels_when_a_rerun_fails(
+    default_config, tmp_path, monkeypatch
+) -> None:
+    class FailingTrafficEyeClient:
+        def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+            pass
+
+        def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
+            raise RuntimeError("TrafficEye request failed")
+
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FailingTrafficEyeClient)
+
+    store = DummyRunStore(tmp_path)
+    store.write(
+        {1: MMRResult(make="Stale", model="Stale", accepted=True, vehicle_index=1)}
+    )
+    crop = tmp_path / "vehicle.jpg"
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                max_box_width_px=100,
+                candidates=[_candidate(crop, track_id=1, vehicle_index=1)],
+            ),
+        ],
+    )
+    config = default_config
+    config.analysis.min_track_frames = 1
+
+    with pytest.raises(RuntimeError, match="TrafficEye request failed"):
+        classify_tracks(config=config, run_store=store)
+
+    assert not store.labels_path.exists()
+
+
+def test_classify_tracks_replaces_stale_labels_from_previous_run(
+    default_config, tmp_path, monkeypatch
+) -> None:
+    class FakeTrafficEyeClient:
+        def __init__(self, config: AppConfig, cache_dir: Path) -> None:
+            pass
+
+        def recognize_vehicle_crop(self, image_path: Path) -> MMRResult:
+            return MMRResult(make="Toyota", model="Corolla", accepted=True)
+
+    monkeypatch.setattr("pipeline.classify.TrafficEyeClient", FakeTrafficEyeClient)
+
+    store = DummyRunStore(tmp_path)
+    store.write(
+        {1: MMRResult(make="Stale", model="Stale", accepted=True, vehicle_index=1)}
+    )
+    crop = tmp_path / "vehicle.jpg"
+    _write_summaries(
+        store.tracks_path,
+        [
+            TrackSummary(
+                track_id=1,
+                vehicle_index=1,
+                first_frame_index=1,
+                last_frame_index=10,
+                frames_seen=10,
+                max_box_width_px=100,
+                candidates=[_candidate(crop, track_id=1, vehicle_index=1)],
+            ),
+        ],
+    )
+    config = default_config
+    config.analysis.min_track_frames = 1
+
+    classify_tracks(config=config, run_store=store)
+
+    payload = orjson.loads(store.labels_path.read_bytes())
+    assert set(payload) == {"1"}
+    assert payload["1"]["make"] == "Toyota"
+    assert payload["1"]["model"] == "Corolla"
 
 
 def test_write_skipped_classification_batch_grids_writes_best_crop_grids(

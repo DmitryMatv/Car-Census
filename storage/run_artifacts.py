@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
+from types import TracebackType
 from typing import BinaryIO, Generic, TypeVar
 
 import orjson
 from pydantic import BaseModel
 
 from models import FrameRecord, MMRResult
-from storage.json_artifacts import iter_jsonl, read_json, write_json, write_jsonl
+from storage.json_artifacts import atomic_write, iter_jsonl, read_json, write_json, write_jsonl
 from storage.run_layout import RunLayout
 
 TModel = TypeVar("TModel", bound=BaseModel)
@@ -29,16 +31,24 @@ class JsonModelFile(Generic[TModel]):
 class JsonlModelWriter(Generic[TModel]):
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._context: AbstractContextManager[BinaryIO] | None = None
         self._handle: BinaryIO | None = None
 
     def __enter__(self) -> "JsonlModelWriter[TModel]":
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self._path.open("wb")
+        context = atomic_write(self._path)
+        self._handle = context.__enter__()
+        self._context = context
         return self
 
-    def __exit__(self, *args: object) -> None:
-        if self._handle is not None:
-            self._handle.close()
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if self._context is not None:
+            context, self._context, self._handle = self._context, None, None
+            context.__exit__(exc_type, exc_value, traceback)
 
     def write(self, model: TModel) -> None:
         if self._handle is None:

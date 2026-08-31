@@ -313,6 +313,65 @@ def test_sequential_duplicate_transitive_chain_uses_earliest_vehicle_index(
     assert {label.vehicle_index for label in store.labels.read().values()} == {1}
 
 
+def test_sequential_duplicate_chain_rewrites_bridge_vehicle_indices(
+    config_factory, tmp_path
+) -> None:
+    store = _write_run(tmp_path)
+    records = store.frames.read_all()
+    records.extend(
+        [
+            FrameRecord(
+                frame_index=6,
+                timestamp_seconds=0.6,
+                tracks=[
+                    _track(
+                        3,
+                        3,
+                        0.6,
+                        BBox(x1=170, y1=100, x2=210, y2=130),
+                    )
+                ],
+            ),
+            FrameRecord(
+                frame_index=7,
+                timestamp_seconds=0.7,
+                tracks=[
+                    _track(
+                        3,
+                        3,
+                        0.7,
+                        BBox(x1=180, y1=100, x2=220, y2=130),
+                    )
+                ],
+            ),
+        ]
+    )
+    store.frames.write_all(records)
+    store.tracks.write_all([_summary(1, 1), _summary(2, 2), _summary(3, 3)])
+    store.labels.write({1: _label(1), 2: _label(2), 3: _label(3)})
+
+    payload = deduplicate_classified_tracks(
+        _sequential_duplicate_config(config_factory), store
+    )
+
+    assert payload["merged_vehicle_count"] == 2
+    rewritten = store.frames.read_all()
+    frames = {record.frame_index: record for record in rewritten}
+    assert set(frames) == {0, 1, 3, 4, 6, 7}
+    for record in rewritten:
+        for track in record.tracks:
+            assert track.vehicle_index == 1, (
+                f"Track {track.track_id} at frame {record.frame_index} "
+                f"has vehicle index {track.vehicle_index}"
+            )
+
+    bridge_track_2 = [
+        track for track in frames[6].tracks if track.track_id == 2
+    ]
+    assert len(bridge_track_2) == 1
+    assert bridge_track_2[0].vehicle_index == 1
+
+
 def test_report_generation_emits_one_row_after_merged_labels(
     config_factory, tmp_path
 ) -> None:

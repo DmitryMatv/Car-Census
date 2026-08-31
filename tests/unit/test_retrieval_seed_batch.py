@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mmr.retrieval_seed import _normalize_batch_result_for_crop
+from mmr.trafficeye_batch_grid import normalize_batch_result_for_source_crop
 from models import BBox, MMRResult
 
 
@@ -19,7 +19,7 @@ def test_seed_normalizes_batch_detection_box_to_source_crop() -> None:
         },
     )
 
-    normalized = _normalize_batch_result_for_crop(
+    normalized = normalize_batch_result_for_source_crop(
         result,
         image_width=256,
         image_height=191,
@@ -43,12 +43,12 @@ def test_seed_batch_normalization_is_idempotent() -> None:
         },
     )
 
-    normalized = _normalize_batch_result_for_crop(
+    normalized = normalize_batch_result_for_source_crop(
         result,
         image_width=400,
         image_height=512,
     )
-    normalized_again = _normalize_batch_result_for_crop(
+    normalized_again = normalize_batch_result_for_source_crop(
         normalized,
         image_width=400,
         image_height=512,

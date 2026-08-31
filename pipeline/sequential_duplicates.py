@@ -329,6 +329,7 @@ def _inject_bridge_observations(
     records: list[FrameRecord],
     merged_pairs: list[dict[str, Any]],
     endpoints: dict[int, _TrackEndpoints],
+    canonical_by_vehicle: dict[int, int],
 ) -> list[FrameRecord]:
     if not merged_pairs:
         return records
@@ -363,7 +364,9 @@ def _inject_bridge_observations(
         if left_track_obs is None:
             continue
 
-        vehicle_index = left_ep.vehicle_index
+        vehicle_index = canonical_by_vehicle.get(
+            left_ep.vehicle_index, left_ep.vehicle_index
+        )
         track_id = left_ep.track_id
         confidence = left_track_obs.confidence
         class_id = left_track_obs.class_id
@@ -505,7 +508,9 @@ def deduplicate_classified_tracks(
         records = _rewrite_frames(records, canonical_by_vehicle)
         run_store.tracks.write_all(_rewrite_summaries(summaries, canonical_by_vehicle))
     if merged_pairs:
-        records = _inject_bridge_observations(records, merged_pairs, endpoints)
+        records = _inject_bridge_observations(
+            records, merged_pairs, endpoints, canonical_by_vehicle
+        )
     if changed_vehicle_indices or merged_pairs:
         run_store.frames.write_all(records)
 
