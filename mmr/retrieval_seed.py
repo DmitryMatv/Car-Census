@@ -57,18 +57,6 @@ def _resolve_image_path(
     return None
 
 
-def _normalize_batch_result_for_crop(
-    result: MMRResult,
-    image_width: int,
-    image_height: int,
-) -> MMRResult:
-    return normalize_batch_result_for_source_crop(
-        result,
-        image_width=image_width,
-        image_height=image_height,
-    )
-
-
 def seed_retrieval_cache(
     *,
     run_dirs: list[Path],
@@ -108,7 +96,7 @@ def seed_retrieval_cache(
                 image_bytes=image_bytes,
                 request_hash=hash_request(image_bytes, request_payload),
                 request_payload=request_payload,
-                result=_normalize_batch_result_for_crop(
+                result=normalize_batch_result_for_source_crop(
                     result,
                     image_width=width,
                     image_height=height,

@@ -240,9 +240,7 @@ def cache_seed(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     summaries = seed_retrieval_cache(
         run_dirs=[run_dir.expanduser().resolve() for run_dir in run_dirs],
         config=config,
@@ -269,9 +267,7 @@ def cache_organize(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     migrated = migrate_legacy_response_cache(target_cache_dir)
     typer.echo(
         f"Moved {migrated} legacy response files into {target_cache_dir / 'responses'}"
@@ -288,12 +284,9 @@ def cache_compact(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     changed = compact_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(f"Compacted {changed} retrieval records in {target_cache_dir}")
 
@@ -311,9 +304,7 @@ def cache_migrate_embeddings(
     load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     summary = migrate_retrieval_embeddings(config=config, cache_dir=target_cache_dir)
     typer.echo(
         f"Migrated {summary.migrated} retrieval records in {target_cache_dir}; "
@@ -333,16 +324,13 @@ def cache_calibrate(
 ) -> None:
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
-    target_cache_dir = _resolve_retrieval_cache_dir(
-        project_root, config, cache_dir
-    )
+    target_cache_dir = _resolve_retrieval_cache_dir(project_root, config, cache_dir)
     report = calibrate_retrieval_cache(config=config, cache_dir=target_cache_dir)
     typer.echo(report)
     if report.usable_threshold is None:
         raise typer.Exit(code=1)
     typer.echo(
-        f"Calibration artifact: "
-        f"{target_cache_dir / 'retrieval' / 'calibration.json'}"
+        f"Calibration artifact: {target_cache_dir / 'retrieval' / 'calibration.json'}"
     )
 
 
@@ -357,7 +345,6 @@ def render(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path, accelerator)
     store = RunStore.from_existing(run_dir)
@@ -392,7 +379,6 @@ def smooth(
     config_path: Optional[Path] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    load_dotenv()
     configure_logging(verbose)
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
