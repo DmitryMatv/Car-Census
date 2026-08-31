@@ -22,7 +22,6 @@ class MutableTrackState:
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
     last_candidate_time: float | None = None
-    suppressed_duplicate: bool = False
 
 
 class TrackStateStore:
@@ -68,10 +67,6 @@ class TrackStateStore:
 
     def sorted_active_states(self) -> list[MutableTrackState]:
         return sorted(
-            (
-                state
-                for state in self._track_states.values()
-                if not state.suppressed_duplicate
-            ),
+            self._track_states.values(),
             key=lambda item: (item.first_frame_index, item.track_id),
         )

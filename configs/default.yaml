@@ -46,6 +46,42 @@ detector:
   optimize_for_inference: true
   inference_dtype: auto
 
+reid:
+  # Selective appearance embeddings (ReID). Crops are embedded on a per-track
+  # cadence plus for rescue candidates; embeddings back the rescue layer's
+  # identity confirmation. The backbone is a torchvision ResNet-18 (ImageNet
+  # weights; downloaded once on first use and cached). Embeddings cannot
+  # distinguish identical same-model/same-color cars — the world-space rescue
+  # gate covers that blind spot.
+  enabled: true
+  device: auto
+  embed_every_n_frames: 3
+  history_length: 16
+  # Cosine-similarity floor for a rescue takeover when both sides have
+  # embeddings; when either side has none, the geometry-only gate applies.
+  min_appearance_similarity: 0.60
+  batch_size: 16
+
+rescue:
+  # World-space rescue layer. When BoT-SORT spawns a fresh tracklet for a
+  # detection no existing track claimed (the "car reappears after a gap with
+  # a new ID" failure), the layer predicts the missing track's road-plane
+  # position from its own recent trajectory (constant world velocity; the
+  # camera is static) and takes the identity over when the handoff is
+  # physically plausible. Requires a calibrated camera homography; without
+  # one it stays inert and tracking behaves exactly as before.
+  enabled: true
+  max_gap_seconds: 2.0
+  max_speed_mps: 40.0
+  # Radial and lateral (cross-lane) bounds for the handoff displacement.
+  max_distance_m: 4.0
+  lateral_tolerance_m: 2.0
+  # World-velocity is least-squares fitted over this many recent observations.
+  velocity_fit_points: 5
+  # Below this world speed the direction estimate is unreliable; the lateral
+  # gate is skipped and only the radial gate applies.
+  min_direction_speed_mps: 1.0
+
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
   # 60 at the default 10 analysis FPS keeps IDs alive through ~2 s of missed
@@ -79,19 +115,20 @@ tracker:
   frame_rate: 0
   ignore_edge_touches: true
   edge_margin_px: 10
-  suppress_duplicate_tracks: false
-  duplicate_track_iou_threshold: 0.80
-  duplicate_track_containment_threshold: 0.95
-  duplicate_track_min_area_ratio: 0.30
-  duplicate_track_center_distance_ratio: 0.30
   suppress_sequential_duplicate_tracks: false
   # Extended from 0.70 s: post-hoc merges are now policed by the implied
   # world-speed gate (sequential_duplicate_max_implied_speed_mps) whenever a
   # camera homography is calibrated, so a wider gap window is safe.
   sequential_duplicate_max_gap_seconds: 2.0
   sequential_duplicate_prediction_error_ratio: 0.70
-  sequential_duplicate_min_width_ratio: 0.50
-  sequential_duplicate_min_height_ratio: 0.45
+  # Relaxed from 0.50/0.45: a car receding from the static camera shrinks
+  # sharply across a 1 s detection gap (distance can nearly double), so pixel
+  # size guards at 0.50 rejected legitimate fragment merges. Physical
+  # plausibility of the handoff is policed by the implied world-speed gate
+  # (sequential_duplicate_max_implied_speed_mps) whenever a homography is
+  # calibrated; without one, consider restoring stricter values.
+  sequential_duplicate_min_width_ratio: 0.30
+  sequential_duplicate_min_height_ratio: 0.25
   sequential_duplicate_min_handoff_iou: 0.03
   sequential_duplicate_require_same_color: false
   sequential_duplicate_require_same_generation: false

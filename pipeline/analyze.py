@@ -5,7 +5,6 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import numpy as np
-
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
 from detectors.factory import create_detector
@@ -32,6 +31,7 @@ from pipeline.vehicles import (
     track_summary_from_state,
 )
 from roi.transform import ViewTransformer, build_view_transformer
+from storage.json_artifacts import write_json
 from storage.run_store import RunStore
 from tracking_adapters.botsort import BotSortAdapter
 from utils.video import iter_sampled_frames, read_video_metadata, validate_video_fps
@@ -127,13 +127,19 @@ def analyze_video(
         height=metadata.height,
         frame_count=metadata.frame_count,
         retrieval_cache_dir=(
-            project_root / config.project.output_root / config.project.retrieval_cache_dir
+            project_root
+            / config.project.output_root
+            / config.project.retrieval_cache_dir
         ).resolve(),
     )
     run_store.manifest.write(manifest)
 
     detector = create_detector(config, project_root=project_root)
-    tracker = BotSortAdapter(config, frame_rate=analysis_fps)
+    tracker = BotSortAdapter(
+        config,
+        frame_rate=analysis_fps,
+        view_transformer=build_view_transformer(config, profile),
+    )
     diagnostics = AnalysisDiagnostics()
     crop_selector = CropCandidateSelector(config, run_store)
     edge_suppression = EdgeSuppression(config, profile)
@@ -172,7 +178,11 @@ def analyze_video(
             )
 
             diagnostics.detections_passed_to_tracker += len(global_detections)
-            tracked = tracker.update(global_detections, sampled_frame.frame)
+            tracked = tracker.update(
+                global_detections,
+                sampled_frame.frame,
+                timestamp=sampled_frame.timestamp_seconds,
+            )
             update_result = track_updater.process_tracker_outputs(
                 tracked=tracked,
                 frame_input=FrameTrackingInput(
@@ -191,6 +201,12 @@ def analyze_video(
             for count_event in update_result.counted_events:
                 count_writer.write(count_event)
 
+    audit_payload = getattr(tracker, "rescue_audit_payload", None)
+    if callable(audit_payload):
+        write_json(
+            run_store.analysis_dir / "rescue_reassociations.json",
+            audit_payload(),
+        )
     _finalize_analysis(
         run_store=run_store,
         track_states=track_updater.sorted_track_states(),

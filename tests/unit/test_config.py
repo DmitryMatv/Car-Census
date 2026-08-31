@@ -36,7 +36,6 @@ def test_canonical_tracker_confidence_contract(default_config) -> None:
     assert config.detector.confidence == 0.15
     assert config.tracker.high_conf_det_threshold == 0.30
     assert config.detector.confidence < config.tracker.high_conf_det_threshold
-    assert config.tracker.suppress_duplicate_tracks is False
 
 
 def test_canonical_reassociation_and_buffer_contract(default_config) -> None:
@@ -52,26 +51,6 @@ def test_tracker_config_accepts_supported_cmc_methods(config_factory) -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
         config = config_factory({"tracker": {"cmc_method": cmc_method}})
         assert config.tracker.cmc_method == cmc_method
-
-
-def test_tracker_config_accepts_duplicate_suppression_options(config_factory) -> None:
-    config = config_factory(
-        {
-            "tracker": {
-                "suppress_duplicate_tracks": False,
-                "duplicate_track_iou_threshold": 0.95,
-                "duplicate_track_containment_threshold": 0.99,
-                "duplicate_track_min_area_ratio": 0.40,
-                "duplicate_track_center_distance_ratio": 0.20,
-            }
-        }
-    )
-
-    assert config.tracker.suppress_duplicate_tracks is False
-    assert config.tracker.duplicate_track_iou_threshold == 0.95
-    assert config.tracker.duplicate_track_containment_threshold == 0.99
-    assert config.tracker.duplicate_track_min_area_ratio == 0.40
-    assert config.tracker.duplicate_track_center_distance_ratio == 0.20
 
 
 def test_tracker_config_accepts_sequential_duplicate_options(config_factory) -> None:

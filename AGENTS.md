@@ -20,7 +20,7 @@ Use Virtual Environment `source .venv/bin/activate` because `pytest` and everyth
 
 ## Project Snapshot
 
-Car-Census is a video analysis and annotation tool for conducting real-world, on-the-road car make and model visual surveys. It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
+Car-Census is a video analysis and annotation tool for conducting real-world car make and model visual surveys (road traffic surveying). It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
 
 ## Type Safety
 
@@ -47,6 +47,10 @@ Maintain a strict type-safety direction for the project.
   `lost_track_buffer: 15` at 5 analysis FPS becomes 2, so a mature track
   survives only one fully missed analysis frame; an immature track can be
   removed on its first miss.
+- The footage comes from a static tripod-mounted camera; the camera never
+  moves. Do not assume dashcam/moving-camera scenarios (ego-motion, CMC
+  usefulness, "on-the-road" meaning the camera is in a car). CMC stays
+  disabled; "on-the-road survey" refers to surveying road traffic.
 - TrafficEye API key: `export TRAFFICEYE_API_KEY=your_key`
 - TrafficEye manual `combinations` are projected into the response by order, but
   manually supplied boxes may not be returned. For batched MMR grids, match
