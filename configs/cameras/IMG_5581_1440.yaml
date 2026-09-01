@@ -1,24 +1,32 @@
 camera_id: IMG_5581_1440
 polygon:
   points:
-  - - 0
-    - 489
-  - - 799
-    - 318
-  - - 1792
-    - 302
-  - - 2559
-    - 495
-  - - 2559
-    - 1439
-  - - 0
-    - 1439
+    - - 0
+      - 489
+    - - 799
+      - 318
+    - - 1792
+      - 302
+    - - 2559
+      - 495
+    - - 2559
+      - 1439
+    - - 0
+      - 1439
 count_line: null
-# Road-plane homography calibration. Uncomment and fill with >= 4 matching
-# point pairs to enable world-space reassociation gating and speed metrics.
-# source_points: pixel (x, y) coordinates on the road surface; pick
-#   well-separated, non-collinear spots whose real-world positions are known.
-# target_points: matching real-world (X, Y) positions in meters.
-# homography:
-#   source_points: [[0, 0], [0, 0], [0, 0], [0, 0]]
-#   target_points: [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+# Road-plane homography calibration. World frame: x = 0 on the median-edge
+# line growing toward the right edge line (3 lanes x 3.75 m); y grows toward
+# the camera. See calibration notes in the homography block comment.
+homography:
+  # Calibrated 2026-09-01 against IMG_5581_1440_30s.mp4 (static camera).
+  # Anchors: D1 divider dash (3 m stroke, LVS 783 3/9 pattern) + median-edge
+  # line; lateral scale from 3 x 3.75 m motorway lanes. Cross-checked: the
+  # independent D2 line reads 7.50 +/- 0.10 m, C1 edge 11.25 +/- 0.55 m.
+  source_points:
+    [
+      [1917.12, 988.36],
+      [2029.32, 1113.42],
+      [1564.9, 988.36],
+      [1612.51, 1113.42],
+    ]
+  target_points: [[3.75, 0.0], [3.75, 3.0], [0.0, 0.0], [0.0, 3.0]]
