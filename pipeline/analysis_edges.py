@@ -66,13 +66,11 @@ class EdgeSuppression:
         roi_shape: tuple[int, int, int],
         roi_offset: tuple[int, int],
     ) -> list[BBox]:
-        if not self.config.tracker.ignore_edge_touches:
-            return []
         return [
             bbox
             for bbox in detection_bboxes(detections)
-            if self.track_touches_suppression_edge(
-                bbox=bbox,
+            if self._hits_suppression_edge(
+                bbox,
                 frame_shape=frame_shape,
                 roi_shape=roi_shape,
                 roi_offset=roi_offset,
@@ -114,9 +112,26 @@ class EdgeSuppression:
     ) -> bool:
         if not self.config.tracker.ignore_edge_touches:
             return False
+        return self._hits_suppression_edge(
+            bbox,
+            frame_shape=frame_shape,
+            roi_shape=roi_shape,
+            roi_offset=roi_offset,
+        ) or self.track_matches_edge_detection(bbox, edge_detection_bboxes)
+
+    def _hits_suppression_edge(
+        self,
+        bbox: BBox,
+        *,
+        frame_shape: tuple[int, int, int],
+        roi_shape: tuple[int, int, int],
+        roi_offset: tuple[int, int],
+    ) -> bool:
+        if not self.config.tracker.ignore_edge_touches:
+            return False
         return self.track_touches_suppression_edge(
             bbox=bbox,
             frame_shape=frame_shape,
             roi_shape=roi_shape,
             roi_offset=roi_offset,
-        ) or self.track_matches_edge_detection(bbox, edge_detection_bboxes)
+        )

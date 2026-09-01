@@ -75,7 +75,7 @@ def _device_overrides(device: str) -> dict[str, Any]:
         )
     if device == "auto":
         return {}
-    return {"detector": {"device": device}}
+    return {"detector": {"device": device}, "reid": {"device": device}}
 
 
 def _load_config_with_accelerator(
@@ -146,7 +146,7 @@ def analyze(
     device: str = typer.Option(
         "auto",
         "--device",
-        help="Detector device: auto, cpu, or cuda.",
+        help="Pipeline device (detector and ReID): auto, cpu, or cuda.",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     run_dir: Optional[Path] = typer.Option(
@@ -421,7 +421,7 @@ def run(
     device: str = typer.Option(
         "auto",
         "--device",
-        help="Detector device: auto, cpu, or cuda.",
+        help="Pipeline device (detector and ReID): auto, cpu, or cuda.",
     ),
     config_path: Optional[Path] = typer.Option(None, "--config"),
     skip_classify: bool = typer.Option(

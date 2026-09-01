@@ -175,6 +175,9 @@ class RetrievalLookup:
     reason: str
 
 
+_EmbeddingCandidate = tuple[RetrievalRecord, float, int]
+
+
 class MMRRetrievalStore:
     """Durable, auditable evidence store for exact and near-duplicate reuse."""
 
@@ -479,69 +482,65 @@ class MMRRetrievalStore:
             migrated += 1
         return migrated, unavailable
 
-    def lookup(
-        self,
-        *,
-        image_bytes: bytes,
-        request_hash: str,
-        request_payload: dict[str, Any],
-        include_ineligible_match: bool = False,
-    ) -> RetrievalLookup:
-        records = self._active_records()
-        image_digest = image_sha256(image_bytes)
-        exact_records = [
-            record
-            for record in records
-            if record.image_sha256 == image_digest
-            and record.request_hash == request_hash
-        ]
-        if exact_records:
-            if any(
-                not _is_eligible(record.result, self.min_make_confidence)
-                for record in exact_records
-            ):
-                match = (
-                    RetrievalMatch(
-                        record=exact_records[0],
-                        result=exact_records[0].result,
-                        kind="exact",
-                        distance=0.0,
-                        perceptual_distance=0,
-                        neighbor_count=len(exact_records),
-                    )
-                    if include_ineligible_match
-                    else None
-                )
-                return RetrievalLookup(
-                    match=match,
-                    candidate_count=len(exact_records),
-                    reason="exact_ineligible",
-                )
-            signatures = {
-                _exact_label_signature(record.result) for record in exact_records
-            }
-            if len(signatures) != 1:
-                return RetrievalLookup(
-                    match=None,
-                    candidate_count=len(exact_records),
-                    reason="exact_conflict",
-                )
-            return RetrievalLookup(
-                match=RetrievalMatch(
-                    record=exact_records[0],
-                    result=exact_records[0].result,
-                    kind="exact",
-                    distance=0.0,
-                    perceptual_distance=0,
-                    neighbor_count=len(exact_records),
-                ),
-                candidate_count=len(exact_records),
-                reason="exact_match",
-            )
+    def _rejected(self, reason: str, candidate_count: int) -> RetrievalLookup:
+        return RetrievalLookup(
+            match=None, candidate_count=candidate_count, reason=reason
+        )
 
-        query_hash = perceptual_hash(image_bytes)
-        contract_hash = request_contract_hash(request_payload)
-        phash_candidates = [
+    @staticmethod
+    def _exact_match(record: RetrievalRecord, neighbor_count: int) -> RetrievalMatch:
+        return RetrievalMatch(
+            record=record,
+            result=record.result,
+            kind="exact",
+            distance=0.0,
+            perceptual_distance=0,
+            neighbor_count=neighbor_count,
+        )
+
+    def _exact_stage_lookup(
+        self,
+        exact_records: list[RetrievalRecord],
+        *,
+        include_ineligible_match: bool,
+    ) -> RetrievalLookup:
+        candidate_count = len(exact_records)
+        if any(
+            not _is_eligible(record.result, self.min_make_confidence)
+            for record in exact_records
+        ):
+            match = (
+                self._exact_match(exact_records[0], candidate_count)
+                if include_ineligible_match
+                else None
+            )
+            return RetrievalLookup(
+                match=match,
+                candidate_count=candidate_count,
+                reason="exact_ineligible",
+            )
+        signatures = {_exact_label_signature(record.result) for record in exact_records}
+        if len(signatures) != 1:
+            return self._rejected("exact_conflict", candidate_count)
+        return RetrievalLookup(
+            match=self._exact_match(exact_records[0], candidate_count),
+            candidate_count=candidate_count,
+            reason="exact_match",
+        )
+
+    def _distance_threshold(self) -> float:
+        if self.calibration is not None:
+            return self.calibration.threshold
+        return self.embedding_distance_threshold
+
+    def _phash_candidates(
+        self,
+        records: list[RetrievalRecord],
+        *,
+        query_hash: int,
+        contract_hash: str,
+    ) -> list[RetrievalRecord]:
+        return [
             record
             for record in records
             if record.embedding_model == self.embedding_model
@@ -551,27 +550,15 @@ class MMRRetrievalStore:
             and _hamming_distance(query_hash, record.perceptual_hash)
             <= self.phash_max_hamming_distance
         ]
-        if not phash_candidates:
-            return RetrievalLookup(match=None, candidate_count=0, reason="no_match")
-        if self.retrieval_mode == "enforce" and self.calibration is None:
-            return RetrievalLookup(
-                match=None,
-                candidate_count=len(phash_candidates),
-                reason="calibration_missing",
-            )
-        query_embedding = self._try_embed(image_bytes)
-        if query_embedding is None:
-            return RetrievalLookup(
-                match=None,
-                candidate_count=len(phash_candidates),
-                reason="embedding_unavailable",
-            )
-        distance_threshold = (
-            self.calibration.threshold
-            if self.calibration is not None
-            else self.embedding_distance_threshold
-        )
-        nearby_candidates = [
+
+    def _nearby_candidates(
+        self,
+        phash_candidates: list[RetrievalRecord],
+        *,
+        query_embedding: list[float],
+        query_hash: int,
+    ) -> list[_EmbeddingCandidate]:
+        nearby = [
             (
                 record,
                 cosine_distance(query_embedding, record.embedding or []),
@@ -579,23 +566,24 @@ class MMRRetrievalStore:
             )
             for record in phash_candidates
         ]
-        nearby_candidates = [
+        return [
             candidate
-            for candidate in nearby_candidates
-            if candidate[1] <= distance_threshold
+            for candidate in nearby
+            if candidate[1] <= self._distance_threshold()
         ]
-        if any(
-            not _is_eligible(record.result, self.min_make_confidence)
-            for record, _distance, _phash_distance in nearby_candidates
-        ):
-            return RetrievalLookup(
-                match=None,
-                candidate_count=len(nearby_candidates),
-                reason="embedding_ineligible",
-            )
 
-        candidates_by_image: dict[str, list[tuple[RetrievalRecord, float, int]]] = {}
-        for candidate in nearby_candidates:
+    def _has_ineligible_candidate(self, candidates: list[_EmbeddingCandidate]) -> bool:
+        return any(
+            not _is_eligible(record.result, self.min_make_confidence)
+            for record, _distance, _phash_distance in candidates
+        )
+
+    def _collapse_image_groups(
+        self, candidates: list[_EmbeddingCandidate]
+    ) -> list[_EmbeddingCandidate] | None:
+        """Best candidate per image, or None when any image disagrees on identity."""
+        candidates_by_image: dict[str, list[_EmbeddingCandidate]] = {}
+        for candidate in candidates:
             candidates_by_image.setdefault(candidate[0].image_sha256, []).append(
                 candidate
             )
@@ -604,38 +592,21 @@ class MMRRetrievalStore:
                 len({_identity_signature(item[0].result) for item in image_candidates})
                 > 1
             ):
-                return RetrievalLookup(
-                    match=None,
-                    candidate_count=len(nearby_candidates),
-                    reason="embedding_conflict",
-                )
-
-        candidates = [
+                return None
+        best = [
             min(
                 image_candidates, key=lambda item: (item[1], item[2], item[0].record_id)
             )
             for image_candidates in candidates_by_image.values()
         ]
-        candidates.sort(key=lambda item: (item[1], item[2], item[0].record_id))
-        if not candidates:
-            return RetrievalLookup(match=None, candidate_count=0, reason="no_match")
-        if len(candidates) < self.min_neighbors:
-            return RetrievalLookup(
-                match=None,
-                candidate_count=len(candidates),
-                reason="insufficient_neighbors",
-            )
+        best.sort(key=lambda item: (item[1], item[2], item[0].record_id))
+        return best
 
-        identity_signatures = {
-            _identity_signature(candidate[0].result) for candidate in candidates
-        }
-        if len(identity_signatures) != 1:
-            return RetrievalLookup(
-                match=None,
-                candidate_count=len(candidates),
-                reason="embedding_conflict",
-            )
-
+    def _embedding_match_lookup(
+        self,
+        candidates: list[_EmbeddingCandidate],
+        nearby_candidates: list[_EmbeddingCandidate],
+    ) -> RetrievalLookup:
         record, distance, phash_distance = candidates[0]
         variation_values = {
             _normalized(record.result.variation)
@@ -681,6 +652,65 @@ class MMRRetrievalStore:
             candidate_count=len(candidates),
             reason="embedding_match",
         )
+
+    def _embedding_stage_lookup(
+        self,
+        image_bytes: bytes,
+        request_payload: dict[str, Any],
+        records: list[RetrievalRecord],
+    ) -> RetrievalLookup:
+        query_hash = perceptual_hash(image_bytes)
+        contract_hash = request_contract_hash(request_payload)
+        phash_candidates = self._phash_candidates(
+            records, query_hash=query_hash, contract_hash=contract_hash
+        )
+        if not phash_candidates:
+            return self._rejected("no_match", 0)
+        if self.retrieval_mode == "enforce" and self.calibration is None:
+            return self._rejected("calibration_missing", len(phash_candidates))
+        query_embedding = self._try_embed(image_bytes)
+        if query_embedding is None:
+            return self._rejected("embedding_unavailable", len(phash_candidates))
+        nearby_candidates = self._nearby_candidates(
+            phash_candidates, query_embedding=query_embedding, query_hash=query_hash
+        )
+        if self._has_ineligible_candidate(nearby_candidates):
+            return self._rejected("embedding_ineligible", len(nearby_candidates))
+        candidates = self._collapse_image_groups(nearby_candidates)
+        if candidates is None:
+            return self._rejected("embedding_conflict", len(nearby_candidates))
+        if not candidates:
+            return self._rejected("no_match", 0)
+        if len(candidates) < self.min_neighbors:
+            return self._rejected("insufficient_neighbors", len(candidates))
+        identity_signatures = {
+            _identity_signature(candidate[0].result) for candidate in candidates
+        }
+        if len(identity_signatures) != 1:
+            return self._rejected("embedding_conflict", len(candidates))
+        return self._embedding_match_lookup(candidates, nearby_candidates)
+
+    def lookup(
+        self,
+        *,
+        image_bytes: bytes,
+        request_hash: str,
+        request_payload: dict[str, Any],
+        include_ineligible_match: bool = False,
+    ) -> RetrievalLookup:
+        records = self._active_records()
+        image_digest = image_sha256(image_bytes)
+        exact_records = [
+            record
+            for record in records
+            if record.image_sha256 == image_digest
+            and record.request_hash == request_hash
+        ]
+        if exact_records:
+            return self._exact_stage_lookup(
+                exact_records, include_ineligible_match=include_ineligible_match
+            )
+        return self._embedding_stage_lookup(image_bytes, request_payload, records)
 
     def append_lookup_audit(
         self,

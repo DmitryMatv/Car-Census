@@ -34,7 +34,7 @@ class FakeRfDetrMedium:
             device=device if device is not None else self.default_model_device
         )
 
-    def optimize_for_inference(self, **kwargs: Any) -> None:
+    def inference(self, **kwargs: Any) -> None:
         self.optimize_calls.append(kwargs)
 
     def predict(self, images: list[np.ndarray], **kwargs: Any) -> object:

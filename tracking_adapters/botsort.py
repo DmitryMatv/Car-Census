@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import supervision as sv
+from trackers import BoTSORTTracker
+
 from config import AppConfig
 from reid import AppearanceEmbedder, TrackAppearanceMemory, build_embedder
 from roi.transform import ViewTransformer
-from trackers import BoTSORTTracker
-
-from tracking_adapters.rescue import RescueEngine
+from tracking_adapters.rescue import RescueEngine, RescueMatch
 
 if TYPE_CHECKING:
     # Dynamic third-party module; typed for mypy via the package's py.typed.
@@ -163,6 +163,19 @@ class BotSortAdapter:
             x1, _y1, x2, y2 = (float(value) for value in bbox)
             self._rescue.observe(int(track_id), timestamp, ((x1 + x2) / 2.0, y2))
 
+    def _embed_safely(self, crops: list[np.ndarray]) -> list[np.ndarray]:
+        """Embed crops, or return no vectors and disable appearance on failure."""
+        if self._embedder is None or not crops:
+            return []
+        try:
+            return list(self._embedder.embed(crops))
+        except Exception:
+            logger.warning(
+                "ReID embedder failed; appearance evidence disabled", exc_info=True
+            )
+            self._embedder = None
+            return []
+
     def _observe_appearance(self, tracked: sv.Detections, frame: np.ndarray) -> None:
         if self._embedder is None or tracked.tracker_id is None:
             return
@@ -185,16 +198,75 @@ class BotSortAdapter:
                 pending.append((track_id, crop))
         if not pending:
             return
-        try:
-            vectors = self._embedder.embed([crop for _id, crop in pending])
-        except Exception:
-            logger.warning(
-                "ReID embedder failed; appearance evidence disabled", exc_info=True
-            )
-            self._embedder = None
-            return
+        vectors = self._embed_safely([crop for _track_id, crop in pending])
         for (track_id, _crop), vector in zip(pending, vectors):
             self._memory.observe(track_id, vector)
+
+    @staticmethod
+    def _busy_output_ids(tracked: sv.Detections) -> set[int]:
+        output_ids: Any = tracked.tracker_id if tracked.tracker_id is not None else []
+        return {
+            int(track_id)
+            for track_id in output_ids
+            if track_id is not None and int(track_id) >= 0
+        }
+
+    def _spawn_appearance_vectors(
+        self, frame: np.ndarray, spawn_boxes: list[tuple[float, float, float, float]]
+    ) -> list[np.ndarray | None]:
+        vectors: list[np.ndarray | None] = [None] * len(spawn_boxes)
+        if self._embedder is None:
+            return vectors
+        crops = [
+            _crop_with_padding(
+                frame,
+                bbox,
+                self._config.analysis.crop_padding_ratio,
+                self._config.analysis.crop_padding_px,
+            )
+            for bbox in spawn_boxes
+        ]
+        indexed = [
+            (index, crop) for index, crop in enumerate(crops) if crop is not None
+        ]
+        if not indexed:
+            return vectors
+        embedded = self._embed_safely([crop for _index, crop in indexed])
+        for (index, _crop), vector in zip(indexed, embedded):
+            vectors[index] = vector
+        return vectors
+
+    @staticmethod
+    def _accepted_event_details(match: RescueMatch) -> dict[str, Any]:
+        return {
+            "old_track_id": match.old_track_id,
+            "gap_seconds": match.gap_seconds,
+            "distance_m": match.distance_m,
+            "lateral_m": match.lateral_m,
+            "implied_speed_mps": match.implied_speed_mps,
+            "appearance_similarity": match.appearance_similarity,
+        }
+
+    def _apply_rescue_match(
+        self,
+        spawn: BoTSORTTracklet,
+        bbox: tuple[float, float, float, float],
+        match: RescueMatch,
+        busy_ids: set[int],
+        timestamp: float,
+    ) -> None:
+        old_id = match.old_track_id
+        self.tracker.tracks = [
+            track for track in self.tracker.tracks if _track_identity(track) != old_id
+        ]
+        spawn.tracker_id = old_id
+        busy_ids.add(old_id)
+        self._rescue.observe(old_id, timestamp, ((bbox[0] + bbox[2]) / 2.0, bbox[3]))
+        self._events.append(
+            self._event(
+                "accepted", timestamp, bbox, self._accepted_event_details(match)
+            )
+        )
 
     def _attempt_rescues(
         self, tracked: sv.Detections, frame: np.ndarray, timestamp: float
@@ -207,42 +279,11 @@ class BotSortAdapter:
         spawns = [track for track in tracks if _is_fresh_spawn(track)]
         if not spawns:
             return
-        output_ids: Any = tracked.tracker_id if tracked.tracker_id is not None else []
-        busy_ids = {
-            int(track_id)
-            for track_id in output_ids
-            if track_id is not None and int(track_id) >= 0
-        }
+        busy_ids = self._busy_output_ids(tracked)
         spawn_boxes: list[tuple[float, float, float, float]] = [
             _xyxy_tuple(track.get_state_bbox()) for track in spawns
         ]
-        vectors: list[np.ndarray | None] = [None] * len(spawns)
-        if self._embedder is not None:
-            crops = [
-                _crop_with_padding(
-                    frame,
-                    bbox,
-                    self._config.analysis.crop_padding_ratio,
-                    self._config.analysis.crop_padding_px,
-                )
-                for bbox in spawn_boxes
-            ]
-            indexed = [
-                (index, crop) for index, crop in enumerate(crops) if crop is not None
-            ]
-            if indexed:
-                try:
-                    embedded = self._embedder.embed([crop for _index, crop in indexed])
-                except Exception:
-                    logger.warning(
-                        "ReID embedder failed; appearance evidence disabled",
-                        exc_info=True,
-                    )
-                    self._embedder = None
-                    embedded = np.empty((0, 0), dtype=np.float32)
-                for (index, _crop), vector in zip(indexed, embedded):
-                    vectors[index] = vector
-
+        vectors = self._spawn_appearance_vectors(frame, spawn_boxes)
         for spawn, bbox, vector in zip(spawns, spawn_boxes, vectors):
             match, rejections = self._rescue.match(
                 bbox,
@@ -256,34 +297,8 @@ class BotSortAdapter:
                 self._events.append(
                     self._event("rejected", timestamp, bbox, rejection.__dict__)
                 )
-            if match is None:
-                continue
-            old_id = match.old_track_id
-            self.tracker.tracks = [
-                track
-                for track in self.tracker.tracks
-                if _track_identity(track) != old_id
-            ]
-            spawn.tracker_id = old_id
-            busy_ids.add(old_id)
-            self._rescue.observe(
-                old_id, timestamp, ((bbox[0] + bbox[2]) / 2.0, bbox[3])
-            )
-            self._events.append(
-                self._event(
-                    "accepted",
-                    timestamp,
-                    bbox,
-                    {
-                        "old_track_id": old_id,
-                        "gap_seconds": match.gap_seconds,
-                        "distance_m": match.distance_m,
-                        "lateral_m": match.lateral_m,
-                        "implied_speed_mps": match.implied_speed_mps,
-                        "appearance_similarity": match.appearance_similarity,
-                    },
-                )
-            )
+            if match is not None:
+                self._apply_rescue_match(spawn, bbox, match, busy_ids, timestamp)
 
     def _event(
         self,

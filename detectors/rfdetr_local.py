@@ -100,7 +100,7 @@ class RfDetrMediumDetector(Detector):
             getattr(getattr(self.model, "model", None), "device", None),
         )
         if config.detector.optimize_for_inference:
-            self.model.optimize_for_inference(
+            self.model.inference(
                 compile=False,
                 dtype=self._inference_dtype,
             )

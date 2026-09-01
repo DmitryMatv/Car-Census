@@ -22,8 +22,18 @@ def test_removed_gpu_accelerator_is_rejected() -> None:
         _accelerator_overrides("gpu")
 
 
-def test_cpu_device_overrides_detector_device() -> None:
-    assert _device_overrides("cpu") == {"detector": {"device": "cpu"}}
+def test_cpu_device_overrides_detector_and_reid_device() -> None:
+    assert _device_overrides("cpu") == {
+        "detector": {"device": "cpu"},
+        "reid": {"device": "cpu"},
+    }
+
+
+def test_cuda_device_overrides_detector_and_reid_device() -> None:
+    assert _device_overrides("cuda") == {
+        "detector": {"device": "cuda"},
+        "reid": {"device": "cuda"},
+    }
 
 
 def test_auto_device_has_no_overrides() -> None:
