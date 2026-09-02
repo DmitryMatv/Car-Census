@@ -17,12 +17,16 @@ from roi.geometry import (
 def track_matches_edge_detection(
     track_bbox: BBox, edge_detection_bboxes: SequenceABC[BBox]
 ) -> bool:
+    """True when the track observation IS an edge detection, not merely near one.
+
+    The IoU bar is high on purpose: far-field vehicles routinely brush past
+    low-confidence misfires at the crop boundary (IoU 0.05-0.2) while passing
+    static structures, and suppressing those observations makes the real
+    vehicle invisible for its whole far-field approach. Only a substantial
+    duplicate counts.
+    """
     for detection_bbox in edge_detection_bboxes:
-        if track_bbox.iou(detection_bbox) >= 0.05:
-            return True
-        if track_bbox.contains_point(detection_bbox.center):
-            return True
-        if detection_bbox.contains_point(track_bbox.center):
+        if track_bbox.iou(detection_bbox) >= 0.5:
             return True
     return False
 

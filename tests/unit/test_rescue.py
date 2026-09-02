@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+
 from config import RescueConfig
 from reid import TrackAppearanceMemory
 from roi.transform import ViewTransformer
@@ -20,6 +21,7 @@ def _config(**overrides: float) -> RescueConfig:
         "lateral_tolerance_m": 2.0,
         "velocity_fit_points": 5,
         "min_direction_speed_mps": 1.0,
+        "max_behind_prediction_m": 1.5,
     }
     values.update(overrides)
     return RescueConfig(enabled=True, **values)  # type: ignore[arg-type]
@@ -70,6 +72,7 @@ def test_engine_inactive_when_disabled() -> None:
         lateral_tolerance_m=2.0,
         velocity_fit_points=5,
         min_direction_speed_mps=1.0,
+        max_behind_prediction_m=1.5,
     )
 
     assert engine.active is False
@@ -247,3 +250,60 @@ def test_rejection_carries_metrics_for_audit() -> None:
     assert rejection.gap_seconds == pytest.approx(0.1)
     assert rejection.distance_m == pytest.approx(23.5, abs=0.5)
     assert rejection.implied_speed_mps == pytest.approx(240.0, abs=1.0)
+
+
+def test_accepts_handoff_slightly_behind_prediction() -> None:
+    engine = _engine()
+    _observe_motion(engine, track_id=7, speed_mps=5.0)
+    # Candidate sits 0.9 m behind the constant-velocity prediction (6.5, 5.0).
+
+    match, rejections = engine.match(_candidate_bbox(5.6, 5.0), 0.3, busy_ids=set())
+
+    assert rejections == []
+    assert match is not None
+    assert match.old_track_id == 7
+
+
+def test_accepts_handoff_exactly_at_behind_tolerance() -> None:
+    engine = _engine()
+    _observe_motion(engine, track_id=7, speed_mps=5.0)
+
+    match, rejections = engine.match(_candidate_bbox(5.0, 5.0), 0.3, busy_ids=set())
+
+    assert rejections == []
+    assert match is not None
+
+
+def test_rejects_handoff_too_far_behind_prediction() -> None:
+    engine = _engine()
+    _observe_motion(engine, track_id=7, speed_mps=5.0)
+    # Candidate sits 1.6 m behind the prediction, past the 1.5 m tolerance,
+    # but close enough to pass every other gate.
+
+    match, rejections = engine.match(_candidate_bbox(4.9, 5.0), 0.3, busy_ids=set())
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["behind_prediction"]
+
+
+def test_behind_prediction_tolerance_is_configurable() -> None:
+    engine = _engine(max_behind_prediction_m=2.0)
+    _observe_motion(engine, track_id=7, speed_mps=5.0)
+
+    match, rejections = engine.match(_candidate_bbox(4.9, 5.0), 0.3, busy_ids=set())
+
+    assert rejections == []
+    assert match is not None
+
+
+def test_prune_drops_trajectories_older_than_gap_ceiling() -> None:
+    engine = _engine(max_gap_seconds=2.0)
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=0.1, bottom_center=(55.0, 50.0))
+    engine.observe(9, timestamp=0.5, bottom_center=(50.0, 50.0))
+
+    engine.observe(11, timestamp=2.5, bottom_center=(50.0, 50.0))
+
+    assert 7 not in engine.trajectories
+    assert 9 in engine.trajectories
+    assert 11 in engine.trajectories

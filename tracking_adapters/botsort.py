@@ -142,6 +142,13 @@ class BotSortAdapter:
             track for track in tracks if _track_identity(track) not in suppressed_ids
         ]
         self.tracker.tracks = filtered_tracks
+        # The only caller retires stale-rejected track IDs. The memory MUST be
+        # forgotten here: the rejector suppresses retired IDs forever, so if
+        # the rescue re-adopts a retired trajectory, every subsequent
+        # observation of the vehicle is suppressed and it becomes invisible
+        # for the rest of its life (observed: 30 consecutive invisible
+        # re-adoptions on one identity). Forgetting forces the vehicle's next
+        # spawn onto a fresh, visible identity.
         for track_id in suppressed_ids:
             self._memory.forget(track_id)
             self._rescue.forget(track_id)
@@ -249,6 +256,7 @@ class BotSortAdapter:
 
     def _apply_rescue_match(
         self,
+        tracked: sv.Detections,
         spawn: BoTSORTTracklet,
         bbox: tuple[float, float, float, float],
         match: RescueMatch,
@@ -256,10 +264,32 @@ class BotSortAdapter:
         timestamp: float,
     ) -> None:
         old_id = match.old_track_id
-        self.tracker.tracks = [
-            track for track in self.tracker.tracks if _track_identity(track) != old_id
-        ]
-        spawn.tracker_id = old_id
+        keeper = self._continuing_tracklet(old_id, spawn)
+        if keeper is not None:
+            # A tracklet carrying the old identity is still alive (it was
+            # unmatched this frame, so its IoU association failed). Feed the
+            # spawn's measurement into it instead of renaming the spawn:
+            # renaming would delete the tracklet's Kalman state, and a fresh
+            # spawn predicts with zero velocity, so a fast vehicle fails IoU
+            # again next frame, spawns again, and is rescued again — its
+            # detections output as -1 for its whole life.
+            keeper.update(np.asarray(bbox, dtype=np.float64))
+            self.tracker.tracks = [
+                track
+                for track in self.tracker.tracks
+                if track is not spawn
+                and (track is keeper or _track_identity(track) != old_id)
+            ]
+        else:
+            # Identity lives only in trajectory memory (the original tracklet
+            # is long gone); the spawn adopts it.
+            self.tracker.tracks = [
+                track
+                for track in self.tracker.tracks
+                if _track_identity(track) != old_id
+            ]
+            spawn.tracker_id = old_id
+        self._claim_output_id(tracked, bbox, old_id)
         busy_ids.add(old_id)
         self._rescue.observe(old_id, timestamp, ((bbox[0] + bbox[2]) / 2.0, bbox[3]))
         self._events.append(
@@ -267,6 +297,40 @@ class BotSortAdapter:
                 "accepted", timestamp, bbox, self._accepted_event_details(match)
             )
         )
+
+    def _continuing_tracklet(
+        self, old_id: int, spawn: BoTSORTTracklet
+    ) -> BoTSORTTracklet | None:
+        candidates = [
+            track
+            for track in self.tracker.tracks
+            if track is not spawn and _track_identity(track) == old_id
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda track: track.number_of_successful_updates)
+
+    def _claim_output_id(
+        self,
+        tracked: sv.Detections,
+        bbox: tuple[float, float, float, float],
+        old_id: int,
+    ) -> None:
+        """Make the takeover visible in this frame's tracker output.
+
+        Fresh spawns leave the tracker output with id -1 until they mature;
+        without this the rescued vehicle is invisible for the takeover frame
+        even though the tracker now carries its identity.
+        """
+        if tracked.tracker_id is None:
+            return
+        spawn_box = np.asarray(bbox, dtype=tracked.xyxy.dtype)
+        for index, track_id in enumerate(tracked.tracker_id.tolist()):
+            if int(track_id) == -1 and np.allclose(
+                tracked.xyxy[index], spawn_box, atol=0.5
+            ):
+                tracked.tracker_id[index] = old_id
+                return
 
     def _attempt_rescues(
         self, tracked: sv.Detections, frame: np.ndarray, timestamp: float
@@ -298,7 +362,9 @@ class BotSortAdapter:
                     self._event("rejected", timestamp, bbox, rejection.__dict__)
                 )
             if match is not None:
-                self._apply_rescue_match(spawn, bbox, match, busy_ids, timestamp)
+                self._apply_rescue_match(
+                    tracked, spawn, bbox, match, busy_ids, timestamp
+                )
 
     def _event(
         self,

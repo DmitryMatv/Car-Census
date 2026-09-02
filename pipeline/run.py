@@ -49,7 +49,7 @@ def run_pipeline(
             if skip_classification:
                 stages.write_skipped_classification_batch_grids(config, run_store)
             else:
-                stages.classify_tracks(config, run_store)
+                stages.classify_tracks(config, run_store, profile)
             if not skip_render:
                 stages.render_video(
                     config,

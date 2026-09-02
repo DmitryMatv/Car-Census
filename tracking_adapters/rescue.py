@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
 from config import RescueConfig
 from reid import TrackAppearanceMemory
 from roi.transform import ViewTransformer
@@ -109,6 +110,7 @@ class RescueEngine:
             return
         if not all(math.isfinite(value) for value in bottom_center):
             return
+        self._prune(timestamp)
         assert self.view_transformer is not None
         world = self.view_transformer.transform_point(bottom_center)
         if not all(math.isfinite(value) for value in world):
@@ -119,6 +121,24 @@ class RescueEngine:
 
     def forget(self, track_id: int) -> None:
         self.trajectories.pop(track_id, None)
+
+    def _prune(self, now: float) -> None:
+        """Drop trajectories too old to ever be a takeover source.
+
+        Without pruning, every trajectory ever seen stays in memory for the
+        whole video and is re-evaluated (and re-rejected as ``gap_exceeded``)
+        against every fresh spawn, inflating the audit and memory on long
+        runs. A trajectory whose last observation is older than the rescue
+        gap ceiling can no longer be matched, so it is removed.
+        """
+        cutoff = now - self.config.max_gap_seconds
+        stale = [
+            track_id
+            for track_id, trajectory in self.trajectories.items()
+            if trajectory.points and trajectory.points[-1].timestamp < cutoff
+        ]
+        for track_id in stale:
+            del self.trajectories[track_id]
 
     def match(
         self,
@@ -227,7 +247,7 @@ class RescueEngine:
             metrics["lateral_m"] = float(lateral)
             if lateral > config.lateral_tolerance_m:
                 return self._reject(old_id, metrics, "lateral_exceeded")
-            if longitudinal < 0.0:
+            if longitudinal < -config.max_behind_prediction_m:
                 return self._reject(old_id, metrics, "behind_prediction")
 
         similarity = _appearance_similarity(old_id, memory, candidate_vector)

@@ -174,8 +174,8 @@ def test_run_pipeline_orders_analyze_classify_render_report(
         _write_analysis_artifacts(run_store, video_path)
         return run_store
 
-    def fake_classify_tracks(config, run_store):
-        _ = config
+    def fake_classify_tracks(config, run_store, profile):
+        _ = config, profile
         calls.append("classify")
         assert isinstance(run_store, RunStore)
         return {}
@@ -239,8 +239,8 @@ def test_run_pipeline_allows_unclassified_annotations_when_classification_is_ski
         _write_analysis_artifacts(run_store, video_path)
         return run_store
 
-    def fake_classify_tracks(config, run_store):
-        _ = config, run_store
+    def fake_classify_tracks(config, run_store, profile):
+        _ = config, run_store, profile
         raise AssertionError("Classification stage should not run")
 
     def fake_write_skipped_classification_batch_grids(config, run_store):
@@ -296,8 +296,8 @@ def test_run_pipeline_can_skip_render_while_still_generating_report(
         _write_analysis_artifacts(run_store, video_path)
         return run_store
 
-    def fake_classify_tracks(config, run_store):
-        _ = config
+    def fake_classify_tracks(config, run_store, profile):
+        _ = config, profile
         calls.append("classify")
         assert isinstance(run_store, RunStore)
         return {}
@@ -349,8 +349,8 @@ def test_run_pipeline_failure_leaves_no_partial_run_directory(
         _write_analysis_artifacts(run_store, video_path)
         return run_store
 
-    def fake_classify_tracks(config, run_store):
-        _ = config, run_store
+    def fake_classify_tracks(config, run_store, profile):
+        _ = config, run_store, profile
         return {}
 
     def fake_write_skipped_classification_batch_grids(config, run_store):

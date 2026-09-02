@@ -35,7 +35,16 @@ class ViewTransformer:
                 f"got shapes {source.shape} and {target.shape}"
             )
         try:
-            self._matrix = cv2.getPerspectiveTransform(source, target)
+            if source.shape[0] == 4:
+                self._matrix = cv2.getPerspectiveTransform(source, target)
+            else:
+                # More than four pairs: solve in the least-squares sense so
+                # calibrations may cover several depth bands at once. The
+                # reprojection guard below still rejects degenerate solutions.
+                matrix, _mask = cv2.findHomography(source, target, method=0)
+                if matrix is None:
+                    raise cv2.error("findHomography returned no solution")
+                self._matrix = matrix
         except cv2.error as exc:
             raise ValueError(
                 "Failed to compute homography; source points are likely "
@@ -48,8 +57,21 @@ class ViewTransformer:
         reprojected = cv2.perspectiveTransform(
             source.reshape(-1, 1, 2), self._matrix
         ).reshape(-1, 2)
-        tolerance = 1e-3 * max(1.0, float(np.abs(target).max()))
-        if not np.allclose(reprojected, target, atol=tolerance):
+        if source.shape[0] == 4:
+            # Exact solve: residuals are pure floating-point noise.
+            tolerance = np.full(
+                source.shape[0],
+                1e-3 * max(1.0, float(np.abs(target).max())),
+            )
+        else:
+            # Least-squares over field-measured anchors: paint placement
+            # tolerance and lens distortion leave honest per-point misfit
+            # (observed 0.1-0.25 m across a ~150 m depth range). Allow 20 cm
+            # or 1% of the point's depth, whichever is larger; degenerate or
+            # grossly mislabeled configurations still fail by orders of
+            # magnitude.
+            tolerance = np.maximum(0.20, 0.01 * np.abs(target).max(axis=1))
+        if not np.all(np.abs(reprojected - target) <= tolerance[:, None]):
             raise ValueError(
                 "Degenerate calibration points: homography does not "
                 "reproject the given point pairs"
@@ -59,9 +81,7 @@ class ViewTransformer:
         array = np.asarray(points, dtype=np.float32).reshape(-1, 2)
         if array.size == 0:
             return array
-        transformed = cv2.perspectiveTransform(
-            array.reshape(-1, 1, 2), self._matrix
-        )
+        transformed = cv2.perspectiveTransform(array.reshape(-1, 1, 2), self._matrix)
         result = transformed.reshape(-1, 2)
         return np.where(np.isfinite(result), result, np.inf).astype(np.float32)
 
@@ -76,10 +96,7 @@ class ViewTransformer:
     ) -> float:
         first_world = self.transform_point(first)
         second_world = self.transform_point(second)
-        if not all(
-            math.isfinite(value)
-            for value in (*first_world, *second_world)
-        ):
+        if not all(math.isfinite(value) for value in (*first_world, *second_world)):
             return math.inf
         return math.hypot(
             first_world[0] - second_world[0],

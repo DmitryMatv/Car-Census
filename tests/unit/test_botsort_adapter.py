@@ -2,8 +2,9 @@ from typing import Any
 
 import numpy as np
 import supervision as sv
-from config import AppConfig
 from trackers import BoTSORTTracker
+
+from config import AppConfig
 from tracking_adapters.botsort import (
     BotSortAdapter,
     _create_botsort_tracker,
@@ -232,21 +233,75 @@ def _seed_trajectory(adapter: BotSortAdapter, track_id: int) -> None:
 def test_adapter_rescue_takes_over_fresh_spawn(default_config) -> None:
     old = _old_tracklet(5)
     spawn = _fresh_spawn_tracklet()
-    stub = _RescueStubTracker([old, spawn])
+    stub = _RescueStubTracker([old, spawn], output=_spawn_output())
     adapter = BotSortAdapter(
         default_config, tracker=stub, view_transformer=_world_transformer()
     )
     _seed_trajectory(adapter, 5)
 
-    adapter.update(
+    result = adapter.update(
+        _spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2
+    )
+
+    assert [track for track in stub.tracks if _track_identity(track) == 5] == [old]
+    assert spawn not in stub.tracks
+    assert 5 in result.tracker_id.tolist()
+    accepted = [e for e in adapter._events if e["outcome"] == "accepted"]
+    assert len(accepted) == 1
+    assert accepted[0]["old_track_id"] == 5
+
+
+def test_adapter_rescue_takeover_keeps_single_tracklet_across_respawns(
+    default_config,
+) -> None:
+    old = _old_tracklet(5)
+    stub = _RescueStubTracker(
+        [old, _fresh_spawn_tracklet()], output=_spawn_output()
+    )
+    adapter = BotSortAdapter(
+        default_config, tracker=stub, view_transformer=_world_transformer()
+    )
+    _seed_trajectory(adapter, 5)
+    updates_before = old.number_of_successful_updates
+
+    adapter.update(_spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2)
+    from trackers.core.botsort.tracklet import BoTSORTTracklet
+
+    second = BoTSORTTracklet(initial_bbox=np.array([70.0, 20.0, 110.0, 50.0]))
+    second_output = sv.Detections(
+        xyxy=np.array([[70, 20, 110, 50]], dtype=np.float32),
+        confidence=np.array([0.9], dtype=np.float32),
+        class_id=np.array([2], dtype=np.int32),
+        tracker_id=np.array([-1], dtype=np.int32),
+        data={"class_name": np.array(["car"], dtype=object)},
+    )
+    stub.tracks = [old, second]
+    stub.output = second_output
+    result = adapter.update(
+        second_output, np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.3
+    )
+
+    assert [track for track in stub.tracks if _track_identity(track) == 5] == [old]
+    assert second not in stub.tracks
+    assert old.number_of_successful_updates == updates_before + 2
+    assert 5 in result.tracker_id.tolist()
+
+
+def test_adapter_rescue_takeover_from_memory_renames_spawn(default_config) -> None:
+    spawn = _fresh_spawn_tracklet()
+    stub = _RescueStubTracker([spawn], output=_spawn_output())
+    adapter = BotSortAdapter(
+        default_config, tracker=stub, view_transformer=_world_transformer()
+    )
+    _seed_trajectory(adapter, 5)
+
+    result = adapter.update(
         _spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2
     )
 
     assert spawn.tracker_id == 5
-    assert all(_track_identity(track) != 5 or track is spawn for track in stub.tracks)
-    accepted = [e for e in adapter._events if e["outcome"] == "accepted"]
-    assert len(accepted) == 1
-    assert accepted[0]["old_track_id"] == 5
+    assert spawn in stub.tracks
+    assert 5 in result.tracker_id.tolist()
 
 
 def test_adapter_rescue_rejects_implausible_handoff(default_config) -> None:
@@ -312,4 +367,41 @@ def test_adapter_rescue_skips_ids_matched_this_frame(default_config) -> None:
 
     assert spawn.tracker_id == -1
     assert old in stub.tracks
+    assert adapter._events == []
+
+
+def test_botsort_adapter_drop_tracks_forgets_rescue_trajectory_and_memory(
+    default_config,
+) -> None:
+    tracker = FakeTrackListTracker()
+    adapter = BotSortAdapter(
+        default_config, tracker=tracker, view_transformer=_world_transformer()
+    )
+    _seed_trajectory(adapter, 2)
+    vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    adapter._memory.observe(2, vector)
+
+    adapter.drop_tracks({2})
+
+    assert [track.tracker_id for track in tracker.tracks] == [1, -1]
+    assert 2 not in adapter._rescue.trajectories
+    assert adapter._memory.similarity(2, vector) is None
+
+
+def test_botsort_adapter_retired_track_is_not_re_adopted_by_rescue(
+    default_config,
+) -> None:
+    spawn = _fresh_spawn_tracklet()
+    stub = _RescueStubTracker([spawn], output=_spawn_output())
+    adapter = BotSortAdapter(
+        default_config, tracker=stub, view_transformer=_world_transformer()
+    )
+    _seed_trajectory(adapter, 5)
+    adapter.drop_tracks({5})
+
+    adapter.update(
+        _spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2
+    )
+
+    assert spawn.tracker_id == -1
     assert adapter._events == []

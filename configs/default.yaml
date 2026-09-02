@@ -81,6 +81,14 @@ rescue:
   # Below this world speed the direction estimate is unreliable; the lateral
   # gate is skipped and only the radial gate applies.
   min_direction_speed_mps: 1.0
+  # Longitudinal overshoot of the constant-velocity prediction tolerated
+  # before a candidate is rejected as "behind prediction". The fit is averaged
+  # over several observations, so a genuinely continuous handoff can land
+  # slightly behind the predicted point (observed 0.3-1.1 m on fast vehicles);
+  # rejecting those splits one car into two. Keep this well below the
+  # following-distance of same-lane traffic so a trailing vehicle is still
+  # rejected.
+  max_behind_prediction_m: 1.5
 
 tracker:
   # BoT-SORT scales this 30-FPS-equivalent value by analysis FPS.
@@ -114,8 +122,14 @@ tracker:
   instant_first_frame_activation: true
   frame_rate: 0
   ignore_edge_touches: true
-  edge_margin_px: 10
-  suppress_sequential_duplicate_tracks: false
+  edge_margin_px: 5
+  # Gates the POST-HOC sequential-duplicate merge in
+  # pipeline/sequential_duplicates.py (the live in-loop suppression was
+  # removed in favor of the rescue layer + NMS; the rescue cannot act on a
+  # duplicate spawn while the original track is still matched in the same
+  # frame, so this post-hoc union is the remaining safety net for that
+  # failure mode).
+  suppress_sequential_duplicate_tracks: true
   # Extended from 0.70 s: post-hoc merges are now policed by the implied
   # world-speed gate (sequential_duplicate_max_implied_speed_mps) whenever a
   # camera homography is calibrated, so a wider gap window is safe.
@@ -149,7 +163,12 @@ mmr:
   batch_cell_size_px: 512
   retrieval_mode: enforce
   retrieval_embedding_distance_threshold: 0.02
-  retrieval_phash_max_hamming_distance: 4
+  # Tight phash gate: at <=4 the Gemini embedding cannot separate same-identity
+  # pairs of different colors (up to ~0.18 cosine distance) from near-identical
+  # facelift variants of the same model (down to ~0.02), so calibration has no
+  # clean threshold and enforce mode fails closed. At <=1 the pair pools
+  # separate cleanly (max same ~0.053 vs min conflicting ~0.131).
+  retrieval_phash_max_hamming_distance: 1
   retrieval_min_neighbors: 1
   retrieval_embedding_api_key_env: OPENROUTER_API_KEY
   retrieval_embedding_model: google/gemini-embedding-2

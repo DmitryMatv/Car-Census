@@ -1,10 +1,31 @@
 camera_id: IMG_5581_1440
 polygon:
+  # Top-left edge raised in 2026-09-01 recalibration: the previous edge
+  # [(0,489),(799,318),(1792,302),...] cropped the far adjacent-road lane out
+  # of the detector's view (detection runs on the polygon's bounding box) and
+  # kept far oncoming traffic within the 10 px edge-suppression margin of the
+  # polygon line itself, so cars driving that lane (e.g. the Toyota Corolla
+  # Cross crossing the whole clip) were never tracked. The edge now clears the
+  # measured ROOF line of that lane by >10 px everywhere (clearance envelope
+  # derived from 105 observed boxes); verified: all 105 bottom-centers inside,
+  # zero bbox-touches-polygon-edge hits, crop top 246 <= min box top 269. The
+  # edge drops back to ~300 px over the median-barrier posts (x >= 1262) so
+  # the static structure stays inside the edge-suppression margin.
   points:
     - - 0
-      - 489
-    - - 799
-      - 318
+      - 455
+    - - 400
+      - 378
+    - - 800
+      - 290
+    - - 920
+      - 255
+    - - 1010
+      - 246
+    - - 1150
+      - 288
+    - - 1262
+      - 300
     - - 1792
       - 302
     - - 2559
@@ -15,18 +36,89 @@ polygon:
       - 1439
 count_line: null
 # Road-plane homography calibration. World frame: x = 0 on the median-edge
-# line growing toward the right edge line (3 lanes x 3.75 m); y grows toward
-# the camera. See calibration notes in the homography block comment.
+# line growing toward the right edge line (3 lanes x 3.75 m; the opposite
+# carriageway sits at negative x, hard shoulder around -15..-11.25); y grows
+# toward the camera.
 homography:
-  # Calibrated 2026-09-01 against IMG_5581_1440_30s.mp4 (static camera).
-  # Anchors: D1 divider dash (3 m stroke, LVS 783 3/9 pattern) + median-edge
-  # line; lateral scale from 3 x 3.75 m motorway lanes. Cross-checked: the
-  # independent D2 line reads 7.50 +/- 0.10 m, C1 edge 11.25 +/- 0.55 m.
-  source_points:
-    [
-      [1917.12, 988.36],
-      [2029.32, 1113.42],
-      [1564.9, 988.36],
-      [1612.51, 1113.42],
-    ]
-  target_points: [[3.75, 0.0], [3.75, 3.0], [0.0, 0.0], [0.0, 3.0]]
+  # Recalibrated 2026-09-01 (far-field overhaul). The previous 4-point
+  # calibration (dash1 corners only) extrapolated the y-map to -100 m and
+  # produced impossible track speeds (medians up to ~126 m/s) and rescue-
+  # hostile world geometry. This calibration anchors the far field with nine
+  # divider-dash anchors and pins the lateral map with all four lane lines.
+  #
+  # Anchors (25 pairs):
+  #   - 4 near corners: ends of D1's first dash (world [0, 3] by definition)
+  #     and the median-edge line at the same rows. Row values are subpixel
+  #     half-max crossings of the paint mass profile (987.25 / 1114.71).
+  #   - 9 far dash world-mid anchors: D1 k=3..7 (x'=3.75) and D2 k=3..6
+  #     (x'=7.5) at the midpoints of strokes measured 36-87 m out. Dash
+  #     pattern decided as 3 m stroke + 9 m gap (12 m cycle, strokes span
+  #     [-12k, -12k+3]): subpixel measurement gives stroke 2.9-3.4 m and gap
+  #     9.0-9.8 m; the 9 m-cycle (6 m gap) hypothesis fits 39x worse in a
+  #     joint homography fit. Stroke k assignment is unambiguous.
+  #   - 12 line samples: pixels on the refined L0/D1/D2/C1 line fits (the
+  #     four lane boundary lines at x' = 0 / 3.75 / 7.5 / 11.25, all
+  #     concurrent at VP (1272.2, 207.7)); their target y values are taken
+  #     from the joint fit so the shipped pairs reproduce it.
+  # Method: 9-frame consensus masking (gray >= 140-172, sat <= 60) to remove
+  # traffic, per-line corridor fits, subpixel half-max stroke edges stable to
+  # +/-0.1 row across thresholds.
+  # Validation (held-out): D2's own near dash reads y' = 0.00 / 2.97; far
+  # stroke lengths read 2.86-3.18 m; held-out C1 lateral reads 11.25 +/- 0.2
+  # (lens distortion leaves ~0.1-0.2 m lateral wiggle at the road edges).
+  # Track speeds through this H: 57/60 tracks land at plausible motorway
+  # speeds (medians 19-31 m/s) versus garbage (up to 126 m/s medians) before.
+  source_points: [
+      [1560.88, 987.25],   # L0 corner @ dash1 far row (y'=0)
+      [1608.23, 1114.71],  # L0 corner @ dash1 near row (y'=3)
+      [1920.38, 987.25],   # D1 dash1 far corner (y'=0)
+      [2026.33, 1114.71],  # D1 dash1 near corner (y'=3)
+      [1519.80, 505.37],   # D1 dash k=3 world-mid (stroke [-36,-33])
+      [1475.54, 452.13],   # D1 dash k=4 world-mid (stroke [-48,-45])
+      [1444.26, 414.50],   # D1 dash k=5 world-mid (stroke [-60,-57])
+      [1420.86, 386.36],   # D1 dash k=6 world-mid (stroke [-72,-69])
+      [1402.85, 364.69],   # D1 dash k=7 world-mid (stroke [-84,-81])
+      [1660.15, 507.40],   # D2 dash k=3 world-mid (stroke [-36,-33])
+      [1591.12, 454.03],   # D2 dash k=4 world-mid (stroke [-48,-45])
+      [1541.83, 415.93],   # D2 dash k=5 world-mid (stroke [-60,-57])
+      [1505.01, 387.47],   # D2 dash k=6 world-mid (stroke [-72,-69])
+      [1305.60, 300.00],   # L0 line sample @row 300
+      [1417.04, 600.00],   # L0 line sample @row 600
+      [1509.90, 850.00],   # L0 line sample @row 850
+      [1349.07, 300.00],   # D1 line sample @row 300
+      [1681.59, 700.00],   # D1 line sample @row 700
+      [2014.11, 1100.00],  # D1 line sample @row 1100
+      [1417.73, 320.00],   # D2 line sample @row 320
+      [1909.30, 700.00],   # D2 line sample @row 700
+      [2413.80, 1090.00],  # D2 line sample @row 1090
+      [1520.39, 350.00],   # C1 edge line sample @row 350
+      [2046.53, 650.00],   # C1 edge line sample @row 650
+      [2520.05, 920.00],   # C1 edge line sample @row 920
+  ]
+  target_points: [
+      [0.0, 0.0],
+      [0.0, 3.0],
+      [3.75, 0.0],
+      [3.75, 3.0],
+      [3.75, -34.5],
+      [3.75, -46.5],
+      [3.75, -58.5],
+      [3.75, -70.5],
+      [3.75, -82.5],
+      [7.5, -34.5],
+      [7.5, -46.5],
+      [7.5, -58.5],
+      [7.5, -70.5],
+      [0.0, -149.47],  # line-sample targets from the joint fit
+      [0.0, -20.92],
+      [0.0, -4.56],
+      [3.75, -150.85],
+      [3.75, -12.55],
+      [3.75, 2.70],
+      [7.5, -123.02],
+      [7.5, -12.70],
+      [7.5, 2.49],
+      [11.25, -94.76],
+      [11.25, -16.73],
+      [11.25, -2.16],
+  ]

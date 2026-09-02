@@ -85,6 +85,11 @@ class RescueConfig(StrictBaseModel):
     lateral_tolerance_m: float = Field(gt=0.0)
     velocity_fit_points: int = Field(ge=2)
     min_direction_speed_mps: float = Field(ge=0.0)
+    # How far behind the constant-velocity prediction a candidate may sit
+    # before it is rejected as "behind prediction". Sub-meter overshoots of
+    # the velocity fit are estimation noise on fast vehicles; without a
+    # tolerance they veto handoffs whose total radial error is far smaller.
+    max_behind_prediction_m: float = Field(gt=0.0)
 
 
 class TrackerConfig(StrictBaseModel):

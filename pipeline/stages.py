@@ -14,7 +14,7 @@ AnalyzeStage = Callable[
 ]
 
 ClassifyStage = Callable[
-    [AppConfig, RunStore],
+    [AppConfig, RunStore, CameraProfile],
     dict[int, MMRResult],
 ]
 

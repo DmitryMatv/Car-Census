@@ -3,7 +3,6 @@ import pytest
 
 from roi.transform import ViewTransformer
 
-
 SOURCE = [[0, 0], [400, 0], [400, 300], [0, 300]]
 TARGET = [[0, 0], [40, 0], [40, 30], [0, 30]]
 
@@ -49,4 +48,58 @@ def test_rejects_degenerate_collinear_sources() -> None:
         ViewTransformer(
             [[0, 0], [10, 0], [20, 0], [30, 0]],
             [[0, 0], [1, 0], [2, 0], [3, 0]],
+        )
+
+
+def _projective_targets(
+    source: list[list[float]], matrix: np.ndarray
+) -> list[list[float]]:
+    homogeneous = np.hstack(
+        [np.asarray(source, dtype=np.float64), np.ones((len(source), 1))]
+    )
+    projected = homogeneous @ matrix.T
+    return (projected[:, :2] / projected[:, 2:3]).tolist()
+
+
+# Genuinely projective mapping (perspective division in x), so a plain
+# 4-point affine fit could not satisfy all six pairs.
+H_TRUE = np.array([[0.1, 0.0, 0.0], [0.0, 0.1, 0.0], [1e-5, 0.0, 1.0]])
+WIDE_SOURCE = [[0, 0], [100, 0], [200, 0], [0, 300], [100, 300], [200, 300]]
+WIDE_TARGET = _projective_targets(WIDE_SOURCE, H_TRUE)
+
+
+def test_accepts_more_than_four_point_pairs() -> None:
+    transformer = ViewTransformer(WIDE_SOURCE, WIDE_TARGET)
+
+    assert transformer.transform_point((200, 0)) == pytest.approx(
+        WIDE_TARGET[2], abs=1e-5
+    )
+    assert transformer.transform_point((150, 150)) == pytest.approx(
+        _projective_targets([[150, 150]], H_TRUE)[0]
+    )
+
+
+def test_least_squares_pairs_tolerate_field_measurement_noise() -> None:
+    noisy = [list(point) for point in WIDE_TARGET]
+    noisy[4][1] += 0.05
+    noisy[5][0] += 0.05
+
+    transformer = ViewTransformer(WIDE_SOURCE, noisy)
+
+    assert transformer.transform_point((0, 0)) == pytest.approx(WIDE_TARGET[0], abs=0.1)
+
+
+def test_rejects_least_squares_pair_set_with_blundered_target() -> None:
+    blundered = [list(point) for point in WIDE_TARGET]
+    blundered[5][0] += 5.0
+
+    with pytest.raises(ValueError, match="Degenerate calibration points"):
+        ViewTransformer(WIDE_SOURCE, blundered)
+
+
+def test_rejects_collinear_sources_with_more_than_four_points() -> None:
+    with pytest.raises(ValueError):
+        ViewTransformer(
+            [[0, 0], [10, 0], [20, 0], [30, 0], [40, 0]],
+            [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
         )

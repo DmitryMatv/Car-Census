@@ -89,7 +89,7 @@ def test_calibration_reports_threshold_only_with_separated_evidence(
         tmp_path / "cache" / "retrieval",
         embedding_model="google/gemini-embedding-2",
         embedding_dimensions=768,
-        phash_max_hamming_distance=4,
+        phash_max_hamming_distance=config.mmr.retrieval_phash_max_hamming_distance,
     )
     assert artifact is not None
     assert artifact.threshold == report.usable_threshold

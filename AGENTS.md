@@ -16,10 +16,7 @@ Never guess at intent. If a task leaves anything open - which screen, which endp
 
 Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
 
-Use Virtual Environment `source .venv/bin/activate`. The venv does not reliably
-ship the quality gates: as of 2026-08-21 it was missing both `pytest` and
-`pyrefly`. Check before running them and `pip install pytest pyrefly` into
-`.venv` if absent.
+Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest pyrefly` into `.venv` if absent.
 
 ## Project Snapshot
 
@@ -91,11 +88,6 @@ analysis.min_box_width_px`. Check the analysis artifacts before assuming a
   code and tests must load defaults through `build_effective_config`; do not
   reintroduce zero-argument `AppConfig()` construction or Pydantic field
   defaults for application settings.
-- `pyrefly check` currently reports a pre-existing baseline of ~40 findings,
-  almost all in `tests/unit/`. Diff against the baseline (e.g. `git stash -u`,
-  run pyrefly, pop, compare) before attributing new findings to your change;
-  `--output-format json` wraps everything under an `errors` key including
-  warnings.
 - OpenCV's `cv2.getPerspectiveTransform` silently accepts degenerate or
   collinear calibration points instead of raising. `roi/transform.py`
   (`ViewTransformer`) guards this with a reprojection check; do not bypass it
@@ -128,5 +120,4 @@ analysis.min_box_width_px`. Check the analysis artifacts before assuming a
   superseded ones. `record_id` hashes the payload including the embedding, so
   one crop+request can legitimately hold two active records until migration
   supersedes the stale one; deduplicating or editing records in place breaks
-   the audit trail.
-
+  the audit trail.

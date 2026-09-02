@@ -197,7 +197,17 @@ def test_embedding_shadow_match_still_calls_traffic_eye(
     _write_image(first_path, quality=95)
     _write_image(second_path, quality=90)
     cache_dir = tmp_path / "cache"
-    config = config_factory({"mmr": {"retrieval_mode": "shadow"}})
+    config = config_factory(
+        {
+            "mmr": {
+                "retrieval_mode": "shadow",
+                # The JPEG-quality pair here sits a few phash bits apart;
+                # pin the gate wide so the test exercises the embedding
+                # path, not the phash default.
+                "retrieval_phash_max_hamming_distance": 4,
+            }
+        }
+    )
 
     client = TrafficEyeClient(
         config=config, cache_dir=cache_dir, embedding_provider=_EmbeddingProvider()
@@ -250,7 +260,14 @@ def test_embedding_enforce_hit_reuses_identity_without_observation_fields(
     _write_image(second_path, quality=90)
     cache_dir = tmp_path / "cache"
 
-    shadow_config = config_factory({"mmr": {"retrieval_mode": "shadow"}})
+    shadow_config = config_factory(
+        {
+            "mmr": {
+                "retrieval_mode": "shadow",
+                "retrieval_phash_max_hamming_distance": 4,
+            }
+        }
+    )
     TrafficEyeClient(
         config=shadow_config,
         cache_dir=cache_dir,
@@ -259,7 +276,14 @@ def test_embedding_enforce_hit_reuses_identity_without_observation_fields(
     _write_calibration_artifact(cache_dir, threshold=1.0)
 
     monkeypatch.delenv("TRAFFICEYE_API_KEY")
-    enforce_config = config_factory({"mmr": {"retrieval_mode": "enforce"}})
+    enforce_config = config_factory(
+        {
+            "mmr": {
+                "retrieval_mode": "enforce",
+                "retrieval_phash_max_hamming_distance": 4,
+            }
+        }
+    )
     result = TrafficEyeClient(
         config=enforce_config,
         cache_dir=cache_dir,
@@ -289,14 +313,30 @@ def test_enforce_without_calibration_falls_back_to_api(
     _write_image(second_path, quality=90)
     cache_dir = tmp_path / "cache"
 
-    shadow_config = config_factory({"mmr": {"retrieval_mode": "shadow"}})
+    shadow_config = config_factory(
+        {
+            "mmr": {
+                "retrieval_mode": "shadow",
+                "retrieval_phash_max_hamming_distance": 4,
+            }
+        }
+    )
     TrafficEyeClient(
         config=shadow_config,
         cache_dir=cache_dir,
         embedding_provider=_EmbeddingProvider(),
     ).recognize_vehicle_crop(first_path)
 
-    enforce_config = config_factory({"mmr": {"retrieval_mode": "enforce"}})
+    enforce_config = config_factory(
+        {
+            "mmr": {
+                "retrieval_mode": "enforce",
+                # Candidates must pass the phash gate so the lookup reaches
+                # the calibration check and reports calibration_missing.
+                "retrieval_phash_max_hamming_distance": 4,
+            }
+        }
+    )
     result = TrafficEyeClient(
         config=enforce_config,
         cache_dir=cache_dir,
