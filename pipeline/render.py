@@ -579,7 +579,7 @@ def render_video(
     smooth_render_tracks: SmoothRenderTracks | None = None,
 ) -> Path:
     metadata = _read_validated_metadata(config, video_path)
-    track_summaries = run_store.tracks.read_all()
+    track_summaries = run_store.tracks_effective.read_all()
     visible_track_ids = visible_track_ids_for_render(
         config,
         run_store.frames.iter(smoothed=False),

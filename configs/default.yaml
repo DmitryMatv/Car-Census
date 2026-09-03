@@ -158,6 +158,39 @@ tracker:
   # limit. Requires a calibrated homography; null disables the world check.
   sequential_duplicate_max_implied_speed_mps: 40.0
 
+linking:
+  # Offline track linking. Merges track fragments of the same physical
+  # vehicle (birth flicker: 1-2 sample throwaway tracks spawned at track
+  # birth; mid-life splits: a missed detection or two in the middle of a
+  # pass) into one canonical vehicle_index. Runs after analysis over the
+  # finished run, never mutates raw artifacts: writes
+  # analysis/linked_tracks.jsonl (derived) plus analysis/links.json
+  # (audit with per-merge evidence). classify/render prefer the linked
+  # tracks when present.
+  enabled: true
+  # Handoff window between a predecessor's last observation and a
+  # successor's first. Observed fragment gaps on the reference camera are
+  # 0.1-0.4 s. Keep this well under the local same-lane following time:
+  # geometry alone cannot tell "same car re-detected" from "next car in
+  # the platoon" once the window grows (appearance confirmation for longer
+  # gaps is future work).
+  max_gap_seconds: 0.4
+  # Implied road-plane speed between the endpoints (distance / gap) must
+  # land in this band. Motorway traffic here runs 19-40 m/s.
+  min_implied_speed_mps: 0.0
+  max_implied_speed_mps: 45.0
+  # Cross-lane drift bound between endpoints; vehicles stay in their lane.
+  max_lateral_offset_m: 4.0
+  # Absolute cap on endpoint displacement (backstop for tiny gaps).
+  max_endpoint_distance_m: 20.0
+  # The end->start displacement must continue the predecessor's recent
+  # motion direction (dot product > 0). Skipped when the displacement or
+  # the predecessor's recent world speed is below the floors (heading is
+  # unreliable at walking-pace world speeds and sub-meter displacements).
+  enforce_direction_continuity: true
+  direction_min_displacement_m: 1.0
+  direction_min_speed_mps: 1.0
+
 mmr:
   api_url: https://trafficeye.ai/recognition
   api_key_env: TRAFFICEYE_API_KEY

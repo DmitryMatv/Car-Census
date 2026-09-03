@@ -45,6 +45,18 @@ class RunLayout:
         return self.analysis_dir / "tracks.jsonl"
 
     @property
+    def linked_tracks_path(self) -> Path:
+        return self.analysis_dir / "linked_tracks.jsonl"
+
+    @property
+    def detections_path(self) -> Path:
+        return self.analysis_dir / "detections.jsonl"
+
+    @property
+    def links_path(self) -> Path:
+        return self.analysis_dir / "links.json"
+
+    @property
     def detection_stats_path(self) -> Path:
         return self.analysis_dir / "detection_stats.json"
 

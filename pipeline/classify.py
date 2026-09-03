@@ -103,7 +103,7 @@ def _collect_classification_tasks(
     labels_by_track: dict[int, MMRResult] = {}
     classification_tasks: list[_ClassificationTask] = []
     summaries_by_vehicle: dict[int, list[TrackSummary]] = {}
-    for summary in run_store.tracks.iter():
+    for summary in run_store.tracks_effective.iter():
         if summary.vehicle_index is None:
             continue
         summaries_by_vehicle.setdefault(summary.vehicle_index, []).append(summary)

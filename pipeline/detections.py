@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import cast
+from typing import Sequence, cast
 
 import numpy as np
 import supervision as sv
 
-from models import BBox
+from models import BBox, CachedFrameDetection, CachedFrameDetections
 
 
 def empty_detections() -> sv.Detections:
@@ -48,6 +48,43 @@ def clone_detections(detections: sv.Detections) -> sv.Detections:
             for key, value in detections.data.items()
         },
         metadata=dict(detections.metadata),
+    )
+
+
+def cached_frame_detections(
+    frame_index: int,
+    timestamp_seconds: float,
+    detections: sv.Detections,
+    edge_suppressed_bboxes: Sequence[BBox],
+) -> CachedFrameDetections:
+    class_ids = (
+        detections.class_id.tolist() if detections.class_id is not None else []
+    )
+    class_names = detections.data.get("class_name", []) if detections.data else []
+    confidences = (
+        detections.confidence.tolist() if detections.confidence is not None else []
+    )
+    cached: list[CachedFrameDetection] = []
+    for index, xyxy in enumerate(detections.xyxy.tolist()):
+        cached.append(
+            CachedFrameDetection(
+                bbox=BBox(x1=float(xyxy[0]), y1=float(xyxy[1]), x2=float(xyxy[2]), y2=float(xyxy[3])),
+                confidence=(
+                    float(confidences[index]) if index < len(confidences) else 0.0
+                ),
+                class_id=(
+                    int(class_ids[index]) if index < len(class_ids) else None
+                ),
+                class_name=(
+                    str(class_names[index]) if index < len(class_names) else None
+                ),
+            )
+        )
+    return CachedFrameDetections(
+        frame_index=frame_index,
+        timestamp_seconds=timestamp_seconds,
+        detections=cached,
+        edge_suppressed_bboxes=list(edge_suppressed_bboxes),
     )
 
 

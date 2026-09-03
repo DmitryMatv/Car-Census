@@ -23,6 +23,7 @@ from mmr.trafficeye_cache import migrate_legacy_response_cache
 from pipeline.analyze import analyze_video
 from pipeline.classify import classify_tracks
 from pipeline.default_stages import default_pipeline_stages
+from pipeline.link import link_analysis_tracks
 from pipeline.render import render_video
 from pipeline.report import generate_reports
 from pipeline.run import run_pipeline
@@ -394,6 +395,39 @@ def smooth(
         profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
     output_path = smooth_render_tracks(config=config, profile=profile, run_store=store)
     typer.echo(str(output_path))
+
+
+@app.command()
+def link(
+    run_dir: Path = typer.Option(..., "--run-dir"),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    """Re-run offline track linking on an existing run.
+
+    Never mutates raw artifacts; rewrites only the derived
+    analysis/linked_tracks.jsonl and analysis/links.json.
+    """
+    configure_logging(verbose)
+    project_root, config = _load_config_with_accelerator(config_path)
+    store = RunStore.from_existing(run_dir)
+    store.validate_analysis_artifacts()
+    manifest = store.manifest.read()
+    if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
+        profile = load_camera_profile(config, manifest.camera_id, root=project_root)
+    else:
+        profile = build_full_frame_profile(width=manifest.width, height=manifest.height)
+    result = link_analysis_tracks(config=config, profile=profile, run_store=store)
+    if result is None:
+        typer.echo("Track linking is disabled (linking.enabled=false)")
+        return
+    typer.echo(
+        f"status={result.status} "
+        f"merge_groups={result.merge_group_count} "
+        f"merged_tracks={result.merged_track_count} "
+        f"vehicles {result.input_vehicle_count} -> {result.output_vehicle_count} "
+        f"ambiguous={result.ambiguous_pair_count}"
+    )
 
 
 @app.command()

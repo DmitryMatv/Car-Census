@@ -123,6 +123,36 @@ class TrackerConfig(StrictBaseModel):
     sequential_duplicate_max_implied_speed_mps: float | None = Field(gt=0.0)
 
 
+class LinkingConfig(StrictBaseModel):
+    """Offline track linking. Merges track fragments of the same physical
+    vehicle into one canonical ``vehicle_index`` after analysis, using
+    ground-plane endpoint geometry. Raw artifacts are never mutated; the
+    linker writes ``analysis/linked_tracks.jsonl`` (derived) and
+    ``analysis/links.json`` (audit).
+
+    ``max_gap_seconds`` is the handoff window between a predecessor's last
+    observation and a successor's first. It is deliberately small: in
+    same-lane platoon traffic the next car reaches the predecessor's last
+    position within ``gap`` seconds at the same road speed, so geometry
+    alone cannot separate "same car re-detected" from "next car" once the
+    window grows. Appearance-based confirmation for longer gaps is future
+    work; keep this well under the local following time.
+    """
+
+    enabled: bool
+    max_gap_seconds: float = Field(gt=0.0)
+    min_implied_speed_mps: float = Field(ge=0.0)
+    max_implied_speed_mps: float = Field(gt=0.0)
+    max_lateral_offset_m: float = Field(gt=0.0)
+    max_endpoint_distance_m: float = Field(gt=0.0)
+    # Require the end->start displacement to continue the predecessor's
+    # recent motion direction. Skipped when either the displacement or the
+    # predecessor's recent world speed is too small for a reliable heading.
+    enforce_direction_continuity: bool
+    direction_min_displacement_m: float = Field(gt=0.0)
+    direction_min_speed_mps: float = Field(gt=0.0)
+
+
 class RenderSmoothingConfig(StrictBaseModel):
     enabled: bool
     observed_box_smoothing: Literal["none", "causal_average", "local_linear"]
@@ -274,6 +304,7 @@ class AppConfig(StrictBaseModel):
     tracker: TrackerConfig
     reid: ReidConfig
     rescue: RescueConfig
+    linking: LinkingConfig
     mmr: MMRConfig
     render: RenderConfig
 

@@ -108,6 +108,26 @@ class CountEvent(BaseModel):
     direction: str
 
 
+class CachedFrameDetection(BaseModel):
+    bbox: BBox
+    confidence: float
+    class_id: int | None = None
+    class_name: str | None = None
+
+
+class CachedFrameDetections(BaseModel):
+    """Raw detector output for one sampled analysis frame, stored verbatim
+    so tracking/linking can be re-run without re-paying detector inference.
+    Detections are in global frame coordinates, exactly as passed to the
+    tracker; ``edge_suppressed_bboxes`` echoes the boxes the edge-suppression
+    layer flagged for that frame."""
+
+    frame_index: int
+    timestamp_seconds: float
+    detections: list[CachedFrameDetection] = Field(default_factory=list)
+    edge_suppressed_bboxes: list[BBox] = Field(default_factory=list)
+
+
 class MMRResult(BaseModel):
     make: str | None = None
     model: str | None = None

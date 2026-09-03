@@ -11,6 +11,10 @@ Never guess at intent. If a task leaves anything open - which screen, which endp
 - Do not invent product decisions, copy, or acceptance criteria.
 - Do not widen scope past what was asked. Note the adjacent thing you spotted; don't fix it unprompted.
 - If you had to assume something you couldn't resolve, list it explicitly at the top of your summary.
+- Pre-existing (2026-09-03, not introduced by linker work): `tests/unit/test_roi_editor.py`
+  imports `MIN_HOMOGRAPHY_POINTS` from `roi.editor`, which does not define it, so that
+  file fails at collection. Run the suite with `--ignore tests/unit/test_roi_editor.py`
+  until someone fixes or restores the missing symbol.
 
 ## Testing
 

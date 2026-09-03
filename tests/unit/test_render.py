@@ -54,6 +54,7 @@ class DummyRunStore:
         self.labels = self
         self.frames = self
         self.tracks = DummyTracksFile(self)
+        self.tracks_effective = self.tracks
         self.track_summaries: list[TrackSummary] = []
         self.manifest = RunManifest(
             run_id="test",
