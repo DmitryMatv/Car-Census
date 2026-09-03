@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -214,6 +215,14 @@ def _fresh_spawn_tracklet() -> Any:
     return BoTSORTTracklet(initial_bbox=np.array([60.0, 20.0, 100.0, 50.0]))
 
 
+class _FixedVectorEmbedder:
+    """Deterministic stand-in for the ResNet appearance embedder."""
+
+    def embed(self, crops: Sequence[np.ndarray]) -> np.ndarray:
+        _ = crops
+        return np.ones((max(len(crops), 1), 4), dtype=np.float32)
+
+
 def _spawn_output() -> sv.Detections:
     return sv.Detections(
         xyxy=np.array([[60, 20, 100, 50]], dtype=np.float32),
@@ -255,16 +264,16 @@ def test_adapter_rescue_takeover_keeps_single_tracklet_across_respawns(
     default_config,
 ) -> None:
     old = _old_tracklet(5)
-    stub = _RescueStubTracker(
-        [old, _fresh_spawn_tracklet()], output=_spawn_output()
-    )
+    stub = _RescueStubTracker([old, _fresh_spawn_tracklet()], output=_spawn_output())
     adapter = BotSortAdapter(
         default_config, tracker=stub, view_transformer=_world_transformer()
     )
     _seed_trajectory(adapter, 5)
     updates_before = old.number_of_successful_updates
 
-    adapter.update(_spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2)
+    adapter.update(
+        _spawn_output(), np.zeros((10, 20, 3), dtype=np.uint8), timestamp=0.2
+    )
     from trackers.core.botsort.tracklet import BoTSORTTracklet
 
     second = BoTSORTTracklet(initial_bbox=np.array([70.0, 20.0, 110.0, 50.0]))
@@ -332,10 +341,11 @@ def test_adapter_rescue_rejects_implausible_handoff(default_config) -> None:
     assert rejected[0]["old_track_id"] == 5
 
 
-def test_adapter_rescue_inert_without_transformer(default_config) -> None:
+def test_adapter_rescue_inert_without_transformer(config_factory) -> None:
+    config = config_factory({"rescue": {"pixel_fallback_enabled": False}})
     spawn = _fresh_spawn_tracklet()
     stub = _RescueStubTracker([spawn])
-    adapter = BotSortAdapter(default_config, tracker=stub, view_transformer=None)
+    adapter = BotSortAdapter(config, tracker=stub, view_transformer=None)
     _seed_trajectory(adapter, 5)
 
     adapter.update(
@@ -344,6 +354,64 @@ def test_adapter_rescue_inert_without_transformer(default_config) -> None:
 
     assert spawn.tracker_id == -1
     assert adapter._events == []
+
+
+def test_adapter_pixel_fallback_takes_over_fresh_spawn(default_config) -> None:
+    spawn = _fresh_spawn_tracklet()
+    stub = _RescueStubTracker([spawn], output=_spawn_output())
+    adapter = BotSortAdapter(
+        default_config,
+        tracker=stub,
+        view_transformer=None,
+        embedder=_FixedVectorEmbedder(),
+    )
+    # Pixel trajectory: 10 px per 0.1 s. The spawn's bottom-center sits 10 px
+    # from the last observation, inside the box-height-scaled pixel budget.
+    adapter._rescue.observe(5, 0.0, (60.0, 50.0))
+    adapter._rescue.observe(5, 0.1, (70.0, 50.0))
+    adapter._memory.observe(5, np.ones(4, dtype=np.float32))
+    # The frame must contain the spawn box so the takeover embeds a real crop.
+    frame = np.zeros((60, 120, 3), dtype=np.uint8)
+
+    result = adapter.update(_spawn_output(), frame, timestamp=0.2)
+
+    assert spawn.tracker_id == 5
+    assert 5 in result.tracker_id.tolist()
+    accepted = [e for e in adapter._events if e["outcome"] == "accepted"]
+    assert len(accepted) == 1
+    assert accepted[0]["old_track_id"] == 5
+    assert accepted[0]["mode"] == "pixel"
+
+
+def test_rescue_audit_payload_reports_active_modes_truthfully(
+    config_factory,
+) -> None:
+    world_adapter = BotSortAdapter(
+        config_factory(None),
+        tracker=_RescueStubTracker([]),
+        view_transformer=_world_transformer(),
+    )
+    pixel_adapter = BotSortAdapter(
+        config_factory(None),
+        tracker=_RescueStubTracker([]),
+        view_transformer=None,
+    )
+    disabled_adapter = BotSortAdapter(
+        config_factory({"rescue": {"pixel_fallback_enabled": False}}),
+        tracker=_RescueStubTracker([]),
+        view_transformer=None,
+    )
+
+    world_payload = world_adapter.rescue_audit_payload()
+    pixel_payload = pixel_adapter.rescue_audit_payload()
+    disabled_payload = disabled_adapter.rescue_audit_payload()
+
+    assert world_payload["world_gate_active"] is True
+    assert world_payload["pixel_fallback_active"] is False
+    assert pixel_payload["world_gate_active"] is False
+    assert pixel_payload["pixel_fallback_active"] is True
+    assert disabled_payload["world_gate_active"] is False
+    assert disabled_payload["pixel_fallback_active"] is False
 
 
 def test_adapter_rescue_skips_ids_matched_this_frame(default_config) -> None:

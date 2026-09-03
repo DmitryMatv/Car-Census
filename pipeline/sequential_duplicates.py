@@ -233,6 +233,9 @@ def _passes_geometry(
     left: _TrackEndpoints,
     right: _TrackEndpoints,
     view_transformer: ViewTransformer | None = None,
+    *,
+    max_prediction_error_ratio: float,
+    min_handoff_iou: float,
 ) -> tuple[bool, dict[str, float | None]]:
     pixel_metrics = _prediction_metrics(left, right)
     tracker = config.tracker
@@ -248,13 +251,11 @@ def _passes_geometry(
     )
     return (
         passes_world_gate
-        and pixel_metrics["prediction_error_ratio"]
-        <= tracker.sequential_duplicate_prediction_error_ratio
+        and pixel_metrics["prediction_error_ratio"] <= max_prediction_error_ratio
         and pixel_metrics["width_ratio"] >= tracker.sequential_duplicate_min_width_ratio
         and pixel_metrics["height_ratio"]
         >= tracker.sequential_duplicate_min_height_ratio
-        and pixel_metrics["handoff_iou"]
-        >= tracker.sequential_duplicate_min_handoff_iou,
+        and pixel_metrics["handoff_iou"] >= min_handoff_iou,
         metrics,
     )
 
@@ -443,6 +444,15 @@ def _thresholds(config: AppConfig) -> dict[str, object]:
         "min_height_ratio": tracker.sequential_duplicate_min_height_ratio,
         "min_handoff_iou": tracker.sequential_duplicate_min_handoff_iou,
         "max_implied_speed_mps": (tracker.sequential_duplicate_max_implied_speed_mps),
+        "allow_identity_mismatch": (
+            tracker.sequential_duplicate_allow_identity_mismatch
+        ),
+        "mismatch_max_prediction_error_ratio": (
+            tracker.sequential_duplicate_mismatch_max_prediction_error_ratio
+        ),
+        "mismatch_min_handoff_iou": (
+            tracker.sequential_duplicate_mismatch_min_handoff_iou
+        ),
         "require_same_color": tracker.sequential_duplicate_require_same_color,
         "require_same_generation": tracker.sequential_duplicate_require_same_generation,
         "require_same_variation": tracker.sequential_duplicate_require_same_variation,
@@ -491,7 +501,7 @@ def _find_merged_pairs(
             right_vehicle_index = right_label.vehicle_index
             if right_vehicle_index is None:
                 continue
-            if not _labels_match(
+            labels_match = _labels_match(
                 left_label,
                 right_label,
                 require_same_color=tracker.sequential_duplicate_require_same_color,
@@ -501,10 +511,37 @@ def _find_merged_pairs(
                 require_same_variation=(
                     tracker.sequential_duplicate_require_same_variation
                 ),
-            ):
-                continue
+            )
+            identity_mismatch = False
+            if not labels_match:
+                # Identity-mismatch tier: two fragments labelled as different
+                # vehicles can still be one car when the split itself caused
+                # the label difference (the fresh fragment's crop was captured
+                # while the vehicle was occluded by a neighbour). Only an
+                # exceptionally clean pixel handoff qualifies, and both labels
+                # must be accepted so unverified identities never merge.
+                if not tracker.sequential_duplicate_allow_identity_mismatch:
+                    continue
+                if not (left_label.accepted and right_label.accepted):
+                    continue
+                identity_mismatch = True
+            max_prediction_error_ratio = (
+                tracker.sequential_duplicate_mismatch_max_prediction_error_ratio
+                if identity_mismatch
+                else tracker.sequential_duplicate_prediction_error_ratio
+            )
+            min_handoff_iou = (
+                tracker.sequential_duplicate_mismatch_min_handoff_iou
+                if identity_mismatch
+                else tracker.sequential_duplicate_min_handoff_iou
+            )
             passes_geometry, metrics = _passes_geometry(
-                config, left, right, view_transformer
+                config,
+                left,
+                right,
+                view_transformer,
+                max_prediction_error_ratio=max_prediction_error_ratio,
+                min_handoff_iou=min_handoff_iou,
             )
             if not passes_geometry:
                 continue
@@ -516,6 +553,7 @@ def _find_merged_pairs(
                     "from_vehicle_index": left.vehicle_index,
                     "to_vehicle_index": right.vehicle_index,
                     "gap_seconds": gap_seconds,
+                    "identity_match": not identity_mismatch,
                     **metrics,
                 }
             )

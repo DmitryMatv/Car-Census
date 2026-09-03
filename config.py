@@ -34,6 +34,15 @@ class AnalysisConfig(StrictBaseModel):
     crop_target_box_range_ratio: float = Field(ge=0.0, le=1.0)
     crop_min_spacing_seconds: float
     crop_jpeg_quality: int
+    # Crop-candidate contamination tiers. The fraction of a candidate's
+    # vehicle box covered by OTHER live tracks' boxes in the same frame is
+    # bucketed: at most crop_overlap_clean_fraction is a clean crop (tier 2,
+    # preferred), at most crop_overlap_partial_fraction is partial (tier 1),
+    # anything heavier is tier 0. Within a tier the pre-existing ranking
+    # (scale, sharpness, ...) decides; a cleaner tier always wins, so an
+    # occluded car's crop is not stolen by whatever vehicle fronts it.
+    crop_overlap_clean_fraction: float = Field(ge=0.0, le=1.0)
+    crop_overlap_partial_fraction: float = Field(ge=0.0, le=1.0)
 
 
 class DetectorConfig(StrictBaseModel):
@@ -68,16 +77,24 @@ class ReidConfig(StrictBaseModel):
 
 
 class RescueConfig(StrictBaseModel):
-    """World-space rescue layer for tracks whose IoU association failed.
+    """Rescue layer for tracks whose IoU association failed.
 
     When BoT-SORT spawns a fresh tracklet for a detection that no existing
-    track claimed, the rescue layer predicts the missing track's road-plane
-    position from its own recent trajectory (constant world velocity, static
-    camera) and takes the identity over when the handoff is physically
-    plausible. Requires a calibrated homography; without one it stays inert.
+    track claimed, the rescue layer predicts the missing track's position
+    from its own recent trajectory and takes the identity over when the
+    handoff is physically plausible. With a calibrated homography the
+    prediction and gates run in road-plane world space (meters). Without
+    one, ``pixel_fallback_enabled`` switches the layer to image space:
+    displacement limits are expressed in candidate box-heights so they scale
+    with object size, and the appearance gate becomes mandatory with its own
+    stricter floor.
     """
 
     enabled: bool
+    pixel_fallback_enabled: bool
+    pixel_max_distance_box_heights: float = Field(gt=0.0)
+    pixel_max_speed_box_heights_per_s: float = Field(gt=0.0)
+    pixel_fallback_min_appearance_similarity: float = Field(ge=0.0, le=1.0)
     max_gap_seconds: float = Field(gt=0.0)
     max_speed_mps: float = Field(gt=0.0)
     max_distance_m: float = Field(gt=0.0)
@@ -121,6 +138,21 @@ class TrackerConfig(StrictBaseModel):
     world_reassociation_max_speed_mps: float = Field(gt=0.0)
     world_reassociation_max_distance_m: float = Field(gt=0.0)
     sequential_duplicate_max_implied_speed_mps: float | None = Field(gt=0.0)
+    # Identity-mismatch merge tier for the post-hoc sequential-duplicate
+    # union. When two labeled fragments fail the identity match (different
+    # make/model — typically because the second fragment's crop was captured
+    # while the vehicle was occluded by a neighbour) but the pixel handoff is
+    # exceptionally clean, they may still be merged into one vehicle. These
+    # thresholds are deliberately much tighter than the same-identity gates
+    # because a following car entering exactly where the leader vanished must
+    # stay unmerged.
+    sequential_duplicate_allow_identity_mismatch: bool
+    sequential_duplicate_mismatch_max_prediction_error_ratio: float = Field(
+        ge=0.0
+    )
+    sequential_duplicate_mismatch_min_handoff_iou: float = Field(
+        ge=0.0, le=1.0
+    )
 
 
 class RenderSmoothingConfig(StrictBaseModel):

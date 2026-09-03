@@ -151,14 +151,77 @@ def test_sequential_duplicate_merge_rewrites_labels_frames_and_tracks(
     assert (store.analysis_dir / "sequential_duplicates.json").exists()
 
 
-def test_sequential_duplicate_no_merge_when_identity_differs(
+def test_sequential_duplicate_identity_mismatch_merges_clean_handoff(
     config_factory, tmp_path
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, make="Audi")})
 
-    deduplicate_classified_tracks(_sequential_duplicate_config(config_factory), store)
+    payload = deduplicate_classified_tracks(
+        _sequential_duplicate_config(config_factory), store
+    )
 
-    assert store.labels.read()[2].vehicle_index == 2
+    labels = store.labels.read()
+    assert payload["merged_vehicle_count"] == 1
+    assert payload["merged_pairs"][0]["identity_match"] is False
+    assert labels[2].vehicle_index == 1
+    assert labels[2].api_classification_index == 1
+
+
+def test_sequential_duplicate_mismatch_tier_can_be_disabled(
+    config_factory, tmp_path
+) -> None:
+    store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, make="Audi")})
+
+    payload = deduplicate_classified_tracks(
+        _sequential_duplicate_config(
+            config_factory,
+            sequential_duplicate_allow_identity_mismatch=False,
+        ),
+        store,
+    )
+
+    labels = store.labels.read()
+    assert payload["merged_vehicle_count"] == 0
+    assert labels[2].vehicle_index == 2
+    assert labels[2].make == "Audi"
+
+
+def test_sequential_duplicate_mismatch_tier_requires_clean_handoff(
+    config_factory, tmp_path
+) -> None:
+    # Track 2 reappears far from track 1's predicted position: the handoff
+    # fails the tight mismatch-tier floors (and the same-identity ones too),
+    # so two different-labelled vehicles stay separate.
+    store = _write_run(
+        tmp_path,
+        labels={1: _label(1), 2: _label(2, make="Audi")},
+        first_b_bbox=BBox(x1=230, y1=100, x2=270, y2=130),
+    )
+
+    payload = deduplicate_classified_tracks(
+        _sequential_duplicate_config(config_factory), store
+    )
+
+    labels = store.labels.read()
+    assert payload["merged_vehicle_count"] == 0
+    assert labels[2].vehicle_index == 2
+    assert labels[2].make == "Audi"
+
+
+def test_sequential_duplicate_mismatch_tier_requires_accepted_labels(
+    config_factory, tmp_path
+) -> None:
+    rejected = _label(2, make="Audi")
+    rejected.accepted = False
+    store = _write_run(tmp_path, labels={1: _label(1), 2: rejected})
+
+    payload = deduplicate_classified_tracks(
+        _sequential_duplicate_config(config_factory), store
+    )
+
+    labels = store.labels.read()
+    assert payload["merged_vehicle_count"] == 0
+    assert labels[2].vehicle_index == 2
 
 
 def test_sequential_duplicate_no_merge_when_color_differs_and_required(
@@ -167,7 +230,12 @@ def test_sequential_duplicate_no_merge_when_color_differs_and_required(
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, color="black")})
 
-    deduplicate_classified_tracks(_sequential_duplicate_config(config_factory), store)
+    deduplicate_classified_tracks(
+        _sequential_duplicate_config(
+            config_factory, sequential_duplicate_allow_identity_mismatch=False
+        ),
+        store,
+    )
 
     assert store.labels.read()[2].vehicle_index == 2
 
@@ -193,7 +261,12 @@ def test_sequential_duplicate_no_merge_when_generation_differs_and_required(
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, generation="E211")})
 
-    deduplicate_classified_tracks(_sequential_duplicate_config(config_factory), store)
+    deduplicate_classified_tracks(
+        _sequential_duplicate_config(
+            config_factory, sequential_duplicate_allow_identity_mismatch=False
+        ),
+        store,
+    )
 
     assert store.labels.read()[2].vehicle_index == 2
 
@@ -220,7 +293,12 @@ def test_sequential_duplicate_no_merge_when_variation_differs_and_required(
 ) -> None:
     store = _write_run(tmp_path, labels={1: _label(1), 2: _label(2, variation="wagon")})
 
-    deduplicate_classified_tracks(_sequential_duplicate_config(config_factory), store)
+    deduplicate_classified_tracks(
+        _sequential_duplicate_config(
+            config_factory, sequential_duplicate_allow_identity_mismatch=False
+        ),
+        store,
+    )
 
     assert store.labels.read()[2].vehicle_index == 2
 
@@ -365,9 +443,7 @@ def test_sequential_duplicate_chain_rewrites_bridge_vehicle_indices(
                 f"has vehicle index {track.vehicle_index}"
             )
 
-    bridge_track_2 = [
-        track for track in frames[6].tracks if track.track_id == 2
-    ]
+    bridge_track_2 = [track for track in frames[6].tracks if track.track_id == 2]
     assert len(bridge_track_2) == 1
     assert bridge_track_2[0].vehicle_index == 1
 

@@ -13,8 +13,13 @@ _TRANSFORMER = ViewTransformer(
 )
 
 
-def _config(**overrides: float) -> RescueConfig:
-    values: dict[str, float] = {
+def _config(**overrides: float | bool) -> RescueConfig:
+    values: dict[str, float | bool] = {
+        "enabled": True,
+        "pixel_fallback_enabled": True,
+        "pixel_max_distance_box_heights": 3.0,
+        "pixel_max_speed_box_heights_per_s": 4.0,
+        "pixel_fallback_min_appearance_similarity": 0.70,
         "max_gap_seconds": 2.0,
         "max_speed_mps": 40.0,
         "max_distance_m": 4.0,
@@ -24,10 +29,10 @@ def _config(**overrides: float) -> RescueConfig:
         "max_behind_prediction_m": 1.5,
     }
     values.update(overrides)
-    return RescueConfig(enabled=True, **values)  # type: ignore[arg-type]
+    return RescueConfig(**values)  # type: ignore[arg-type]
 
 
-def _engine(**config_overrides: float) -> RescueEngine:
+def _engine(**config_overrides: float | bool) -> RescueEngine:
     return RescueEngine(_config(**config_overrides), _TRANSFORMER)
 
 
@@ -51,10 +56,12 @@ def _candidate_bbox(
     return (bottom_px_x - 20, bottom_px_y - 30, bottom_px_x + 20, bottom_px_y)
 
 
-def test_engine_inactive_without_transformer() -> None:
-    engine = RescueEngine(_config(), None)
+def test_engine_inert_when_fallback_disabled_and_no_transformer() -> None:
+    engine = RescueEngine(_config(pixel_fallback_enabled=False), None)
 
     assert engine.active is False
+    assert engine.world_gate_active is False
+    assert engine.pixel_fallback_active is False
 
     match, rejections = engine.match(_candidate_bbox(10.0, 5.0), 2.0, busy_ids=set())
 
@@ -63,19 +70,159 @@ def test_engine_inactive_without_transformer() -> None:
 
 
 def test_engine_inactive_when_disabled() -> None:
-    engine = RescueEngine(_config(), _TRANSFORMER)
-    engine.config = RescueConfig(
-        enabled=False,
-        max_gap_seconds=2.0,
-        max_speed_mps=40.0,
-        max_distance_m=4.0,
-        lateral_tolerance_m=2.0,
-        velocity_fit_points=5,
-        min_direction_speed_mps=1.0,
-        max_behind_prediction_m=1.5,
-    )
+    engine = RescueEngine(_config(enabled=False), _TRANSFORMER)
 
     assert engine.active is False
+    assert engine.world_gate_active is False
+    assert engine.pixel_fallback_active is False
+
+    match, rejections = engine.match(_candidate_bbox(6.6, 5.0), 2.0, busy_ids=set())
+
+    assert match is None
+    assert rejections == []
+
+
+def test_pixel_fallback_active_without_transformer() -> None:
+    engine = RescueEngine(_config(), None)
+
+    assert engine.active is True
+    assert engine.mode == "pixel"
+    assert engine.world_gate_active is False
+    assert engine.pixel_fallback_active is True
+
+
+def test_world_mode_active_with_transformer() -> None:
+    engine = _engine()
+
+    assert engine.active is True
+    assert engine.mode == "world"
+    assert engine.world_gate_active is True
+    assert engine.pixel_fallback_active is False
+
+
+def test_pixel_fallback_accepts_plausible_handoff_with_appearance() -> None:
+    engine = RescueEngine(_config(), None)
+    memory = TrackAppearanceMemory(history_length=4)
+    vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    memory.observe(7, vector)
+    # Two observations 10 px apart, one second apart; the spawn sits 10 px
+    # from the last observation with a 30 px tall box, so both pixel gates
+    # pass (10 px/s implied vs a 120 px/s ceiling, 10 px vs a 90 px budget).
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=1.0, bottom_center=(60.0, 50.0))
+
+    match, rejections = engine.match(
+        _candidate_bbox(7.0, 5.0),
+        2.0,
+        busy_ids=set(),
+        memory=memory,
+        candidate_vector=vector,
+    )
+
+    assert rejections == []
+    assert match is not None
+    assert match.old_track_id == 7
+    assert match.mode == "pixel"
+    assert match.gap_seconds == pytest.approx(1.0)
+    assert match.distance == pytest.approx(10.0)
+    assert match.implied_speed == pytest.approx(10.0)
+    assert match.lateral is None
+    assert match.appearance_similarity == pytest.approx(1.0)
+
+
+def test_pixel_fallback_rejects_without_appearance_evidence() -> None:
+    engine = RescueEngine(_config(), None)
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=1.0, bottom_center=(60.0, 50.0))
+
+    match, rejections = engine.match(_candidate_bbox(7.0, 5.0), 2.0, busy_ids=set())
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["appearance_required"]
+    assert rejections[0].mode == "pixel"
+
+
+def test_pixel_fallback_rejects_low_similarity_spawn() -> None:
+    engine = RescueEngine(_config(), None)
+    memory = TrackAppearanceMemory(history_length=4)
+    memory.observe(7, np.array([0.0, 1.0, 0.0], dtype=np.float32))
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=1.0, bottom_center=(60.0, 50.0))
+
+    match, rejections = engine.match(
+        _candidate_bbox(7.0, 5.0),
+        2.0,
+        busy_ids=set(),
+        memory=memory,
+        candidate_vector=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["appearance_mismatch"]
+    assert rejections[0].appearance_similarity == pytest.approx(0.0)
+
+
+def test_pixel_fallback_rejects_fast_displacement() -> None:
+    engine = RescueEngine(_config(), None)
+    memory = TrackAppearanceMemory(history_length=4)
+    vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    memory.observe(7, vector)
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=1.0, bottom_center=(60.0, 50.0))
+    # The spawn sits 300 px from the last observation: 300 px/s against a
+    # 4.0 * 30 px = 120 px/s ceiling for a 30 px tall box.
+
+    match, rejections = engine.match(
+        _candidate_bbox(36.0, 5.0),
+        2.0,
+        busy_ids=set(),
+        memory=memory,
+        candidate_vector=vector,
+    )
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["speed_exceeded"]
+
+
+def test_pixel_fallback_rejects_large_displacement_within_speed() -> None:
+    engine = RescueEngine(_config(), None)
+    memory = TrackAppearanceMemory(history_length=4)
+    vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    memory.observe(7, vector)
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+    engine.observe(7, timestamp=1.0, bottom_center=(60.0, 50.0))
+    # 100 px in 1 s stays under the 120 px/s speed ceiling but exceeds the
+    # 3.0 * 30 px = 90 px distance budget.
+
+    match, rejections = engine.match(
+        _candidate_bbox(16.0, 5.0),
+        2.0,
+        busy_ids=set(),
+        memory=memory,
+        candidate_vector=vector,
+    )
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["distance_exceeded"]
+
+
+def test_pixel_fallback_rejects_single_observation_history() -> None:
+    engine = RescueEngine(_config(), None)
+    memory = TrackAppearanceMemory(history_length=4)
+    vector = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    memory.observe(7, vector)
+    engine.observe(7, timestamp=0.0, bottom_center=(50.0, 50.0))
+
+    match, rejections = engine.match(
+        _candidate_bbox(7.0, 5.0),
+        2.0,
+        busy_ids=set(),
+        memory=memory,
+        candidate_vector=vector,
+    )
+
+    assert match is None
+    assert [r.reason for r in rejections] == ["insufficient_history"]
 
 
 def test_accepts_plausible_handoff() -> None:
@@ -88,8 +235,9 @@ def test_accepts_plausible_handoff() -> None:
     assert match is not None
     assert match.old_track_id == 7
     assert match.gap_seconds == pytest.approx(0.1)
-    assert match.distance_m <= 1.0
-    assert match.implied_speed_mps == pytest.approx(6.0, abs=0.5)
+    assert match.distance <= 1.0
+    assert match.implied_speed == pytest.approx(6.0, abs=0.5)
+    assert match.mode == "world"
 
 
 def test_rejects_when_gap_exceeded() -> None:
@@ -121,8 +269,8 @@ def test_rejects_when_lateral_exceeded() -> None:
 
     assert match is None
     assert [r.reason for r in rejections] == ["lateral_exceeded"]
-    assert rejections[0].lateral_m is not None
-    assert rejections[0].lateral_m > 2.0
+    assert rejections[0].lateral is not None
+    assert rejections[0].lateral > 2.0
 
 
 def test_skips_lateral_gate_when_direction_unreliable() -> None:
@@ -132,7 +280,7 @@ def test_skips_lateral_gate_when_direction_unreliable() -> None:
     match, _rejections = engine.match(_candidate_bbox(5.5, 6.0), 0.3, busy_ids=set())
 
     assert match is not None
-    assert match.lateral_m is None
+    assert match.lateral is None
 
 
 def test_busy_ids_are_never_takeover_sources() -> None:
@@ -248,8 +396,8 @@ def test_rejection_carries_metrics_for_audit() -> None:
     assert len(rejections) == 1
     rejection: RescueRejection = rejections[0]
     assert rejection.gap_seconds == pytest.approx(0.1)
-    assert rejection.distance_m == pytest.approx(23.5, abs=0.5)
-    assert rejection.implied_speed_mps == pytest.approx(240.0, abs=1.0)
+    assert rejection.distance == pytest.approx(23.5, abs=0.5)
+    assert rejection.implied_speed == pytest.approx(240.0, abs=1.0)
 
 
 def test_accepts_handoff_slightly_behind_prediction() -> None:

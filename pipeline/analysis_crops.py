@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -30,11 +31,41 @@ class CropStore(Protocol):
 
 @dataclass(frozen=True, order=True, slots=True)
 class CropCandidateRank:
+    # Contamination tier outranks everything: a crop whose vehicle box is
+    # covered by another live track's box shows that vehicle, not the track's
+    # own, so scale/sharpness quality is meaningless until the tier ties.
+    cleanliness_tier: int
     scale_score: float
     sharpness: float
     edge_margin_score: float
     area_score: float
     recency_score: int
+
+
+def sibling_overlap_fraction(
+    vehicle_bbox: BBox, sibling_boxes: Sequence[BBox]
+) -> float:
+    """Fraction of ``vehicle_bbox`` covered by other tracks' boxes.
+
+    Sums per-sibling intersection areas over the candidate's area, capped at
+    1.0. A high fraction means the crop is dominated by whichever vehicle
+    fronts it, not by the tracked vehicle itself.
+    """
+    area = vehicle_bbox.area
+    if area <= 0.0:
+        return 0.0
+    covered = 0.0
+    for sibling in sibling_boxes:
+        covered += vehicle_bbox.intersection_area(sibling)
+    return min(1.0, covered / area)
+
+
+def _cleanliness_tier(overlap_fraction: float, config: AppConfig) -> int:
+    if overlap_fraction <= config.analysis.crop_overlap_clean_fraction:
+        return 2
+    if overlap_fraction <= config.analysis.crop_overlap_partial_fraction:
+        return 1
+    return 0
 
 
 def score_candidate(
@@ -61,11 +92,20 @@ def crop_candidate_rank(
     min_box_width_px: float | None,
     max_box_width_px: float,
     target_ratio: float,
+    sibling_overlap_fraction_value: float = 0.0,
+    overlap_clean_fraction: float = 0.0,
+    overlap_partial_fraction: float = 1.0,
 ) -> CropCandidateRank:
     min_width = min_box_width_px if min_box_width_px is not None else max_box_width_px
     target_width = min_width + ((max_box_width_px - min_width) * target_ratio)
     scale_error = abs(bbox_width - target_width) / max(target_width, 1.0)
+    tier = 2
+    if sibling_overlap_fraction_value > overlap_partial_fraction:
+        tier = 0
+    elif sibling_overlap_fraction_value > overlap_clean_fraction:
+        tier = 1
     return CropCandidateRank(
+        cleanliness_tier=tier,
         scale_score=-scale_error,
         sharpness=sharpness,
         edge_margin_score=edge_margin_score,
@@ -90,6 +130,9 @@ def rank_crop_candidate(
         min_box_width_px=min_box_width_px,
         max_box_width_px=max_box_width_px,
         target_ratio=config.analysis.crop_target_box_range_ratio,
+        sibling_overlap_fraction_value=candidate.sibling_overlap_fraction,
+        overlap_clean_fraction=config.analysis.crop_overlap_clean_fraction,
+        overlap_partial_fraction=config.analysis.crop_overlap_partial_fraction,
     )
 
 
@@ -114,6 +157,7 @@ def save_candidate(
     frame_index: int,
     timestamp_seconds: float,
     config: AppConfig,
+    sibling_boxes: Sequence[BBox] = (),
 ) -> None:
     from roi.geometry import clip_bbox_to_frame
 
@@ -146,6 +190,7 @@ def save_candidate(
         sharpness=sharpness,
         edge_margin_score=edge_margin_score,
         area_score=area_score,
+        sibling_overlap_fraction=sibling_overlap_fraction(bbox, sibling_boxes),
     )
     current = track_state.candidates[0] if track_state.candidates else None
     if current is not None and rank_crop_candidate(
@@ -193,6 +238,7 @@ class CropCandidateSelector:
         bbox: BBox,
         frame_index: int,
         timestamp_seconds: float,
+        sibling_boxes: Sequence[BBox] = (),
     ) -> None:
         if (
             bbox.width < self.config.analysis.min_box_width_px
@@ -207,6 +253,7 @@ class CropCandidateSelector:
             frame_index=frame_index,
             timestamp_seconds=timestamp_seconds,
             config=self.config,
+            sibling_boxes=sibling_boxes,
         )
 
     def render_bbox_for_track(

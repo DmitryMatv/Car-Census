@@ -99,6 +99,10 @@ class CropCandidate(BaseModel):
     sharpness: float
     edge_margin_score: float
     area_score: float
+    # Fraction of the vehicle box covered by other live tracks' boxes in the
+    # same frame (0.0 on records written before the contamination tier was
+    # introduced; those rank as clean).
+    sibling_overlap_fraction: float = 0.0
 
 
 class CountEvent(BaseModel):

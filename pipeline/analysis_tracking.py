@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 import cv2
 import supervision as sv
+
 from config import AppConfig, CameraProfile
 from models import (
     BBox,
@@ -163,6 +164,7 @@ class TrackedObjectBuilder:
         state: MutableTrackState,
         observation: TrackObservation,
         frame_input: FrameTrackingInput,
+        sibling_boxes: SequenceABC[BBox],
     ) -> None:
         self._crop_selector.maybe_save_candidate(
             track_state=state,
@@ -170,6 +172,7 @@ class TrackedObjectBuilder:
             bbox=observation.bbox,
             frame_index=frame_input.frame_index,
             timestamp_seconds=frame_input.timestamp_seconds,
+            sibling_boxes=sibling_boxes,
         )
 
     def build(
@@ -255,7 +258,7 @@ class TrackStateUpdater:
             observations
         )
 
-        for observation in observations:
+        for index, observation in enumerate(observations):
             self._components.observation_reader.record_box_width(observation)
             inside_roi = self._components.tracked_object_builder.inside_roi(observation)
             state = self._components.track_store.get_or_create(observation, frame_input)
@@ -273,7 +276,14 @@ class TrackStateUpdater:
                 state, observation, frame_input.frame_index
             )
             self._components.tracked_object_builder.update_crop_state(
-                state, observation, frame_input
+                state,
+                observation,
+                frame_input,
+                sibling_boxes=[
+                    other.bbox
+                    for other_index, other in enumerate(observations)
+                    if other_index != index
+                ],
             )
             frame_tracks.append(
                 self._components.tracked_object_builder.build(

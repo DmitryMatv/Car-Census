@@ -91,6 +91,45 @@ def test_canonical_reassociation_and_buffer_contract(default_config) -> None:
     assert config.tracker.sequential_duplicate_max_gap_seconds == 2.0
 
 
+def test_canonical_first_association_threshold_contract(default_config) -> None:
+    assert default_config.tracker.minimum_iou_threshold_first_assoc == 0.20
+
+
+def test_canonical_rescue_pixel_fallback_contract(default_config) -> None:
+    rescue = default_config.rescue
+
+    assert rescue.pixel_fallback_enabled is True
+    assert rescue.pixel_max_distance_box_heights == 3.0
+    assert rescue.pixel_max_speed_box_heights_per_s == 4.0
+    assert rescue.pixel_fallback_min_appearance_similarity == 0.70
+    assert (
+        rescue.pixel_fallback_min_appearance_similarity
+        > default_config.reid.min_appearance_similarity
+    )
+
+
+def test_canonical_crop_contamination_tier_contract(default_config) -> None:
+    analysis = default_config.analysis
+
+    assert analysis.crop_overlap_clean_fraction == 0.10
+    assert analysis.crop_overlap_partial_fraction == 0.50
+    assert analysis.crop_overlap_clean_fraction < analysis.crop_overlap_partial_fraction
+
+
+def test_canonical_identity_mismatch_merge_contract(default_config) -> None:
+    tracker = default_config.tracker
+
+    assert tracker.sequential_duplicate_allow_identity_mismatch is True
+    assert (
+        tracker.sequential_duplicate_mismatch_max_prediction_error_ratio
+        < tracker.sequential_duplicate_prediction_error_ratio
+    )
+    assert (
+        tracker.sequential_duplicate_mismatch_min_handoff_iou
+        > tracker.sequential_duplicate_min_handoff_iou
+    )
+
+
 def test_tracker_config_accepts_supported_cmc_methods(config_factory) -> None:
     for cmc_method in ["sparseOptFlow", "orb", "sift", "ecc"]:
         config = config_factory({"tracker": {"cmc_method": cmc_method}})

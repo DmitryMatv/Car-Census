@@ -156,7 +156,8 @@ class BotSortAdapter:
     def rescue_audit_payload(self) -> dict[str, Any]:
         return {
             "enabled": self._config.rescue.enabled,
-            "world_gate_active": self._rescue.active,
+            "world_gate_active": self._rescue.world_gate_active,
+            "pixel_fallback_active": self._rescue.pixel_fallback_active,
             "reid_active": self._embedder is not None,
             "events": self._events,
         }
@@ -247,10 +248,11 @@ class BotSortAdapter:
     def _accepted_event_details(match: RescueMatch) -> dict[str, Any]:
         return {
             "old_track_id": match.old_track_id,
+            "mode": match.mode,
             "gap_seconds": match.gap_seconds,
-            "distance_m": match.distance_m,
-            "lateral_m": match.lateral_m,
-            "implied_speed_mps": match.implied_speed_mps,
+            "distance": match.distance,
+            "lateral": match.lateral,
+            "implied_speed": match.implied_speed,
             "appearance_similarity": match.appearance_similarity,
         }
 

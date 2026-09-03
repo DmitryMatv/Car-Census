@@ -24,6 +24,15 @@ analysis:
   crop_target_box_range_ratio: 0.777
   crop_min_spacing_seconds: 0.099
   crop_jpeg_quality: 95
+  # Contamination tiers for crop-candidate selection: the fraction of the
+  # candidate's vehicle box covered by other live tracks' boxes buckets each
+  # candidate into clean (<= clean), partial (<= partial) or heavy; a cleaner
+  # tier outranks scale/sharpness entirely. Without this, a car that spends
+  # its life behind a neighbour (observed: white Avanza hidden by an orange
+  # taxi) sends TrafficEye a crop dominated by the occluding vehicle and gets
+  # labelled as that vehicle.
+  crop_overlap_clean_fraction: 0.10
+  crop_overlap_partial_fraction: 0.50
 
 detector:
   device: auto
@@ -75,8 +84,21 @@ rescue:
   # position from its own recent trajectory (constant world velocity; the
   # camera is static) and takes the identity over when the handoff is
   # physically plausible. Requires a calibrated camera homography; without
-  # one it stays inert and tracking behaves exactly as before.
+  # one it can fall back to the pixel-space mode below.
   enabled: true
+  # Pixel-space rescue fallback for runs without a calibrated homography
+  # (e.g. __full_frame__ cameras). Same spawn/lost-track takeover flow, but
+  # gates run on image-space displacement expressed in box-heights so the
+  # limits scale with distance/appearance size instead of raw pixels.
+  # Appearance evidence is MANDATORY in this mode: with no road-plane
+  # geometry, the embedding similarity is the only identity evidence, and it
+  # uses this stricter floor than reid.min_appearance_similarity (world mode
+  # confirms geometry-first; here a same-model/same-color lookalike is the
+  # main residual risk).
+  pixel_fallback_enabled: true
+  pixel_max_distance_box_heights: 3.0
+  pixel_max_speed_box_heights_per_s: 4.0
+  pixel_fallback_min_appearance_similarity: 0.70
   max_gap_seconds: 2.0
   max_speed_mps: 40.0
   # Radial and lateral (cross-lane) bounds for the handoff displacement.
@@ -118,7 +140,14 @@ tracker:
   world_reassociation_max_distance_m: 150.0
   track_activation_threshold: 0.30
   minimum_consecutive_frames: 2
-  minimum_iou_threshold_first_assoc: 0.25 # tracker matching threshold for first association attempt
+  # Lowered from 0.25: BoT-SORT fuses IoU with detection confidence
+  # (similarity = IoU * score) before the first-association gate. A car that
+  # reappears after a short full-occlusion gap with a slightly stale Kalman
+  # prediction lands near 0.31 IoU * 0.77 conf = 0.24 and was losing its own
+  # identity to a fresh spawn by a hair (observed: white Avanza behind a taxi
+  # became a second "orange Vios"). 0.20 reattaches those handoffs; wrong
+  # re-attachments remain gated by the world reassociation check downstream.
+  minimum_iou_threshold_first_assoc: 0.20 # tracker matching threshold for first association attempt
   minimum_iou_threshold_second_assoc: 0.50
   minimum_iou_threshold_unconfirmed_assoc: 0.20
   high_conf_det_threshold: 0.30
@@ -157,6 +186,17 @@ tracker:
   # the implied road-plane speed between the two endpoints stays within this
   # limit. Requires a calibrated homography; null disables the world check.
   sequential_duplicate_max_implied_speed_mps: 40.0
+  # Identity-mismatch tier: fragments labelled as DIFFERENT vehicles may
+  # still merge when the pixel handoff is exceptionally clean (tighter
+  # prediction-error and overlap floors than the same-identity gates). This
+  # repairs the failure where an occlusion split produced a fresh track whose
+  # contaminated crop got a different identity, which the same-identity merge
+  # can never touch (the labels differ BECAUSE of the split). Both labels must
+  # be accepted, and the world implied-speed gate still applies when a
+  # homography is calibrated.
+  sequential_duplicate_allow_identity_mismatch: true
+  sequential_duplicate_mismatch_max_prediction_error_ratio: 0.35
+  sequential_duplicate_mismatch_min_handoff_iou: 0.15
 
 mmr:
   api_url: https://trafficeye.ai/recognition
