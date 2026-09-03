@@ -41,12 +41,42 @@ Maintain a strict type-safety direction for the project.
 - Roboflow `trackers` scales `lost_track_buffer` by `analysis_fps / 30`; the
   configured value is not a direct analysis-frame count. Its BoT-SORT
   implementation uses Kalman motion, IoU, and detection confidence without
-  appearance/ReID matching.
+  appearance/ReID matching. This describes the library only: the pipeline does
+  have ReID. `reid.py` implements a custom selective appearance layer (ResNet-18
+  512-d embeddings, per-track bounded history) that `tracking_adapters/botsort.py`
+  wires in, and `tracking_adapters/rescue.py` consumes it to gate identity
+  takeovers of long-lost tracks. Do not claim the pipeline is appearance-free.
 - BoT-SORT floors that scaled buffer and keeps tracks only while
   `time_since_update < maximum_frames_without_update`. For example,
   `lost_track_buffer: 15` at 5 analysis FPS becomes 2, so a mature track
   survives only one fully missed analysis frame; an immature track can be
   removed on its first miss.
+- BoT-SORT fuses IoU with detection confidence (similarity = IoU \* score)
+  before the first-association gate, so the effective re-attach floor is
+  conf-weighted: a 0.77-conf reappearance needs ~0.26 raw IoU at the default
+  `minimum_iou_threshold_first_assoc: 0.20`. A track can die from a shrinking
+  Kalman prediction (occlusion-collapse boxes poison the size velocity) even
+  when the buffer math says it should survive.
+- Mid-video spawns output tracker_id -1 on their first frame and only receive
+  a real ID on their second successful update; observations with id -1 are
+  dropped from `frames.jsonl`. `tracks.jsonl.first_frame_index` is therefore
+  the first RECORDED frame: a track "spawned at f60" was usually born one
+  analysis frame earlier as an invisible -1 tracklet. Replaying tracking
+  from `frames.jsonl` alone cannot reproduce exact ID numbering because those
+  -1 outputs and their detections are missing.
+- The rescue layer runs in two modes: world mode (calibrated homography,
+  meters, appearance optional) and pixel mode (no homography,
+  `rescue.pixel_fallback_enabled`, displacement limits in box-heights,
+  appearance MANDATORY with the stricter
+  `pixel_fallback_min_appearance_similarity`). `rescue_reassociations.json`
+  reports `world_gate_active` and `pixel_fallback_active` separately; a run
+  with neither flag and `reid_active: true` computed embeddings that nothing
+  ever consumed. Pixel mode skips the lateral/behind-prediction gates: pixel
+  velocity of an approaching car is image-scale change, not road motion.
+- Crop candidates carry `sibling_overlap_fraction` (fraction of the vehicle
+  box covered by other live tracks in the same frame) and are ranked with a
+  cleanliness tier that outranks scale/sharpness. Records written before this
+  field default to 0.0 (clean), so old runs keep their original crop choice.
 - The footage comes from a static tripod-mounted camera; the camera never
   moves. Do not assume dashcam/moving-camera scenarios (ego-motion, CMC
   usefulness, "on-the-road" meaning the camera is in a car). CMC stays
@@ -65,8 +95,11 @@ Maintain a strict type-safety direction for the project.
 - A car can be present in `analysis/frames.jsonl` and still be invisible in
   rendered output. `visible_track_ids_for_render` intersects visible tracks with
   `size_eligible_track_ids`, which requires `max_box_width_px >=
-analysis.min_box_width_px`. Check the analysis artifacts before assuming a
-  visible missing annotation means detector/tracker failure.
+analysis.min_box_width_px` AND `max_box_height_px >= analysis.min_box_height_px`
+  (the crop-save gate applies both mins per frame). Height stats are absent in
+  manifests written before the two-dimensional gate; those records pass the
+  height check. Check the analysis artifacts before assuming a visible missing
+  annotation means detector/tracker failure.
 - The current test baseline emits an upstream NumPy 2D-cross deprecation
   warning from Supervision `LineZone`. Do not broadly suppress it or treat it as
   a Car-Census counting failure.
