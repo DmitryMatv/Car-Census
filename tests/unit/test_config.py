@@ -179,6 +179,8 @@ def test_canonical_analysis_and_mmr_contract(default_config) -> None:
     assert config.analysis.batch_size == 16
     assert config.analysis.detector_batch_size is None
     assert config.analysis.min_track_frames == 5
+    assert config.analysis.min_box_width_px == 112
+    assert config.analysis.min_box_height_px == 56
     assert config.analysis.crop_min_spacing_seconds == 0.099
     assert config.render.min_visible_track_observations == 5
     assert config.render.smoothing.observed_smoothing_window == 5
@@ -188,6 +190,24 @@ def test_canonical_analysis_and_mmr_contract(default_config) -> None:
     assert config.mmr.batch_cell_size_px == 512
     assert not hasattr(config.analysis, "crop_limit_per_track")
     assert not hasattr(config.mmr, "max_attempts_per_track")
+
+
+def test_analysis_min_box_gates_are_independent(config_factory) -> None:
+    config = config_factory(
+        {"analysis": {"min_box_width_px": 90, "min_box_height_px": 40}}
+    )
+
+    assert config.analysis.min_box_width_px == 90
+    assert config.analysis.min_box_height_px == 40
+
+
+def test_min_box_height_key_no_longer_aliases_width(config_factory) -> None:
+    # Legacy alias treated min_box_height_px as width; it is now a real
+    # per-dimension gate and must not feed the width field.
+    config = config_factory({"analysis": {"min_box_height_px": 33}})
+
+    assert config.analysis.min_box_width_px == 112
+    assert config.analysis.min_box_height_px == 33
 
 
 def test_analysis_config_rejects_removed_crop_limit_per_track(config_factory) -> None:

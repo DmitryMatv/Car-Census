@@ -17,6 +17,8 @@ class CandidateTrackState(Protocol):
     track_id: int
     min_box_width_px: float | None
     max_box_width_px: float
+    min_box_height_px: float | None
+    max_box_height_px: float
     candidates: list[CropCandidate]
     last_candidate_time: float | None
 
@@ -192,7 +194,10 @@ class CropCandidateSelector:
         frame_index: int,
         timestamp_seconds: float,
     ) -> None:
-        if bbox.width < self.config.analysis.min_box_width_px:
+        if (
+            bbox.width < self.config.analysis.min_box_width_px
+            or bbox.height < self.config.analysis.min_box_height_px
+        ):
             return
         save_candidate(
             store=self.store,

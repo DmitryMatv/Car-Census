@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import orjson
 import supervision as sv
+
 from config import AppConfig, CameraProfile, PolygonZoneConfig
 from models import BBox, FrameRecord
 from pipeline import analyze as analyze_module
@@ -1218,6 +1219,7 @@ def test_edge_skipped_track_does_not_save_crop_on_skipped_frame(
             "analysis": {
                 "min_track_frames": 1,
                 "min_box_width_px": 1,
+                "min_box_height_px": 1,
                 "crop_padding_ratio": 0,
                 "crop_padding_px": 0,
                 "crop_min_spacing_seconds": 0,
@@ -1378,6 +1380,7 @@ def test_analyze_writes_detector_and_tracker_diagnostics(
     assert stats["tracks_discarded_min_track_frames"] == 0
     assert stats["tracks_without_crop_candidates"] == 0
     assert stats["tracks_without_crop_due_to_width"] == 0
+    assert stats["tracks_without_crop_due_to_height"] == 0
     assert stats["tracks_without_crop_due_to_short_lifetime"] == 0
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 0
     assert sum(bucket["count"] for bucket in stats["confidence_histogram"]) == 2
@@ -1449,8 +1452,50 @@ def test_analyze_diagnostics_count_edge_short_and_crop_ineligible_tracks(
     assert stats["tracks_discarded_min_track_frames"] == 2
     assert stats["tracks_without_crop_candidates"] == 2
     assert stats["tracks_without_crop_due_to_width"] == 2
+    assert stats["tracks_without_crop_due_to_height"] == 0
     assert stats["tracks_without_crop_due_to_short_lifetime"] == 2
     assert stats["tracks_hidden_from_render_due_to_crop_eligibility"] == 2
+
+
+def test_analyze_diagnostics_count_tracks_without_crop_due_to_height(
+    config_factory, tmp_path, monkeypatch
+) -> None:
+    detector = FakeDetector([])
+    # 70x30 box: passes the width gate, fails the height gate.
+    tracker = FakeTracker(_single_track(BBox(x1=20, y1=55, x2=90, y2=85)))
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config_factory(
+            {
+                "analysis": {
+                    "min_track_frames": 1,
+                    "min_box_width_px": 40,
+                    "min_box_height_px": 100,
+                },
+            }
+        ),
+        profile=_full_profile(),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    stats = _read_detection_stats(store)
+    assert stats["tracks_without_crop_candidates"] == 1
+    assert stats["tracks_without_crop_due_to_width"] == 0
+    assert stats["tracks_without_crop_due_to_height"] == 1
+
+    summaries = [
+        orjson.loads(line)
+        for line in store.tracks_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    assert len(summaries) == 1
+    assert summaries[0]["min_box_width_px"] == 70.0
+    assert summaries[0]["max_box_width_px"] == 70.0
+    assert summaries[0]["min_box_height_px"] == 30.0
+    assert summaries[0]["max_box_height_px"] == 30.0
 
 
 def test_analyze_uses_bottom_center_for_roi_membership(

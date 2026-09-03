@@ -18,6 +18,8 @@ class MutableTrackState:
     frames_seen: int = 0
     min_box_width_px: float | None = None
     max_box_width_px: float = 0.0
+    min_box_height_px: float | None = None
+    max_box_height_px: float = 0.0
     counted: bool = False
     count_event: CountEvent | None = None
     candidates: list[CropCandidate] = field(default_factory=list)
@@ -64,6 +66,12 @@ class TrackStateStore:
             else min(state.min_box_width_px, observation.bbox.width)
         )
         state.max_box_width_px = max(state.max_box_width_px, observation.bbox.width)
+        state.min_box_height_px = (
+            observation.bbox.height
+            if state.min_box_height_px is None
+            else min(state.min_box_height_px, observation.bbox.height)
+        )
+        state.max_box_height_px = max(state.max_box_height_px, observation.bbox.height)
 
     def sorted_active_states(self) -> list[MutableTrackState]:
         return sorted(

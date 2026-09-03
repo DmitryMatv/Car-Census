@@ -264,6 +264,7 @@ def _summary(
     track_id: int,
     max_box_width_px: float,
     vehicle_index: int | None = None,
+    max_box_height_px: float | None = None,
 ) -> TrackSummary:
     return TrackSummary(
         track_id=track_id,
@@ -273,6 +274,7 @@ def _summary(
         frames_seen=1,
         min_box_width_px=max_box_width_px,
         max_box_width_px=max_box_width_px,
+        max_box_height_px=max_box_height_px,
     )
 
 
@@ -1405,6 +1407,63 @@ def test_visible_track_ids_applies_min_box_width_when_summaries_exist(
         config_factory(
             {
                 "analysis": {"min_box_width_px": 160},
+                "render": {"min_visible_track_observations": 1},
+            }
+        ),
+        records,
+        track_summaries=summaries,
+    ) == {1}
+
+
+def test_visible_track_ids_applies_min_box_height_when_summaries_exist(
+    config_factory,
+) -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[
+                _track(1, vehicle_index=1),
+                _track(2, vehicle_index=2),
+            ],
+        )
+    ]
+    # Both tracks pass the width gate; track 2 never exceeds the height gate.
+    summaries = [
+        _summary(1, max_box_width_px=200, max_box_height_px=60),
+        _summary(2, max_box_width_px=200, max_box_height_px=40),
+    ]
+
+    assert visible_track_ids_for_render(
+        config_factory(
+            {
+                "analysis": {"min_box_width_px": 160, "min_box_height_px": 56},
+                "render": {"min_visible_track_observations": 1},
+            }
+        ),
+        records,
+        track_summaries=summaries,
+    ) == {1}
+
+
+def test_visible_track_ids_treats_missing_height_stats_as_eligible(
+    config_factory,
+) -> None:
+    records = [
+        FrameRecord(
+            frame_index=0,
+            timestamp_seconds=0.0,
+            tracks=[_track(1, vehicle_index=1)],
+        )
+    ]
+    # Manifests written before the two-dimensional size gate carry no height
+    # stats; they must stay renderable under the width-only behavior.
+    summaries = [_summary(1, max_box_width_px=200)]
+
+    assert visible_track_ids_for_render(
+        config_factory(
+            {
+                "analysis": {"min_box_width_px": 160, "min_box_height_px": 56},
                 "render": {"min_visible_track_observations": 1},
             }
         ),

@@ -5,6 +5,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import numpy as np
+
 from config import AppConfig, CameraProfile
 from detectors.base import Detector
 from detectors.factory import create_detector
@@ -69,6 +70,13 @@ def _finalize_analysis(
         for state in track_states
         if not state.candidates
         and state.max_box_width_px < config.analysis.min_box_width_px
+    )
+    diagnostics.tracks_without_crop_due_to_height = sum(
+        1
+        for state in track_states
+        if not state.candidates
+        and state.max_box_width_px >= config.analysis.min_box_width_px
+        and state.max_box_height_px < config.analysis.min_box_height_px
     )
     diagnostics.tracks_without_crop_due_to_short_lifetime = sum(
         1

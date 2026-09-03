@@ -12,7 +12,13 @@ analysis:
   batch_size: 16
   detector_batch_size: null 
   min_track_frames: 5
-  min_box_width_px: 96
+  # Crop-eligibility floor on BOTH box dimensions. Width alone is a poor
+  # distance proxy because it varies with yaw (a side-on car is ~2.5x wider
+  # than the same car head-on at the same distance); height is nearly
+  # yaw-invariant. The per-frame crop gate requires both dims; track
+  # eligibility (render/diagnostics) uses the best-ever value of each dim.
+  min_box_width_px: 112
+  min_box_height_px: 56
   crop_padding_ratio: 0.05
   crop_padding_px: 2
   crop_target_box_range_ratio: 0.777

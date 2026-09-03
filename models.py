@@ -134,12 +134,15 @@ class MMRResult(BaseModel):
     vehicle_index: int | None = None
     api_classification_index: int | None = None
     evidence_source: Literal["api_confirmed", "human_adjudicated"] | None = None
-    resolution_method: Literal[
-        "external_api",
-        "exact_retrieval",
-        "embedding_retrieval",
-        "human_adjudication",
-    ] | None = None
+    resolution_method: (
+        Literal[
+            "external_api",
+            "exact_retrieval",
+            "embedding_retrieval",
+            "human_adjudication",
+        ]
+        | None
+    ) = None
     retrieval_record_id: str | None = None
     retrieval_distance: float | None = None
     retrieval_neighbor_count: int | None = None
@@ -153,6 +156,8 @@ class TrackSummary(BaseModel):
     frames_seen: int
     min_box_width_px: float | None = None
     max_box_width_px: float
+    min_box_height_px: float | None = None
+    max_box_height_px: float | None = None
     speed_mps_median: float | None = None
     speed_mps_max: float | None = None
     counted: bool = False
@@ -166,10 +171,16 @@ class TrackSummary(BaseModel):
         if not isinstance(data, dict):
             return data
         migrated = dict(data)
-        if "min_box_width_px" not in migrated and "min_box_height_px" in migrated:
-            migrated["min_box_width_px"] = migrated["min_box_height_px"]
-        if "max_box_width_px" not in migrated and "max_box_height_px" in migrated:
-            migrated["max_box_width_px"] = migrated["max_box_height_px"]
+        # Legacy artifacts used *_box_height_px to mean width. Copy the value
+        # into the width fields and drop the keys so they are not mistaken
+        # for the modern per-dimension height stats (which stay unset/None).
+        # Modern records carry both width and height keys and are kept as-is.
+        for legacy, current in (
+            ("min_box_height_px", "min_box_width_px"),
+            ("max_box_height_px", "max_box_width_px"),
+        ):
+            if current not in migrated and legacy in migrated:
+                migrated[current] = migrated.pop(legacy)
         return migrated
 
 

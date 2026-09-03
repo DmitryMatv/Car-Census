@@ -19,6 +19,8 @@ class TrackStateProtocol(Protocol):
     frames_seen: int
     min_box_width_px: float | None
     max_box_width_px: float
+    min_box_height_px: float | None
+    max_box_height_px: float
     counted: bool
     count_event: CountEvent | None
     candidates: list[CropCandidate]
@@ -76,9 +78,7 @@ def compute_track_world_speeds(
             )
             if not math.isfinite(distance_m):
                 continue
-            speeds_by_track.setdefault(track.track_id, []).append(
-                distance_m / elapsed
-            )
+            speeds_by_track.setdefault(track.track_id, []).append(distance_m / elapsed)
     return {
         track_id: (statistics.median(values), max(values))
         for track_id, values in speeds_by_track.items()
@@ -98,12 +98,12 @@ def track_summary_from_state(
         frames_seen=state.frames_seen,
         min_box_width_px=state.min_box_width_px,
         max_box_width_px=state.max_box_width_px,
+        min_box_height_px=state.min_box_height_px,
+        max_box_height_px=state.max_box_height_px,
         speed_mps_median=(
             world_speeds_mps[0] if world_speeds_mps is not None else None
         ),
-        speed_mps_max=(
-            world_speeds_mps[1] if world_speeds_mps is not None else None
-        ),
+        speed_mps_max=(world_speeds_mps[1] if world_speeds_mps is not None else None),
         counted=state.counted,
         count_event=state.count_event,
         candidates=state.candidates,

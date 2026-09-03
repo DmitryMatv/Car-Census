@@ -195,10 +195,16 @@ def size_eligible_track_ids(
     config: AppConfig,
     summaries: Iterable[TrackSummary],
 ) -> set[int]:
+    # Height stats are None in manifests written before the two-dimensional
+    # size gate; None means "unknown" and passes rather than failing old runs.
     return {
         summary.track_id
         for summary in summaries
         if summary.max_box_width_px >= config.analysis.min_box_width_px
+        and (
+            summary.max_box_height_px is None
+            or summary.max_box_height_px >= config.analysis.min_box_height_px
+        )
     }
 
 

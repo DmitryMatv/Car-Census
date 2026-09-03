@@ -69,6 +69,7 @@ class AnalysisDiagnostics:
     tracks_discarded_min_track_frames: int = 0
     tracks_without_crop_candidates: int = 0
     tracks_without_crop_due_to_width: int = 0
+    tracks_without_crop_due_to_height: int = 0
     tracks_without_crop_due_to_short_lifetime: int = 0
     tracks_hidden_from_render_crop_eligibility: int = 0
     stale_reassociation_observations_suppressed: int = 0
@@ -192,6 +193,9 @@ def analysis_diagnostics_payload(
         "tracks_without_crop_candidates": diagnostics.tracks_without_crop_candidates,
         "tracks_without_crop_due_to_width": (
             diagnostics.tracks_without_crop_due_to_width
+        ),
+        "tracks_without_crop_due_to_height": (
+            diagnostics.tracks_without_crop_due_to_height
         ),
         "tracks_without_crop_due_to_short_lifetime": (
             diagnostics.tracks_without_crop_due_to_short_lifetime
