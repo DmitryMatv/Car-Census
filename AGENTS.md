@@ -46,11 +46,15 @@ Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest
   512-d embeddings, per-track bounded history) that `tracking_adapters/botsort.py`
   wires in, and `tracking_adapters/rescue.py` consumes it to gate identity
   takeovers of long-lost tracks. Do not claim the pipeline is appearance-free.
-- BoT-SORT floors that scaled buffer and keeps tracks only while
-  `time_since_update < maximum_frames_without_update`. For example,
-  `lost_track_buffer: 15` at 5 analysis FPS becomes 2, so a mature track
-  survives only one fully missed analysis frame; an immature track can be
-  removed on its first miss.
+- BoT-SORT ceils that scaled buffer (min 1,
+  `max(1, ceil(fps / 30 * lost_track_buffer))`) and keeps tracks while
+  `time_since_update <= maximum_frames_without_update`. At the default
+  `lost_track_buffer: 60` and 5 analysis FPS this becomes 10, so a mature
+  track survives ten fully missed analysis frames; an immature track can be
+  removed on its first miss. Real runs also pass timestamps, and then a
+  wall-clock budget of `lost_track_buffer / 30` seconds (2.0 s at the
+  default) replaces the frame count; at 5 analysis FPS it lands on the same
+  10 frames.
 - BoT-SORT fuses IoU with detection confidence (similarity = IoU \* score)
   before the first-association gate, so the effective re-attach floor is
   conf-weighted: a 0.77-conf reappearance needs ~0.26 raw IoU at the default
@@ -100,9 +104,6 @@ analysis.min_box_width_px` AND `max_box_height_px >= analysis.min_box_height_px`
   manifests written before the two-dimensional gate; those records pass the
   height check. Check the analysis artifacts before assuming a visible missing
   annotation means detector/tracker failure.
-- The current test baseline emits an upstream NumPy 2D-cross deprecation
-  warning from Supervision `LineZone`. Do not broadly suppress it or treat it as
-  a Car-Census counting failure.
 - `classify` regenerates the whole run: `classify_tracks` deletes the existing
   `labels.json` up front and re-identifies every track, so a re-run pays
   TrafficEye costs again unless retrieval reuses. Treat a "re-classify one
@@ -135,9 +136,9 @@ analysis.min_box_width_px` AND `max_box_height_px >= analysis.min_box_height_px`
   source-crop coordinates. It no longer strips raw API responses from records.
 - CLI commands that can make network calls load `.env` (`analyze`, `classify`,
   `run`, `cache seed`, `cache migrate-embeddings`); purely local commands
-  (`cache organize`, `cache compact`, `cache calibrate`, `render`, `smooth`,
-  `report`) skip `load_dotenv`. `cache seed` embeds at record time, so it
-  genuinely needs the key despite looking like a local import.
+  (`roi edit`, `cache organize`, `cache compact`, `cache calibrate`, `render`,
+  `smooth`, `report`) skip `load_dotenv`. `cache seed` embeds at record time,
+  so it genuinely needs the key despite looking like a local import.
 - Record-time embedding is eager by decision (2026-08-29): every crop written
   to the retrieval cache is embedded immediately so it is query-ready later.
   Embedding is cheap; do not make it lazy. `_try_embed` failures degrade to
