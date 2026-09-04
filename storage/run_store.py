@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from models import CountEvent, MMRResult, RunManifest, TrackSummary
+from models import (
+    CachedFrameDetections,
+    CountEvent,
+    MMRResult,
+    RunManifest,
+    TrackSummary,
+)
 from config import validate_camera_id
 from storage.run_artifacts import (
     DetectionStatsFile,
@@ -49,6 +55,9 @@ class RunStore:
         self.manifest = JsonModelFile(self.layout.manifest_path, RunManifest)
         self.frames = FrameRecordsFile(self.layout)
         self.tracks = JsonlModelFile(self.layout.tracks_path, TrackSummary)
+        self.detections = JsonlModelFile(
+            self.layout.detections_path, CachedFrameDetections
+        )
         self.counts = JsonlModelFile(self.layout.count_events_path, CountEvent)
         self.labels = LabelsFile(self.layout.labels_path)
         self.detection_stats = DetectionStatsFile(self.layout.detection_stats_path)
@@ -203,6 +212,27 @@ class RunStore:
     @property
     def tracks_path(self) -> Path:
         return self.layout.tracks_path
+
+    @property
+    def linked_tracks_path(self) -> Path:
+        return self.layout.linked_tracks_path
+
+    @property
+    def detections_path(self) -> Path:
+        return self.layout.detections_path
+
+    @property
+    def links_path(self) -> Path:
+        return self.layout.links_path
+
+    @property
+    def tracks_effective(self) -> JsonlModelFile[TrackSummary]:
+        """Track summaries consumers should act on: the derived linked
+        tracks when the linking stage has produced them, otherwise the raw
+        analysis tracks. Raw artifacts are never mutated."""
+        if self.layout.linked_tracks_path.is_file():
+            return JsonlModelFile(self.layout.linked_tracks_path, TrackSummary)
+        return self.tracks
 
     @property
     def detection_stats_path(self) -> Path:

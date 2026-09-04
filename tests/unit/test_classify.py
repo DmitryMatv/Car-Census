@@ -18,6 +18,7 @@ class DummyRunStore:
         self.mmr_cache_dir = root / "mmr" / "cache"
         self.mmr_batch_grids_dir = root / "mmr" / "batch_grids"
         self.tracks = self
+        self.tracks_effective = self
         self.labels = self
         self.crops_dir.mkdir(parents=True)
         self.tracks_path.parent.mkdir(parents=True)

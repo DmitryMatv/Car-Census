@@ -6,6 +6,7 @@ from typing import Any
 import cv2
 import numpy as np
 import orjson
+import pytest
 import supervision as sv
 
 from config import AppConfig, CameraProfile, PolygonZoneConfig
@@ -506,6 +507,49 @@ def _read_frame_records(path: Path) -> list[FrameRecord]:
 
 def _read_detection_stats(store: RunStore) -> dict[str, Any]:
     return orjson.loads(store.detection_stats_path.read_bytes())
+
+
+def test_analyze_writes_detection_cache(
+    config_factory, tmp_path, monkeypatch
+) -> None:
+    from models import CachedFrameDetections
+
+    detector = FakeDetector(
+        [
+            Detection(
+                bbox=BBox(x1=10, y1=10, x2=40, y2=40),
+                confidence=0.9,
+                class_id=2,
+                class_name="car",
+            ),
+        ]
+    )
+    tracker = FakeTracker(_empty_tracks())
+    store = _prepare_analyze_test(tmp_path, monkeypatch, detector, tracker)
+    config = config_factory({})
+
+    analyze_video(
+        project_root=tmp_path,
+        config=config,
+        profile=CameraProfile(
+            camera_id="full",
+            polygon=PolygonZoneConfig(points=[[0, 0], [99, 0], [99, 99], [0, 99]]),
+        ),
+        video_path=tmp_path / "input.mp4",
+        run_store=store,
+    )
+
+    cached = [
+        CachedFrameDetections.model_validate(orjson.loads(line))
+        for line in store.detections_path.read_bytes().splitlines()
+        if line.strip()
+    ]
+    assert len(cached) == 1
+    assert cached[0].frame_index == 0
+    assert len(cached[0].detections) == 1
+    assert cached[0].detections[0].bbox == BBox(x1=10, y1=10, x2=40, y2=40)
+    assert cached[0].detections[0].confidence == pytest.approx(0.9)
+    assert cached[0].detections[0].class_name == "car"
 
 
 def test_analyze_ignores_unconfirmed_tracker_ids(

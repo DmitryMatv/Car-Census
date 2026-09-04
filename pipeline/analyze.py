@@ -25,6 +25,8 @@ from pipeline.analysis_tracking import (
     FrameTrackingInput,
     build_track_state_updater,
 )
+from pipeline.detections import cached_frame_detections
+from pipeline.link import link_analysis_tracks
 from pipeline.vehicles import (
     compute_track_world_speeds,
     discard_track_artifacts,
@@ -162,6 +164,7 @@ def analyze_video(
     with (
         run_store.frames.open_writer() as frame_writer,
         run_store.counts.open_writer() as count_writer,
+        run_store.detections.open_writer() as detection_writer,
     ):
         for sampled_frame, detections in iter_detected_sampled_frames(
             detector=detector,
@@ -183,6 +186,14 @@ def analyze_video(
                 frame_shape=sampled_frame.frame.shape,
                 roi_shape=sampled_frame.roi_frame.shape,
                 roi_offset=sampled_frame.offset,
+            )
+            detection_writer.write(
+                cached_frame_detections(
+                    frame_index=sampled_frame.frame_index,
+                    timestamp_seconds=sampled_frame.timestamp_seconds,
+                    detections=global_detections,
+                    edge_suppressed_bboxes=edge_detection_bboxes,
+                )
             )
 
             diagnostics.detections_passed_to_tracker += len(global_detections)
@@ -223,6 +234,7 @@ def analyze_video(
         config=config,
         view_transformer=build_view_transformer(config, profile),
     )
+    link_analysis_tracks(config=config, profile=profile, run_store=run_store)
 
     logger.info("Analysis complete. Run directory: %s", run_store.root)
     return run_store

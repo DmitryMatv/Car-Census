@@ -12,12 +12,6 @@ Never guess at intent. If a task leaves anything open - which screen, which endp
 - Do not widen scope past what was asked. Note the adjacent thing you spotted; don't fix it unprompted.
 - If you had to assume something you couldn't resolve, list it explicitly at the top of your summary.
 
-## Testing
-
-Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
-
-Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest pyrefly` into `.venv` if absent.
-
 ## Project Snapshot
 
 Car-Census is a video analysis and annotation tool for conducting real-world car make and model visual surveys (road traffic surveying). It detects and tracks cars in input footage, and then identifies make, model, generation/year range and variation using external Make and Model Recognition (MMR) API. Collected results are aggregated into structured tables for further data analysis and statistics. Annotated output video can be used to demonstrate the entire process.
@@ -31,6 +25,12 @@ Maintain a strict type-safety direction for the project.
 - If an ignore or checker override is needed for dynamic third-party libraries, keep it as narrow and documented as practical.
 - Do not expand Pyrefly or mypy exclusions just to hide ordinary source errors.
 - Tests may be excluded from default type checking for now, but production source should keep moving toward stricter typing.
+
+## Testing
+
+Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
+
+Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest pyrefly` into `.venv` if absent.
 
 ## Environment & Setup
 
