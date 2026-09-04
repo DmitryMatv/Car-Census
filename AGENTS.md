@@ -11,16 +11,6 @@ Never guess at intent. If a task leaves anything open - which screen, which endp
 - Do not invent product decisions, copy, or acceptance criteria.
 - Do not widen scope past what was asked. Note the adjacent thing you spotted; don't fix it unprompted.
 - If you had to assume something you couldn't resolve, list it explicitly at the top of your summary.
-- Pre-existing (2026-09-03, not introduced by linker work): `tests/unit/test_roi_editor.py`
-  imports `MIN_HOMOGRAPHY_POINTS` from `roi.editor`, which does not define it, so that
-  file fails at collection. Run the suite with `--ignore tests/unit/test_roi_editor.py`
-  until someone fixes or restores the missing symbol.
-
-## Testing
-
-Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
-
-Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest pyrefly` into `.venv` if absent.
 
 ## Project Snapshot
 
@@ -35,6 +25,12 @@ Maintain a strict type-safety direction for the project.
 - If an ignore or checker override is needed for dynamic third-party libraries, keep it as narrow and documented as practical.
 - Do not expand Pyrefly or mypy exclusions just to hide ordinary source errors.
 - Tests may be excluded from default type checking for now, but production source should keep moving toward stricter typing.
+
+## Testing
+
+Never use `unittest` for backend testing. Always use Python's built-in `pytest` module instead.
+
+Use Virtual Environment `source .venv/bin/activate`. Install `pip install pytest pyrefly` into `.venv` if absent.
 
 ## Environment & Setup
 

@@ -1,5 +1,5 @@
 # Custom ignore rules for this project
-output/
+output
 input_data
 .pyscn/
 

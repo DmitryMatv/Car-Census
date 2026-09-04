@@ -401,6 +401,11 @@ def smooth(
 def link(
     run_dir: Path = typer.Option(..., "--run-dir"),
     config_path: Optional[Path] = typer.Option(None, "--config"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-link even when mmr/labels.json already exists.",
+    ),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     """Re-run offline track linking on an existing run.
@@ -412,6 +417,25 @@ def link(
     project_root, config = _load_config_with_accelerator(config_path)
     store = RunStore.from_existing(run_dir)
     store.validate_analysis_artifacts()
+    if store.labels_path.is_file() and not force:
+        typer.secho(
+            "Refusing to re-link: mmr/labels.json already exists, so this run "
+            "has been classified. Classification labels are keyed by track id "
+            "and carry the vehicle indices from the previous linking; a new "
+            "linking pass (e.g. after changing linking.* thresholds) would "
+            "leave labels.json pointing at stale vehicle assignments. "
+            "Re-run 'classify' and 'render' afterwards, or pass --force to "
+            "re-link anyway.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if store.labels_path.is_file():
+        typer.secho(
+            "Warning: labels.json exists and may become stale; re-run "
+            "'classify' and 'render' after this linking pass.",
+            fg=typer.colors.YELLOW,
+        )
     manifest = store.manifest.read()
     if manifest.camera_id and manifest.camera_id != FULL_FRAME_CAMERA_ID:
         profile = load_camera_profile(config, manifest.camera_id, root=project_root)
